@@ -139,3 +139,9 @@ The record must not contain page titles, passage text, page content, or a cross-
 - Pre-sprint baseline: 5 test files, 14 tests passing.
 - Independent audits: Codex and OpenCode agreed on the opt-in and position-model gaps.
 - Production dependency budget: no new dependency approved.
+
+## Progress
+
+- RT-001 complete: product vision, sprint contract, SDLC, and agent boundaries committed.
+- RT-002 complete: OpenCode implemented the position anchor module; Codex reviewed and hardened it; 6 test files and 23 tests pass.
+- RT-003 next: session page-state storage and validated service-worker messages.
