@@ -4,8 +4,9 @@ const openOptions = document.getElementById("openOptions");
 
 chrome.storage.local.get("settings", (result) => {
   const s = result.settings || { enabled: true };
-  toggle.checked = s.enabled;
-  statusLabel.textContent = s.enabled ? "Enabled" : "Disabled";
+  const enabled = s.enabled !== false;
+  toggle.checked = enabled;
+  statusLabel.textContent = enabled ? "Enabled" : "Disabled";
 });
 
 toggle.addEventListener("change", () => {
@@ -13,8 +14,7 @@ toggle.addEventListener("change", () => {
   statusLabel.textContent = enabled ? "Enabled" : "Disabled";
 
   chrome.storage.local.get("settings", (result) => {
-    const settings = result.settings || {};
-    settings.enabled = enabled;
+    const settings = { ...(result.settings || {}), enabled };
     chrome.storage.local.set({ settings });
   });
 
@@ -25,7 +25,6 @@ toggle.addEventListener("change", () => {
   });
 });
 
-openOptions.addEventListener("click", (e) => {
-  e.preventDefault();
+openOptions.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });

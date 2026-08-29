@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ReadTrail Settings</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <div class="options-container">
-    <div class="header">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+  <main class="options-container">
+    <header class="header">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <rect x="3" y="3" width="18" height="18" rx="3" stroke="#FF6B6B" stroke-width="2"/>
         <line x1="7" y1="8" x2="17" y2="8" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round"/>
         <line x1="7" y1="12" x2="14" y2="12" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
@@ -18,78 +19,79 @@
         <h1>ReadTrail</h1>
         <p class="subtitle">Reading cursor trail settings</p>
       </div>
-    </div>
+    </header>
 
-    <div class="section">
-      <h2>Trail Style</h2>
-      <div class="style-picker" id="stylePicker">
-        <button class="style-btn active" data-style="ruler">
-          <div class="style-preview ruler-preview"></div>
+    <section class="section" aria-labelledby="trail-style-heading">
+      <h2 id="trail-style-heading">Trail Style</h2>
+      <div class="style-picker" id="stylePicker" role="group" aria-label="Trail style">
+        <button type="button" class="style-btn active" data-style="ruler" aria-pressed="true">
+          <span class="style-preview ruler-preview" aria-hidden="true"></span>
           <span>Ruler</span>
         </button>
-        <button class="style-btn" data-style="dots">
-          <div class="style-preview dots-preview"></div>
+        <button type="button" class="style-btn" data-style="dots" aria-pressed="false">
+          <span class="style-preview dots-preview" aria-hidden="true"></span>
           <span>Dots</span>
         </button>
-        <button class="style-btn" data-style="underline">
-          <div class="style-preview underline-preview"></div>
+        <button type="button" class="style-btn" data-style="underline" aria-pressed="false">
+          <span class="style-preview underline-preview" aria-hidden="true"></span>
           <span>Underline</span>
         </button>
       </div>
-    </div>
+    </section>
 
-    <div class="section">
-      <h2>Appearance</h2>
+    <section class="section" aria-labelledby="appearance-heading">
+      <h2 id="appearance-heading">Appearance</h2>
       <div class="control">
-        <label>Trail Color</label>
+        <label for="color">Trail Color</label>
         <input type="color" id="color" value="#FF6B6B">
       </div>
       <div class="control">
-        <label>Size <span id="sizeValue">30</span>px</label>
-        <input type="range" id="size" min="10" max="100" value="30">
+        <label for="size">Size <output id="sizeValue" for="size">30</output>px</label>
+        <input type="range" id="size" min="10" max="100" value="30" aria-valuetext="30 pixels">
       </div>
       <div class="control">
-        <label>Opacity <span id="opacityValue">30</span>%</label>
-        <input type="range" id="opacity" min="10" max="100" value="30">
+        <label for="opacity">Opacity <output id="opacityValue" for="opacity">30</output>%</label>
+        <input type="range" id="opacity" min="10" max="100" value="30" aria-valuetext="30 percent">
       </div>
-    </div>
+    </section>
 
-    <div class="section dots-options" id="dotsOptions">
-      <h2>Dots Settings</h2>
+    <section class="section dots-options" id="dotsOptions" aria-labelledby="dots-heading" hidden>
+      <h2 id="dots-heading">Dots Settings</h2>
       <div class="control">
-        <label>Dot Count <span id="dotCountValue">20</span></label>
-        <input type="range" id="dotCount" min="5" max="50" value="20">
+        <label for="dotCount">Dot Count <output id="dotCountValue" for="dotCount">20</output></label>
+        <input type="range" id="dotCount" min="5" max="50" value="20" aria-valuetext="20 dots">
       </div>
       <div class="control">
-        <label>Fade Speed <span id="fadeSpeedValue">0.90</span></label>
-        <input type="range" id="fadeSpeed" min="80" max="99" value="90">
+        <label for="fadeSpeed">Fade retention <output id="fadeSpeedValue" for="fadeSpeed">90</output>%</label>
+        <input type="range" id="fadeSpeed" min="80" max="99" value="90" aria-valuetext="90 percent">
       </div>
-    </div>
+    </section>
 
-    <div class="section">
-      <h2>Text Highlighting</h2>
+    <section class="section" aria-labelledby="highlight-heading">
+      <h2 id="highlight-heading">Text Highlighting</h2>
       <div class="control checkbox-row">
-        <label>Highlight current line</label>
+        <label for="highlightLine">Highlight current line</label>
         <input type="checkbox" id="highlightLine">
       </div>
-      <div class="control highlight-options" id="highlightOptions">
-        <label>Highlight Color</label>
+      <div class="control highlight-options" id="highlightOptions" hidden>
+        <label for="highlightColor">Highlight Color</label>
         <input type="color" id="highlightColor" value="#FFEB3B">
       </div>
-    </div>
+    </section>
 
-    <div class="section">
-      <h2>General</h2>
+    <section class="section" aria-labelledby="general-heading">
+      <h2 id="general-heading">General</h2>
       <div class="control checkbox-row">
-        <label>Enable ReadTrail</label>
+        <label for="enabled">Enable ReadTrail</label>
         <input type="checkbox" id="enabled" checked>
       </div>
-    </div>
+    </section>
 
-    <div class="footer">
-      <button id="resetBtn" class="btn-reset">Reset to Defaults</button>
-    </div>
-  </div>
+    <footer class="footer">
+      <button type="button" id="resetBtn" class="btn-reset">Reset to defaults</button>
+      <p id="saveStatus" class="save-status" role="status" aria-live="polite"></p>
+    </footer>
+  </main>
   <script src="options.js"></script>
 </body>
 </html>

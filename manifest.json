@@ -3,7 +3,7 @@
   "name": "ReadTrail",
   "version": "1.0.0",
   "description": "A reading aid that adds a cursor trail to help you follow along lines and stay focused.",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage"],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {

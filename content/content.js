@@ -1,9 +1,11 @@
 (() => {
   var R = window.ReadTrailRenderer;
+  var DEFAULTS = { enabled: true, style: "ruler", color: "#FF6B6B", size: 30, opacity: 0.3, dotCount: 20, fadeSpeed: 0.9, highlightLine: false, highlightColor: "#FFEB3B" };
   var settings = null;
   var enabled = false;
   var trail = [];
   var lastHighlight = null;
+  var lastHighlightStyle = null;
   var animFrame = null;
   var cursor = { x: 0, y: 0 };
   var started = false;
@@ -13,15 +15,15 @@
       try {
         chrome.runtime.sendMessage({ type: "getSettings" }, function (s) {
           if (chrome.runtime.lastError || !s) {
-            settings = { enabled: true, style: "ruler", color: "#FF6B6B", size: 30, opacity: 0.3, dotCount: 20, fadeSpeed: 0.9, highlightLine: false, highlightColor: "#FFEB3B" };
+            settings = { ...DEFAULTS };
           } else {
-            settings = s;
+            settings = { ...DEFAULTS, ...s };
           }
           enabled = settings.enabled;
           resolve();
         });
       } catch (e) {
-        settings = { enabled: true, style: "ruler", color: "#FF6B6B", size: 30, opacity: 0.3, dotCount: 20, fadeSpeed: 0.9, highlightLine: false, highlightColor: "#FFEB3B" };
+        settings = { ...DEFAULTS };
         enabled = settings.enabled;
         resolve();
       }
@@ -41,9 +43,20 @@
   function highlightLine(el) {
     if (lastHighlight && lastHighlight !== el) {
       lastHighlight.classList.remove("readtrail-highlight");
+      lastHighlight.style.setProperty("background-color", lastHighlightStyle.value, lastHighlightStyle.priority);
+      lastHighlightStyle = null;
     }
-    if (el) {
+    if (el && lastHighlight !== el) {
+      lastHighlightStyle = {
+        value: el.style.getPropertyValue("background-color"),
+        priority: el.style.getPropertyPriority("background-color")
+      };
       el.classList.add("readtrail-highlight");
+      var color = /^#[0-9a-f]{6}$/i.test(settings.highlightColor) ? settings.highlightColor : DEFAULTS.highlightColor;
+      var r = parseInt(color.slice(1, 3), 16);
+      var g = parseInt(color.slice(3, 5), 16);
+      var b = parseInt(color.slice(5, 7), 16);
+      el.style.setProperty("background-color", `rgba(${r}, ${g}, ${b}, 0.3)`, "important");
     }
     lastHighlight = el;
   }
@@ -51,7 +64,9 @@
   function clearHighlight() {
     if (lastHighlight) {
       lastHighlight.classList.remove("readtrail-highlight");
+      lastHighlight.style.setProperty("background-color", lastHighlightStyle.value, lastHighlightStyle.priority);
       lastHighlight = null;
+      lastHighlightStyle = null;
     }
   }
 
@@ -65,34 +80,42 @@
     }
 
     if (settings && settings.style === "dots") {
-      trail.push({ x: cursor.x, y: cursor.y });
+      trail.push({ x: cursor.x, y: cursor.y, alpha: 1 });
       while (trail.length > (settings.dotCount || 20)) {
         trail.shift();
       }
+      if (!animFrame) animFrame = requestAnimationFrame(renderLoop);
+    } else if (settings && settings.style === "ruler") {
+      R.renderRuler(cursor.y, settings);
+    } else if (settings && settings.style === "underline") {
+      R.renderUnderline(cursor.y, settings);
     }
   }
 
   function renderLoop() {
-    if (!enabled || !settings) {
-      animFrame = requestAnimationFrame(renderLoop);
+    animFrame = null;
+    if (!enabled || !settings || settings.style !== "dots") {
       return;
     }
 
-    if (settings.style === "ruler") {
-      R.renderRuler(cursor.y, settings);
-    } else if (settings.style === "dots") {
-      R.renderDots(trail, settings);
-    } else if (settings.style === "underline") {
-      R.renderUnderline(cursor.y, settings);
-    }
-
-    animFrame = requestAnimationFrame(renderLoop);
+    R.renderDots(trail, settings);
+    trail.forEach(function (point) {
+      point.alpha *= settings.fadeSpeed;
+    });
+    trail = trail.filter(function (point) {
+      return point.alpha > 0.02;
+    });
+    if (trail.length) animFrame = requestAnimationFrame(renderLoop);
   }
 
   function onMouseLeave() {
     R.clear();
     clearHighlight();
     trail = [];
+    if (animFrame) {
+      cancelAnimationFrame(animFrame);
+      animFrame = null;
+    }
   }
 
   function onMouseEnter() {
@@ -106,7 +129,6 @@
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseleave", onMouseLeave);
     document.addEventListener("mouseenter", onMouseEnter);
-    animFrame = requestAnimationFrame(renderLoop);
   }
 
   function stop() {
@@ -126,8 +148,15 @@
 
   chrome.storage.onChanged.addListener(function (changes) {
     if (changes.settings) {
-      settings = changes.settings.newValue;
+      settings = { ...DEFAULTS, ...(changes.settings.newValue || {}) };
       enabled = settings.enabled;
+      R.clear();
+      trail = [];
+      if (animFrame) {
+        cancelAnimationFrame(animFrame);
+        animFrame = null;
+      }
+      if (!settings.highlightLine) clearHighlight();
       if (enabled && !started) start();
       if (!enabled && started) stop();
     }
