@@ -144,4 +144,5 @@ The record must not contain page titles, passage text, page content, or a cross-
 
 - RT-001 complete: product vision, sprint contract, SDLC, and agent boundaries committed.
 - RT-002 complete: OpenCode implemented the position anchor module; Codex reviewed and hardened it; 6 test files and 23 tests pass.
-- RT-003 next: session page-state storage and validated service-worker messages.
+- RT-003 complete: Codex added validated, exact-URL page state backed by `chrome.storage.session`; 6 test files and 27 tests pass.
+- RT-004 next: dormant/following/frozen content lifecycle and restoration.
