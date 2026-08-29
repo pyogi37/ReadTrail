@@ -145,4 +145,5 @@ The record must not contain page titles, passage text, page content, or a cross-
 - RT-001 complete: product vision, sprint contract, SDLC, and agent boundaries committed.
 - RT-002 complete: OpenCode implemented the position anchor module; Codex reviewed and hardened it; 6 test files and 23 tests pass.
 - RT-003 complete: Codex added validated, exact-URL page state backed by `chrome.storage.session`; 6 test files and 27 tests pass.
-- RT-004 next: dormant/following/frozen content lifecycle and restoration.
+- RT-004 complete: dormant/following/frozen lifecycle, exact-URL reload restoration, guarded clicks, throttled checkpoints, save-before-off acknowledgement, and async race coverage; 6 test files and 43 tests pass.
+- RT-005 next: replace the global popup/options enable controls with current-page activation.
