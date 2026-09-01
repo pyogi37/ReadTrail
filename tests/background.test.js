@@ -41,7 +41,7 @@ describe("ReadTrail service worker", () => {
     installedHandler();
 
     expect(localSet).toHaveBeenCalledWith({
-      settings: expect.objectContaining({ enabled: true, style: "ruler" })
+      settings: expect.objectContaining({ style: "ruler" })
     });
   });
 
@@ -51,27 +51,27 @@ describe("ReadTrail service worker", () => {
 
     expect(messageHandler({ type: "getSettings" }, {}, sendResponse)).toBe(true);
     expect(sendResponse).toHaveBeenCalledWith(
-      expect.objectContaining({ enabled: true, style: "dots", size: 30 })
+      expect.objectContaining({ style: "dots", size: 30 })
     );
   });
 
-  it("rejects malformed toggle messages without writing", () => {
-    const { messageHandler, localSet } = loadWorker({ enabled: true });
+  it("removes the legacy global enable setting during extension updates", () => {
+    const { installedHandler, localSet } = loadWorker({ enabled: false, style: "underline" });
+    installedHandler();
 
-    expect(messageHandler({ type: "toggleEnabled", enabled: "no" }, {}, vi.fn())).toBe(false);
-    expect(localSet).not.toHaveBeenCalled();
+    expect(localSet).toHaveBeenCalledWith({
+      settings: expect.objectContaining({ style: "underline" })
+    });
+    expect(localSet.mock.calls[0][0].settings).not.toHaveProperty("enabled");
   });
 
-  it("persists validated toggle messages without mutating stored data", () => {
-    const stored = { enabled: true, style: "underline" };
-    const { messageHandler, localSet } = loadWorker(stored);
+  it("does not expose or accept the removed global enable setting", () => {
+    const { messageHandler } = loadWorker({ enabled: false, style: "underline" });
     const sendResponse = vi.fn();
 
-    expect(messageHandler({ type: "toggleEnabled", enabled: false }, {}, sendResponse)).toBe(true);
-    expect(stored.enabled).toBe(true);
-    expect(localSet).toHaveBeenCalledWith({
-      settings: expect.objectContaining({ enabled: false, style: "underline" })
-    });
+    expect(messageHandler({ type: "getSettings" }, {}, sendResponse)).toBe(true);
+    expect(sendResponse.mock.calls[0][0]).not.toHaveProperty("enabled");
+    expect(messageHandler({ type: "toggleEnabled", enabled: false }, {}, vi.fn())).toBe(false);
   });
 
   it("returns an inactive default for a page without session state", () => {

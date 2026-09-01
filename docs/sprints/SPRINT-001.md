@@ -147,4 +147,18 @@ The record must not contain page titles, passage text, page content, or a cross-
 - RT-003 complete: Codex added validated, exact-URL page state backed by `chrome.storage.session`; 6 test files and 27 tests pass.
 - RT-004 complete: dormant/following/frozen lifecycle, exact-URL reload restoration, guarded clicks, throttled checkpoints, save-before-off acknowledgement, and async race coverage; 6 test files and 43 tests pass.
 - RT-005 complete: the popup now controls only the active exact page with save-before-off and rollback handling; options now contain appearance settings only; 6 test files and 60 tests pass.
-- RT-006 next: manifest integration, documentation, and manual Chrome verification.
+- RT-006 automated integration complete: the manifest loads position capture in order, uses `activeTab` plus `storage`, removes the legacy global enable path, and documents unpacked-extension reloads; 7 test files and 63 tests pass.
+- RT-006 manual Chrome verification is pending the one user-only step: reload the unpacked extension from `chrome://extensions`.
+
+## Manual Chrome verification record
+
+Automated browser control cannot access Chrome's internal extension manager. After the unpacked extension is reloaded and the test pages are refreshed, verify:
+
+- [ ] A fresh long-form HTTP(S) page shows **Use on this page** and creates no marker before activation.
+- [ ] Activating the page creates the reading marker and pointer movement follows readable text.
+- [ ] A single click freezes the marker; another single click resumes following; a double-click does not toggle twice.
+- [ ] Turning the page off hides the marker; turning it on restores the same session position.
+- [ ] Reloading the exact URL restores and scrolls to the saved position.
+- [ ] A second exact URL remains inactive until independently activated.
+- [ ] After an SPA route change, the old page marker disappears on the next reading interaction.
+- [ ] Chrome's extension service-worker console has no errors during the flow.

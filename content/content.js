@@ -2,7 +2,6 @@
   "use strict";
 
   const DEFAULTS = {
-    enabled: true,
     style: "ruler",
     color: "#FF6B6B",
     size: 30,

@@ -42,6 +42,8 @@ git diff --check
 
 Chrome extension behavior must also be checked by loading the unpacked extension from this repository.
 
+For an already loaded unpacked copy, click **Reload** on the ReadTrail card in `chrome://extensions`, then refresh each test page so its content scripts update. Reinstall only if the extension was removed or the project directory moved.
+
 ## OpenCode worker
 
 The project worker is defined in `.opencode/agents/readtrail-worker.md` and uses the OpenCode Zen free-tier `opencode/big-pickle` model. Invoke it with a task that names its allowed files and acceptance criteria. Do not use `--auto`; the agent profile already defines its boundary.

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "ReadTrail",
   "version": "1.0.0",
-  "description": "A reading aid that adds a cursor trail to help you follow along lines and stay focused.",
-  "permissions": ["storage"],
+  "description": "A private reading guide that remembers your place on pages you choose.",
+  "permissions": ["storage", "activeTab"],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -19,7 +19,7 @@
   "content_scripts": [
     {
       "matches": ["*://*/*"],
-      "js": ["content/renderer.js", "content/content.js"],
+      "js": ["content/renderer.js", "content/position.js", "content/content.js"],
       "css": ["content/content.css"],
       "run_at": "document_idle"
     }

@@ -42,13 +42,13 @@ It explores a simple product question:
 
 - 🖊️ Canvas-based reading trail for following the current line
 - 🎨 Configurable line highlighting and visual preferences
-- ⚙️ Popup controls and a dedicated settings page
+- ⚙️ Exact-page activation from the popup and a dedicated appearance settings page
 
 </td>
 <td width="50%" valign="top">
 
 - 💾 Local settings persistence
-- 📄 Page-specific reading lifecycle
+- 📄 Session-only reading-position restore for the exact pages you activate
 - 🧩 Manifest V3 Chrome extension architecture
 - 🧪 Automated behavioral tests with Vitest
 
@@ -94,6 +94,8 @@ The extension uses standard HTML, CSS, and JavaScript with Chrome Manifest V3 AP
 4. Select **Load unpacked** and choose the project directory
 5. Open a text-heavy page and activate ReadTrail from the extension popup
 
+After changing the source, you do not need to reinstall the extension: click **Reload** on the ReadTrail card in `chrome://extensions`, then refresh any page you want to test.
+
 **Run the automated checks:**
 
 ```sh
@@ -105,7 +107,7 @@ npm test
 
 ## 🗺️ Roadmap
 
-- [ ] Reliable restoration to the exact reading position
+- [x] Session-only restoration to the exact reading position on unchanged pages
 - [ ] Intentional bookmarks and unfinished-reading navigation
 - [ ] Clear save behavior when closing or leaving a page
 - [ ] A private reading space for revisiting saved material

@@ -1,5 +1,4 @@
 const DEFAULTS = {
-  enabled: true,
   style: "ruler",
   color: "#FF6B6B",
   size: 30,
@@ -124,6 +123,11 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get("settings", (result) => {
     if (!result.settings) {
       chrome.storage.local.set({ settings: { ...DEFAULTS } });
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(result.settings, "enabled")) {
+      const { enabled: _legacyEnabled, ...appearance } = result.settings;
+      chrome.storage.local.set({ settings: { ...DEFAULTS, ...appearance } });
     }
   });
 });
@@ -133,15 +137,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "getSettings") {
     chrome.storage.local.get("settings", (result) => {
-      sendResponse({ ...DEFAULTS, ...(result.settings || {}) });
-    });
-    return true;
-  }
-  if (msg.type === "toggleEnabled" && typeof msg.enabled === "boolean") {
-    chrome.storage.local.get("settings", (result) => {
-      const settings = { ...DEFAULTS, ...(result.settings || {}), enabled: msg.enabled };
-      chrome.storage.local.set({ settings });
-      sendResponse(settings);
+      const { enabled: _legacyEnabled, ...appearance } = result.settings || {};
+      sendResponse({ ...DEFAULTS, ...appearance });
     });
     return true;
   }
