@@ -4,7 +4,7 @@
 
 - The user is the product owner and owns product vision.
 - `docs/PRODUCT-VISION.md` is the product source of truth.
-- The active sprint document is the delivery source of truth.
+- `docs/sprints/SPRINT-002.md` is the active delivery source of truth. Sprint 001's revised Chrome verification is its first gate.
 - Do not introduce features, product behavior, analytics, external services, or permanent data collection that are not in an approved sprint.
 - Treat unresolved items in the product vision as questions, not permission to decide them silently.
 
