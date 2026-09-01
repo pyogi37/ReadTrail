@@ -71,6 +71,25 @@ describe("ReadTrail position anchor module", () => {
     expect(record.viewportOffset).toBe(60);
   });
 
+  it("snaps the saved marker to the visual center of the text line", () => {
+    const first = document.querySelector("#first");
+    const text = first.firstChild;
+    setCaretPosition(() => ({ offsetNode: text, offset: 5 }));
+    const originalCreateRange = document.createRange.bind(document);
+    vi.spyOn(document, "createRange").mockImplementation(() => {
+      const range = originalCreateRange();
+      Object.defineProperty(range, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ top: 32, height: 20 })
+      });
+      return range;
+    });
+
+    const record = position.capture(120, 80);
+
+    expect(record.viewportOffset).toBe(42);
+  });
+
   it("fails safely to null when caret APIs, nodes, or layout are unavailable", () => {
     setCaretPosition(undefined);
     setCaretRange(undefined);
@@ -84,6 +103,17 @@ describe("ReadTrail position anchor module", () => {
     const detached = document.createElement("div");
     setCaretPosition(() => ({ offsetNode: detached, offset: 0 }));
     setCaretRange(undefined);
+    expect(position.capture(10, 10)).toBeNull();
+  });
+
+  it("rejects element and whitespace carets as non-readable positions", () => {
+    const first = document.querySelector("#first");
+    setCaretPosition(() => ({ offsetNode: first, offset: 0 }));
+    expect(position.capture(10, 10)).toBeNull();
+
+    const whitespace = document.createTextNode("   \n  ");
+    first.appendChild(whitespace);
+    setCaretPosition(() => ({ offsetNode: whitespace, offset: 1 }));
     expect(position.capture(10, 10)).toBeNull();
   });
 
@@ -190,14 +220,14 @@ describe("ReadTrail position anchor module", () => {
     range.collapse(true);
     Object.defineProperty(range, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ top: 100 })
+      value: () => ({ top: 100, height: 20 })
     });
     const originalCreateRange = document.createRange.bind(document);
     vi.spyOn(document, "createRange").mockImplementation(() => {
       const r = originalCreateRange();
       Object.defineProperty(r, "getBoundingClientRect", {
         configurable: true,
-        value: () => ({ top: 100 })
+        value: () => ({ top: 100, height: 20 })
       });
       return r;
     });
@@ -213,8 +243,8 @@ describe("ReadTrail position anchor module", () => {
     expect(result).not.toBeNull();
     expect(result.anchorResolved).toBe(true);
     expect(result.range).not.toBeNull();
-    // target = anchor document top (100) - viewportOffset (60) = 40, within range.
-    expect(result.scrollY).toBe(40);
+    // target = anchor line center (110) - viewportOffset (60) = 50, within range.
+    expect(result.scrollY).toBe(50);
     expect(range).not.toBeUndefined();
   });
 });

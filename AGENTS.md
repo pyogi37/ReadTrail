@@ -31,7 +31,7 @@
 - Temporary reading state belongs in `chrome.storage.session` and must be accessed through the service worker.
 - Appearance preferences belong in `chrome.storage.local`.
 - Never store passage text, page content, or browsing history unless a future approved sprint explicitly requires it.
-- Preserve normal behavior for links, buttons, form controls, editable regions, non-primary clicks, and text selection.
+- Dormant pages preserve all normal interaction. On an explicitly activated page, primary clicks are reserved for ReadTrail's reading lock and must not activate underlying links, buttons, or controls; scrolling and text selection remain available.
 - Turning ReadTrail off hides its UI but does not delete the current session anchor.
 
 ## Engineering workflow

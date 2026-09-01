@@ -55,6 +55,7 @@ function initPopup(h, tabs, stateResponse) {
 const toggleEl = () => document.querySelector("#toggleSwitch");
 const statusEl = () => document.querySelector("#statusLabel");
 const errorEl = () => document.querySelector("#error");
+const readingLockNoticeEl = () => document.querySelector("#readingLockNotice");
 
 function clickToggle(checked) {
   const toggle = toggleEl();
@@ -70,6 +71,8 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     expect(statusEl().textContent).toBe("Use on this page");
     expect(toggleEl().checked).toBe(false);
     expect(toggleEl().disabled).toBe(false);
+    expect(readingLockNoticeEl().hidden).toBe(false);
+    expect(readingLockNoticeEl().textContent).toContain("reserves primary clicks");
     expect(h.runtimeMsgs).toEqual([{ type: "getPageState", url: HTTP_TAB.url }]);
     // Never touches settings.enabled or chrome.storage.local.
     expect(globalThis.chrome.storage).toBeUndefined();
@@ -83,6 +86,8 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     expect(statusEl().textContent).toBe("Active on this page");
     expect(toggleEl().checked).toBe(true);
     expect(toggleEl().disabled).toBe(false);
+    expect(readingLockNoticeEl().hidden).toBe(true);
+    expect(document.querySelector("#description").textContent).toContain("Reading lock is on");
   });
 
   it("reports unsupported pages and never reads page state", () => {

@@ -54,6 +54,7 @@ function loadContent({
 
   const sentMsgs = [];
   const addedDoc = [];
+  const docHandlers = {};
   const addedWin = [];
   const removedDoc = [];
   const removedWin = [];
@@ -99,10 +100,15 @@ function loadContent({
 
   document.addEventListener = vi.fn((type, handler, options) => {
     addedDoc.push(type);
+    docHandlers[type] = handler;
     STALE.push({ type, handler, options, add: REAL_DOC_ADD, remove: REAL_DOC_REMOVE });
     REAL_DOC_ADD(type, handler, options);
   });
-  document.removeEventListener = vi.fn((type, handler) => { removedDoc.push(type); REAL_DOC_REMOVE(type, handler); });
+  document.removeEventListener = vi.fn((type, handler, options) => {
+    removedDoc.push(type);
+    if (docHandlers[type] === handler) delete docHandlers[type];
+    REAL_DOC_REMOVE(type, handler, options);
+  });
   window.addEventListener = vi.fn((type, handler, options) => {
     addedWin.push(type);
     STALE.push({ type, handler, options, add: REAL_WIN_ADD, remove: REAL_WIN_REMOVE });
@@ -118,11 +124,24 @@ function loadContent({
     renderer, capture, resolvePosition, validatePosition,
     runtimeMessageHandler, storageChangeHandler,
     sentMsgs, getSaves, deferred,
-    addedDoc, addedWin, removedDoc, removedWin
+    addedDoc, addedWin, removedDoc, removedWin, docHandlers
   };
 }
 
 const flush = () => Promise.resolve();
+
+function trustedPointerEvent(overrides = {}) {
+  return {
+    button: 0,
+    detail: 1,
+    isTrusted: true,
+    clientX: 10,
+    clientY: 50,
+    preventDefault: vi.fn(),
+    stopImmediatePropagation: vi.fn(),
+    ...overrides
+  };
+}
 
 describe("ReadTrail content lifecycle (RT-004A)", () => {
   beforeEach(() => {
@@ -223,7 +242,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
   it("freezes on a deferred single click and saves immediately; another click resumes following", async () => {
     vi.useFakeTimers();
-    const { runtimeMessageHandler, renderer, getSaves } = loadContent();
+    const { runtimeMessageHandler, renderer, getSaves, docHandlers } = loadContent();
     await flush();
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
@@ -234,7 +253,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
     const savesBefore = getSaves().length;
 
-    target.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, clientX: 10, clientY: 50 }));
+    docHandlers.click(trustedPointerEvent());
     expect(getSaves()).toHaveLength(savesBefore); // deferred, not yet frozen
     vi.advanceTimersByTime(400);
 
@@ -248,7 +267,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(renderer.renderRuler).not.toHaveBeenCalledWith(500, expect.anything());
 
     // A second click resumes following.
-    target.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, clientX: 10, clientY: 50 }));
+    docHandlers.click(trustedPointerEvent());
     vi.advanceTimersByTime(400);
     renderer.renderRuler.mockClear();
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 500 }));
@@ -257,7 +276,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
   it("cancels a deferred single click when a double click follows", async () => {
     vi.useFakeTimers();
-    const { runtimeMessageHandler, getSaves } = loadContent();
+    const { runtimeMessageHandler, getSaves, docHandlers } = loadContent();
     await flush();
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
@@ -267,10 +286,10 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
     const savesBefore = getSaves().length;
 
-    target.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, detail: 1, clientX: 10, clientY: 50 }));
+    docHandlers.click(trustedPointerEvent());
     vi.advanceTimersByTime(250);
-    target.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, detail: 2, clientX: 10, clientY: 50 }));
-    target.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0, detail: 2, clientX: 10, clientY: 50 }));
+    docHandlers.click(trustedPointerEvent({ detail: 2 }));
+    docHandlers.dblclick(trustedPointerEvent({ detail: 2 }));
     vi.advanceTimersByTime(400);
 
     // The single-click transition was cancelled, so the page never froze.
@@ -279,14 +298,14 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
   it("does not freeze when the click has no readable text position", async () => {
     vi.useFakeTimers();
-    const { runtimeMessageHandler, getSaves } = loadContent({ captureImpl: () => null });
+    const { runtimeMessageHandler, getSaves, docHandlers } = loadContent({ captureImpl: () => null });
     await flush();
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
     const target = document.createElement("div");
     document.body.appendChild(target);
-    target.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+    docHandlers.click(trustedPointerEvent({ clientX: 5, clientY: 5 }));
     vi.advanceTimersByTime(400);
 
     expect(getSaves()).toHaveLength(0);
@@ -388,9 +407,9 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(renderer.renderRuler).toHaveBeenCalledWith(70, expect.anything());
   });
 
-  it("ignores non-primary clicks, interactive targets, and active text selection", async () => {
+  it("uses reading lock on interactive targets while preserving selection and non-primary gestures", async () => {
     vi.useFakeTimers();
-    const { runtimeMessageHandler, getSaves } = loadContent();
+    const { runtimeMessageHandler, getSaves, docHandlers } = loadContent();
     await flush();
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
@@ -399,21 +418,56 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
     const link = document.createElement("a");
     link.href = "#x";
+    link.textContent = "Linked reading text";
     document.body.appendChild(link);
-    link.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+    const linkEvent = trustedPointerEvent({ target: link, clientX: 5, clientY: 5 });
+    docHandlers.click(linkEvent);
     vi.advanceTimersByTime(400);
-    expect(getSaves()).toHaveLength(before); // interactive target ignored
+    expect(linkEvent.preventDefault).toHaveBeenCalled();
+    expect(linkEvent.stopImmediatePropagation).toHaveBeenCalled();
+    expect(getSaves()).toHaveLength(before + 1); // linked text becomes the frozen checkpoint
+
+    const auxPageClick = vi.fn();
+    link.addEventListener("auxclick", auxPageClick);
+    const auxResult = link.dispatchEvent(new MouseEvent("auxclick", {
+      bubbles: true, cancelable: true, button: 1, clientX: 5, clientY: 5
+    }));
+    expect(auxResult).toBe(true);
+    expect(auxPageClick).toHaveBeenCalled();
 
     const plain = document.createElement("p");
     document.body.appendChild(plain);
-    plain.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 2, clientX: 5, clientY: 5 }));
+    const secondaryEvent = trustedPointerEvent({ button: 2, target: plain, clientX: 5, clientY: 5 });
+    docHandlers.click(secondaryEvent);
     vi.advanceTimersByTime(400);
-    expect(getSaves()).toHaveLength(before); // non-primary click ignored
+    expect(secondaryEvent.preventDefault).not.toHaveBeenCalled();
+    expect(getSaves()).toHaveLength(before + 1); // non-primary click ignored
 
     window.getSelection = vi.fn(() => ({ isCollapsed: false, length: 3, toString: () => "abc" }));
-    plain.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
+    const selectionEvent = trustedPointerEvent({ target: plain, clientX: 5, clientY: 5 });
+    docHandlers.click(selectionEvent);
     vi.advanceTimersByTime(400);
-    expect(getSaves()).toHaveLength(before); // text selection ignored
+    expect(selectionEvent.preventDefault).toHaveBeenCalled();
+    expect(getSaves()).toHaveLength(before + 1); // active selection does not toggle
+  });
+
+  it("does not turn keyboard or programmatic activation into reading checkpoints", async () => {
+    vi.useFakeTimers();
+    const { runtimeMessageHandler, getSaves, docHandlers } = loadContent();
+    await flush();
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    const before = getSaves().length;
+    const keyboardClick = trustedPointerEvent({ detail: 0 });
+    docHandlers.click(keyboardClick);
+    const scriptedClick = trustedPointerEvent({ isTrusted: false, detail: 1 });
+    docHandlers.click(scriptedClick);
+    vi.advanceTimersByTime(400);
+
+    expect(keyboardClick.preventDefault).not.toHaveBeenCalled();
+    expect(scriptedClick.preventDefault).not.toHaveBeenCalled();
+    expect(getSaves()).toHaveLength(before);
   });
 
   it("deactivation removes listeners and visuals and blocks further reading events", async () => {
@@ -436,6 +490,13 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(renderer.ensureCanvas).not.toHaveBeenCalled();
     expect(renderer.renderRuler).not.toHaveBeenCalled();
     expect(getSaves()).toHaveLength(before);
+
+    const link = document.createElement("a");
+    const pageClick = vi.fn();
+    link.addEventListener("click", pageClick);
+    document.body.appendChild(link);
+    link.click();
+    expect(pageClick).toHaveBeenCalled();
   });
 
   it("deactivates and ignores reading events when the exact URL changes", async () => {

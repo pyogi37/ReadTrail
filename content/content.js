@@ -337,17 +337,6 @@
     }
   }
 
-  function isInteractiveTarget(el) {
-    if (!el) return false;
-    const tag = el.tagName ? el.tagName.toUpperCase() : "";
-    if (["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA", "OPTION", "LABEL", "SUMMARY"].includes(tag)) {
-      return true;
-    }
-    if (el.closest && el.closest("a[href], button, input, select, textarea, [contenteditable]")) return true;
-    // An element over an editable/control ancestor counts as interactive.
-    return el.isContentEditable === true;
-  }
-
   function hasTextSelection() {
     try {
       const sel = window.getSelection();
@@ -358,12 +347,16 @@
   }
 
   function isValidReadingClick(e) {
-    if (e.button !== 0) return false; // Non-primary click.
-    if (hasTextSelection()) return false; // Never steal a selection.
-    const target = e.target;
-    if (target && target.nodeType === Node.ELEMENT_NODE && isInteractiveTarget(target)) {
-      return false; // Keep links, buttons, and controls untouched.
-    }
+    // Only a real pointer-originated primary click belongs to reading lock.
+    // Keyboard activation and script-generated clicks remain an open product
+    // question and must not silently create checkpoints.
+    if (e.button !== 0 || e.detail < 1 || e.isTrusted !== true) return false;
+    // Reading lock owns primary clicks before the page can act on them. Text
+    // selection still wins: the click is blocked from the page but does not
+    // change the checkpoint.
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (hasTextSelection()) return false;
     return true;
   }
 
@@ -423,8 +416,11 @@
 
   function onDblClick(e) {
     if (!guardActive()) return;
+    if (e.button !== 0 || e.detail < 2 || e.isTrusted !== true) return;
     // Double click is reserved for a later bookmark sprint; just cancel the
-    // single-click transition so it cannot toggle state twice.
+    // single-click transition so it cannot toggle state twice. Stop page
+    // handlers while leaving the browser's native word selection available.
+    e.stopImmediatePropagation();
     clearClickTimer();
   }
 
@@ -438,8 +434,8 @@
     if (listenersAttached) return;
     listenersAttached = true;
     document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("click", onClick);
-    document.addEventListener("dblclick", onDblClick);
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("dblclick", onDblClick, true);
     window.addEventListener("pagehide", onPageHide);
   }
 
@@ -447,8 +443,8 @@
     if (!listenersAttached) return;
     listenersAttached = false;
     document.removeEventListener("mousemove", onMouseMove);
-    document.removeEventListener("click", onClick);
-    document.removeEventListener("dblclick", onDblClick);
+    document.removeEventListener("click", onClick, true);
+    document.removeEventListener("dblclick", onDblClick, true);
     window.removeEventListener("pagehide", onPageHide);
   }
 

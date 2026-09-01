@@ -65,9 +65,12 @@ Exact reading position is the foundation. Knowledge capture and connection are f
 ### Active reading
 
 - The trail helps the reader track the current line.
-- A single click on readable text freezes or unfreezes the current position.
+- Activating ReadTrail puts the page into an explicit reading lock: primary page clicks pause or resume the reading position instead of activating the underlying page.
+- Before activation, ReadTrail clearly warns that links, buttons, and other clicked controls will remain unavailable until ReadTrail is turned off.
+- A single primary click freezes or unfreezes the current position, including when the text beneath it is part of a link or control.
 - A double click creates a persistent bookmark immediately and leaves the position frozen.
-- The interaction must avoid interfering with normal links, controls, text selection, and other expected page behavior.
+- Scrolling and text selection remain available while reading lock is active.
+- Turning ReadTrail off immediately restores normal page interaction.
 
 ### Reading position
 
@@ -158,7 +161,8 @@ Exact measurements and any analytics approach remain undecided and must respect 
 - Exact reading position is the initial product foundation.
 - ReadTrail is opt-in per page.
 - A page has one automatic current position and may have multiple intentional bookmarks.
-- Single click freezes or unfreezes; double click creates a persistent bookmark.
+- Active ReadTrail is an explicit reading lock: single click freezes or unfreezes instead of activating page controls, and double click creates a persistent bookmark.
+- The activation UI warns readers about reading lock before it is enabled; scrolling and text selection remain available.
 - Turning the trail off hides markers without deleting them.
 - Permanent saving is a separate decision.
 - Save prompts and ongoing save preferences are optional and user-controlled.
@@ -169,7 +173,7 @@ Exact measurements and any analytics approach remain undecided and must respect 
 ## Open Product Questions
 
 - What is the simplest activation gesture that feels native to the browser?
-- How should ReadTrail distinguish a reading click from normal page interaction?
+- How should keyboard-triggered page actions behave while reading lock is active?
 - How precise must position restoration be when a page changes between visits?
 - What should a saved item contain beyond its URL and position?
 - When does an unfinished item become completed?

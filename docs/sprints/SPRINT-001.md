@@ -20,7 +20,8 @@ This sprint implements the already-approved foundation: intentional per-page use
 - Inactive by default for every exact page URL.
 - Dormant, following, and frozen content-script states.
 - One temporary reading-position record per exact page URL.
-- Single-click freeze and unfreeze on readable, non-interactive text.
+- Page-wide reading lock with single-click freeze and unfreeze at readable positions, including text inside interactive elements.
+- A clear popup warning before activation that clicked page controls are unavailable while ReadTrail is active.
 - Hide without deletion when current-page activation is turned off.
 - Restore on reactivation, reload, or revisit during the same browser session.
 - DOM anchor restoration for an unchanged document, with scroll-position fallback.
@@ -66,7 +67,10 @@ The record must not contain page titles, passage text, page content, or a cross-
 - A primary single click on readable text freezes the current line.
 - A primary single click while frozen resumes following.
 - Double-click is reserved for a later bookmark sprint and must not cause two single-click transitions.
-- Links, buttons, inputs, editable content, active text selection, and non-primary clicks are ignored.
+- While active, primary clicks are reserved for ReadTrail and do not activate underlying links, buttons, or controls.
+- Active text selection is preserved and does not toggle the checkpoint; scrolling remains available.
+- Non-primary clicks are not reading-position gestures.
+- Turning ReadTrail off restores normal page clicks immediately.
 - Turning the current page off removes visual markers while retaining its session position.
 
 ## Acceptance criteria
@@ -75,17 +79,18 @@ The record must not contain page titles, passage text, page content, or a cross-
 2. Activating page A does not activate a different exact URL.
 3. Appearance settings remain global while activation and position are page-specific.
 4. Pointer movement on an active page updates the current visual line without unbounded storage writes.
-5. A single click freezes readable text; pointer movement no longer moves the marker; another single click resumes following.
-6. Interactive controls, editable regions, selected text, and non-primary clicks retain normal page behavior.
-7. Turning ReadTrail off removes its visual markers without deleting the session anchor.
-8. Turning it back on restores and scrolls to the same line.
-9. Reloading or revisiting the exact URL within the browser session restores the position.
-10. Restarting the browser clears the temporary reading record.
-11. An unresolved DOM anchor falls back to stored scroll position without breaking the page.
-12. An SPA URL change cannot carry activation into a new route.
-13. Runtime messages and stored records are validated before use.
-14. Existing tests remain green and new behavior has automated coverage.
-15. Manual Chrome verification covers a long static page, two URLs, reload, off/on restoration, and an SPA route change.
+5. A single primary click freezes a readable position; pointer movement no longer moves the marker; another single click resumes following.
+6. While active, primary clicks on links and controls are intercepted by reading lock and can checkpoint readable text without activating the underlying element.
+7. The popup warns about reading lock before activation; selected text, scrolling, and non-primary clicks are not treated as checkpoint gestures.
+8. Turning ReadTrail off removes its visual markers without deleting the session anchor and restores normal page clicks.
+9. Turning it back on restores and scrolls to the same line.
+10. Reloading or revisiting the exact URL within the browser session restores the position.
+11. Restarting the browser clears the temporary reading record.
+12. An unresolved DOM anchor falls back to stored scroll position without breaking the page.
+13. An SPA URL change cannot carry activation into a new route.
+14. Runtime messages and stored records are validated before use.
+15. Existing tests remain green and new behavior has automated coverage.
+16. Manual Chrome verification covers a long static page, two URLs, reload, off/on restoration, reading-lock interception, and an SPA route change.
 
 ## Work breakdown
 
@@ -133,6 +138,7 @@ The record must not contain page titles, passage text, page content, or a cross-
 - Frequent checkpoints can create unnecessary storage traffic.
 - Multiple tabs on the same exact URL use last-write-wins session state in this sprint.
 - Incognito behavior must be verified before claiming that privacy commitment is complete.
+- Sites that perform actions during `pointerdown` or `mousedown` can act before click interception; blocking those earlier events would also break native text selection and is not part of this sprint.
 
 ## Sprint evidence
 
@@ -148,7 +154,8 @@ The record must not contain page titles, passage text, page content, or a cross-
 - RT-004 complete: dormant/following/frozen lifecycle, exact-URL reload restoration, guarded clicks, throttled checkpoints, save-before-off acknowledgement, and async race coverage; 6 test files and 43 tests pass.
 - RT-005 complete: the popup now controls only the active exact page with save-before-off and rollback handling; options now contain appearance settings only; 6 test files and 60 tests pass.
 - RT-006 automated integration complete: the manifest loads position capture in order, uses `activeTab` plus `storage`, removes the legacy global enable path, and documents unpacked-extension reloads; 7 test files and 63 tests pass.
-- RT-006 manual Chrome verification is pending the one user-only step: reload the unpacked extension from `chrome://extensions`.
+- Reading-lock correction implemented after live feedback: primary pointer clicks now checkpoint linked or controlled text without activating standard page clicks, keyboard/programmatic and non-primary clicks remain outside the gesture, the popup warns before activation, and line anchors use the visual line center; 7 test files and 66 tests pass.
+- RT-006 manual Chrome verification is in progress. The unpacked extension has been reloaded and the page-level flow has been exercised in Chrome; popup off/on restoration and the extension service-worker console still require user-visible Chrome UI.
 
 ## Manual Chrome verification record
 
@@ -156,9 +163,21 @@ Automated browser control cannot access Chrome's internal extension manager. Aft
 
 - [ ] A fresh long-form HTTP(S) page shows **Use on this page** and creates no marker before activation.
 - [ ] Activating the page creates the reading marker and pointer movement follows readable text.
-- [ ] A single click freezes the marker; another single click resumes following; a double-click does not toggle twice.
+- [ ] Before activation, the popup explains reading lock clearly.
+- [ ] A primary click on linked text freezes the marker without following the link; another click resumes following; a double-click does not toggle twice.
+- [ ] The frozen marker aligns with the visual center of the intended text line.
+- [ ] Keyboard activation, programmatic clicks, text selection, and non-primary clicks do not create checkpoints.
 - [ ] Turning the page off hides the marker; turning it on restores the same session position.
 - [ ] Reloading the exact URL restores and scrolls to the saved position.
-- [ ] A second exact URL remains inactive until independently activated.
-- [ ] After an SPA route change, the old page marker disappears on the next reading interaction.
+- [x] A second exact URL remains inactive until independently activated.
+- [x] After an SPA route change, the old page marker disappears on the next reading interaction.
 - [ ] Chrome's extension service-worker console has no errors during the flow.
+
+### Live Chrome evidence — 2026-09-01
+
+- The active arXiv article restored with one trail canvas at scroll position `830.4`; pointer movement visibly moved the ruler across readable text.
+- A primary click froze the ruler while later pointer movement left it fixed. A second primary click resumed following.
+- A native double-click left following mode active; subsequent pointer movement moved the ruler to the new line.
+- After freezing, scrolling from `830.4` to `2230.4`, and reloading, the article returned to `830.4` with one trail canvas.
+- Navigating the active GitHub repository page to its `/issues` SPA route initially retained the old canvas; the next reading interaction removed it, and the new exact URL remained inactive.
+- No page-level console errors were reported on either test page. This does not replace checking the extension service-worker console.

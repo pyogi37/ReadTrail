@@ -66,6 +66,16 @@
     }
   }
 
+  function isReadableCaret(caret) {
+    return Boolean(
+      caret &&
+      caret.node &&
+      caret.node.nodeType === Node.TEXT_NODE &&
+      typeof caret.node.nodeValue === "string" &&
+      caret.node.nodeValue.trim().length > 0
+    );
+  }
+
   function pathToRoot(node, root) {
     if (!node || !root) return null;
     const path = [];
@@ -159,7 +169,10 @@
     try {
       if (range && typeof range.getBoundingClientRect === "function") {
         const rect = range.getBoundingClientRect();
-        if (rect && isFiniteNumber(rect.top)) top = rect.top;
+        if (rect && isFiniteNumber(rect.top)) {
+          const height = isFiniteNumber(rect.height) && rect.height > 0 ? rect.height : 0;
+          top = rect.top + (height / 2);
+        }
       }
     } catch (_) {
       // Keep the fallback coordinate when layout is unavailable.
@@ -173,7 +186,8 @@
         const rect = range.getBoundingClientRect();
         if (rect && isFiniteNumber(rect.top)) {
           const scrollY = isFiniteNumber(window.scrollY) ? window.scrollY : 0;
-          return rect.top + scrollY;
+          const height = isFiniteNumber(rect.height) && rect.height > 0 ? rect.height : 0;
+          return rect.top + (height / 2) + scrollY;
         }
       }
     } catch (_) {
@@ -199,7 +213,7 @@
 
   function capture(x, y) {
     const caret = caretFromPoint(x, y);
-    if (!caret) return null;
+    if (!isReadableCaret(caret)) return null;
     const range = rangeFromCaret(caret);
     if (!range) return null;
     const anchor = serializeRange(range);

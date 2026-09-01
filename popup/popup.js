@@ -1,6 +1,7 @@
 const toggle = document.getElementById("toggleSwitch");
 const statusLabel = document.getElementById("statusLabel");
 const description = document.getElementById("description");
+const readingLockNotice = document.getElementById("readingLockNotice");
 const error = document.getElementById("error");
 const openOptions = document.getElementById("openOptions");
 
@@ -90,6 +91,7 @@ function render() {
   const actionable = state === "inactive" || state === "active";
   toggle.disabled = changing || !actionable;
   toggle.setAttribute("aria-disabled", String(toggle.disabled));
+  readingLockNotice.hidden = state !== "inactive";
 
   switch (state) {
     case "loading":
@@ -106,7 +108,7 @@ function render() {
       break;
     case "active":
       statusLabel.textContent = "Active on this page";
-      description.textContent = "ReadTrail is on. Your reading position is kept for this browser session.";
+      description.textContent = "Reading lock is on. Turn ReadTrail off to restore normal primary clicks.";
       break;
     case "error":
       statusLabel.textContent = "Something went wrong";
