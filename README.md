@@ -1,31 +1,77 @@
-# ReadTrail
+<div align="center">
 
-**A privacy-first Chrome extension that helps people resume long-form reading without losing their place.**
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f172a,100:1e3a8a&height=200&section=header&text=ReadTrail&fontSize=56&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=A%20privacy-first%20reading%20companion%20for%20Chrome&descAlignY=58&descSize=18" width="100%"/>
 
-ReadTrail adds a configurable visual reading guide to text-heavy pages and remembers page-level reading state locally. The project explores a simple product question: how can a browser help people continue reading without turning their attention into another data stream?
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=500&size=20&duration=3000&pause=800&color=60A5FA&center=true&vCenter=true&width=650&lines=Resume+long-form+reading+without+losing+your+place;Local-first+%2B+Manifest+V3+%2B+Canvas+reading+trail;Private+by+default.+Intentional+by+design." alt="Typing SVG" />
 
-> **Status:** Active early-stage build. The core extension, reading guide, local preferences, page lifecycle, and automated tests exist today. The broader reading workspace is still being developed.
+<br/>
 
-## What works today
+![Status](https://img.shields.io/badge/Status-Active%20Early--Stage%20Build-22C55E?style=for-the-badge)
+![Manifest](https://img.shields.io/badge/Manifest-V3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
+![License](https://img.shields.io/badge/Privacy-Local--First-8B5CF6?style=for-the-badge&logo=googlechrome&logoColor=white)
 
-- Canvas-based reading trail for following the current line
-- Configurable line highlighting and visual preferences
-- Popup controls and a dedicated settings page
-- Local settings persistence
-- Page-specific reading lifecycle
-- Manifest V3 Chrome extension architecture
-- Automated behavioral tests with Vitest
+[![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)](.)
+[![Vitest](https://img.shields.io/badge/Tested%20with-Vitest-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)](.)
+[![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)](.)
 
-## Product principles
+</div>
 
-- **Private by default:** reading data should stay on the device unless the user explicitly chooses otherwise.
-- **Intentional activation:** the extension should not collect reading state before it is enabled for a page.
-- **Useful, not distracting:** controls should disappear behind the reading experience.
-- **Honest product boundaries:** planned capabilities are documented separately from features already implemented.
+<br/>
 
-See [Product Vision](docs/PRODUCT-VISION.md) for the product direction, decisions, and open questions.
+## 📖 What is ReadTrail?
 
-## How it is structured
+**ReadTrail adds a configurable visual reading guide to text-heavy pages and remembers page-level reading state locally.**
+
+It explores a simple product question:
+
+> How can a browser help people continue reading without turning their attention into another data stream?
+
+<div align="center">
+
+> ⚡ **Status:** Active early-stage build. The core extension, reading guide, local preferences, page lifecycle, and automated tests exist today. The broader reading workspace is still being developed.
+
+</div>
+
+<br/>
+
+## ✅ What Works Today
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+- 🖊️ Canvas-based reading trail for following the current line
+- 🎨 Configurable line highlighting and visual preferences
+- ⚙️ Popup controls and a dedicated settings page
+
+</td>
+<td width="50%" valign="top">
+
+- 💾 Local settings persistence
+- 📄 Page-specific reading lifecycle
+- 🧩 Manifest V3 Chrome extension architecture
+- 🧪 Automated behavioral tests with Vitest
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+## 🧭 Product Principles
+
+| Principle | What it means |
+|---|---|
+| **Private by default** | Reading data stays on the device unless the user explicitly chooses otherwise |
+| **Intentional activation** | The extension does not collect reading state before it's enabled for a page |
+| **Useful, not distracting** | Controls disappear behind the reading experience |
+| **Honest product boundaries** | Planned capabilities are documented separately from features already implemented |
+
+📄 See **[Product Vision](docs/PRODUCT-VISION.md)** for the product direction, decisions, and open questions.
+
+<br/>
+
+## 🏗️ How It's Structured
 
 ```text
 popup/       Quick controls
@@ -38,35 +84,51 @@ docs/        Product vision and engineering notes
 
 The extension uses standard HTML, CSS, and JavaScript with Chrome Manifest V3 APIs. A canvas overlay renders the reading trail, while extension storage and background logic coordinate preferences and page state.
 
-## Run it locally
+<br/>
 
-1. Clone or download this repository.
-2. Open `chrome://extensions` in Chrome.
-3. Enable **Developer mode**.
-4. Select **Load unpacked** and choose the project directory.
-5. Open a text-heavy page and activate ReadTrail from the extension popup.
+## 🚀 Run It Locally
 
-Run the automated checks:
+1. Clone or download this repository
+2. Open `chrome://extensions` in Chrome
+3. Enable **Developer mode**
+4. Select **Load unpacked** and choose the project directory
+5. Open a text-heavy page and activate ReadTrail from the extension popup
+
+**Run the automated checks:**
 
 ```sh
 npm install
 npm test
 ```
 
-## Roadmap
+<br/>
 
-- Reliable restoration to the exact reading position
-- Intentional bookmarks and unfinished-reading navigation
-- Clear save behavior when closing or leaving a page
-- A private reading space for revisiting saved material
-- Reflection and knowledge connections built on top of reliable reading memory
+## 🗺️ Roadmap
 
-Roadmap items are planned work, not completed claims.
+- [ ] Reliable restoration to the exact reading position
+- [ ] Intentional bookmarks and unfinished-reading navigation
+- [ ] Clear save behavior when closing or leaving a page
+- [ ] A private reading space for revisiting saved material
+- [ ] Reflection and knowledge connections built on top of reliable reading memory
 
-## Why I built this
+> Roadmap items are planned work, not completed claims.
 
-ReadTrail is a product-engineering project focused on browser APIs, local-first state, interaction design, privacy constraints, and turning an ambiguous user problem into an incremental product roadmap. It is being built in public as part of my work across customer-facing AI and full-stack product engineering.
+<br/>
 
-## Development notes
+## 💡 Why I Built This
 
-More detail on the development workflow is available in [DEVELOPMENT.md](DEVELOPMENT.md).
+ReadTrail is a product-engineering project focused on browser APIs, local-first state, interaction design, privacy constraints, and turning an ambiguous user problem into an incremental product roadmap. It's being built in public as part of my work across customer-facing AI and full-stack product engineering.
+
+<br/>
+
+## 📚 Development Notes
+
+More detail on the development workflow is available in **[DEVELOPMENT.md](DEVELOPMENT.md)**.
+
+<br/>
+
+<div align="center">
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1e3a8a,100:0f172a&height=90&section=footer" width="100%"/>
+
+</div>
