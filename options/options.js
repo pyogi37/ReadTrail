@@ -1,5 +1,4 @@
 const DEFAULTS = {
-  enabled: true,
   style: "ruler",
   color: "#FF6B6B",
   size: 30,
@@ -27,7 +26,6 @@ const els = {
   highlightColor: $("highlightColor"),
   highlightOptions: $("highlightOptions"),
   dotsOptions: $("dotsOptions"),
-  enabled: $("enabled"),
   resetBtn: $("resetBtn"),
   saveStatus: $("saveStatus")
 };
@@ -50,7 +48,6 @@ function setRangeValue(input, output, value, suffix) {
 
 function save() {
   const settings = {
-    enabled: els.enabled.checked,
     style: document.querySelector(".style-btn.active").dataset.style,
     color: els.color.value,
     size: parseInt(els.size.value),
@@ -78,7 +75,6 @@ function loadSettings() {
   chrome.storage.local.get("settings", (result) => {
     const s = { ...DEFAULTS, ...(result.settings || {}) };
 
-    els.enabled.checked = s.enabled;
     els.color.value = s.color;
     setRangeValue(els.size, els.sizeValue, s.size, " pixels");
     setRangeValue(els.opacity, els.opacityValue, Math.round(s.opacity * 100), " percent");
@@ -132,8 +128,6 @@ els.fadeSpeed.addEventListener("input", () => {
 els.color.addEventListener("input", save);
 els.highlightLine.addEventListener("change", () => { updateVisibility(); save(); });
 els.highlightColor.addEventListener("input", save);
-els.enabled.addEventListener("change", save);
-
 els.resetBtn.addEventListener("click", () => {
   chrome.storage.local.set({ settings: { ...DEFAULTS } }, () => {
     loadSettings();

@@ -1,3 +1,15 @@
+:root {
+  color-scheme: dark;
+  --surface: #1a1a2e;
+  --text: #ffffff;
+  --muted: #a9a9c0;
+  --accent: #ff6b6b;
+  --track: #44445a;
+  --focus: #8cc8ff;
+  --error-surface: rgba(255, 107, 107, 0.15);
+  --error-text: #ffb3b3;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -6,8 +18,8 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #1a1a2e;
-  color: #e0e0e0;
+  background: var(--surface);
+  color: var(--text);
   width: 260px;
 }
 
@@ -31,19 +43,41 @@ body {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text);
 }
 
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.activation {
   margin-bottom: 14px;
 }
 
-.toggle-label {
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status {
   font-size: 14px;
-  color: #ccc;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.description {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.error {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--error-surface);
+  color: var(--error-text);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .toggle {
@@ -66,7 +100,7 @@ body {
 .slider {
   position: absolute;
   inset: 0;
-  background: #444;
+  background: var(--track);
   border-radius: 24px;
   cursor: pointer;
   transition: background 0.3s;
@@ -79,17 +113,22 @@ body {
   height: 18px;
   left: 3px;
   bottom: 3px;
-  background: #fff;
+  background: var(--text);
   border-radius: 50%;
   transition: transform 0.3s;
 }
 
 .toggle input:checked + .slider {
-  background: #FF6B6B;
+  background: var(--accent);
 }
 
 .toggle input:checked + .slider::before {
   transform: translateX(20px);
+}
+
+.toggle input:disabled + .slider {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .footer {
@@ -100,7 +139,7 @@ body {
   min-height: 32px;
   border: 0;
   background: transparent;
-  color: #FF6B6B;
+  color: var(--accent);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -112,12 +151,12 @@ body {
 }
 
 :focus-visible {
-  outline: 3px solid #8CC8FF;
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
 
 .toggle input:focus-visible + .slider {
-  outline: 3px solid #8CC8FF;
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
 

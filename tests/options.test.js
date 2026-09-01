@@ -7,7 +7,6 @@ const html = fs.readFileSync(path.join(root, "options/options.html"), "utf8");
 const script = fs.readFileSync(path.join(root, "options/options.js"), "utf8");
 
 const storedSettings = {
-  enabled: true,
   style: "ruler",
   color: "#FF6B6B",
   size: 30,
@@ -48,6 +47,13 @@ describe("ReadTrail options", () => {
     document.querySelectorAll("input").forEach((input) => {
       expect(document.querySelector(`label[for="${input.id}"]`)).not.toBeNull();
     });
+  });
+
+  it("keeps page activation out of global appearance settings", () => {
+    renderOptions();
+
+    expect(document.querySelector("#enabled")).toBeNull();
+    expect(document.body.textContent).not.toContain("Enable ReadTrail");
   });
 
   it("exposes the selected style and conditional controls", () => {

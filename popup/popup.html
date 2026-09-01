@@ -19,13 +19,20 @@
         <h1 class="title">ReadTrail</h1>
       </div>
     </header>
-    <div class="toggle-row">
-      <span class="toggle-label" id="statusLabel" aria-live="polite">Enabled</span>
-      <label class="toggle" aria-label="Enable ReadTrail">
-        <input type="checkbox" id="toggleSwitch" checked>
-        <span class="slider" aria-hidden="true"></span>
-      </label>
+
+    <div class="activation" id="activation" aria-live="polite">
+      <div class="status-row">
+        <span class="status" id="statusLabel">Loading…</span>
+        <label class="toggle" id="toggleLabel">
+          <input type="checkbox" id="toggleSwitch" aria-label="Use ReadTrail on this page" disabled>
+          <span class="slider" aria-hidden="true"></span>
+        </label>
+      </div>
+      <p class="description" id="description"></p>
     </div>
+
+    <p class="error" id="error" role="alert" hidden></p>
+
     <footer class="footer">
       <button type="button" id="openOptions" class="settings-button">Open settings</button>
     </footer>

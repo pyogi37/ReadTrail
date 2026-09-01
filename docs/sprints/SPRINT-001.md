@@ -146,4 +146,5 @@ The record must not contain page titles, passage text, page content, or a cross-
 - RT-002 complete: OpenCode implemented the position anchor module; Codex reviewed and hardened it; 6 test files and 23 tests pass.
 - RT-003 complete: Codex added validated, exact-URL page state backed by `chrome.storage.session`; 6 test files and 27 tests pass.
 - RT-004 complete: dormant/following/frozen lifecycle, exact-URL reload restoration, guarded clicks, throttled checkpoints, save-before-off acknowledgement, and async race coverage; 6 test files and 43 tests pass.
-- RT-005 next: replace the global popup/options enable controls with current-page activation.
+- RT-005 complete: the popup now controls only the active exact page with save-before-off and rollback handling; options now contain appearance settings only; 6 test files and 60 tests pass.
+- RT-006 next: manifest integration, documentation, and manual Chrome verification.
