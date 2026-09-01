@@ -1,44 +1,72 @@
 # ReadTrail
 
-ReadTrail is a privacy-first browser extension for people who read long, text-heavy pages and want help following the current line, remembering exactly where they stopped, and returning later without losing context.
+**A privacy-first Chrome extension that helps people resume long-form reading without losing their place.**
 
-The project is currently in an early product and engineering stage. Its first foundation is reliable reading-position memory; bookmarks, unfinished-reading navigation, reflection, and knowledge connections build outward from that base.
+ReadTrail adds a configurable visual reading guide to text-heavy pages and remembers page-level reading state locally. The project explores a simple product question: how can a browser help people continue reading without turning their attention into another data stream?
 
-Read the [product vision](docs/PRODUCT-VISION.md) for the current principles, decisions, and open questions.
+> **Status:** Active early-stage build. The core extension, reading guide, local preferences, page lifecycle, and automated tests exist today. The broader reading workspace is still being developed.
 
-## Current Extension
+## What works today
 
-ReadTrail is a Manifest V3 Chrome extension with:
-
-- A canvas-based reading trail
-- Line highlighting and visual customization
-- A popup for quick controls
-- A full settings page
+- Canvas-based reading trail for following the current line
+- Configurable line highlighting and visual preferences
+- Popup controls and a dedicated settings page
 - Local settings persistence
-- Automated behavioral tests
+- Page-specific reading lifecycle
+- Manifest V3 Chrome extension architecture
+- Automated behavioral tests with Vitest
 
-The current implementation is a starting point. It does not yet represent the complete initial product experience described in the product vision.
+## Product principles
 
-## Local Setup
+- **Private by default:** reading data should stay on the device unless the user explicitly chooses otherwise.
+- **Intentional activation:** the extension should not collect reading state before it is enabled for a page.
+- **Useful, not distracting:** controls should disappear behind the reading experience.
+- **Honest product boundaries:** planned capabilities are documented separately from features already implemented.
+
+See [Product Vision](docs/PRODUCT-VISION.md) for the product direction, decisions, and open questions.
+
+## How it is structured
+
+```text
+popup/       Quick controls
+options/     Extension settings
+content/     On-page reading experience
+background/  Extension lifecycle and page state
+tests/       Behavioral tests
+docs/        Product vision and engineering notes
+```
+
+The extension uses standard HTML, CSS, and JavaScript with Chrome Manifest V3 APIs. A canvas overlay renders the reading trail, while extension storage and background logic coordinate preferences and page state.
+
+## Run it locally
 
 1. Clone or download this repository.
 2. Open `chrome://extensions` in Chrome.
 3. Enable **Developer mode**.
-4. Choose **Load unpacked** and select the project directory.
+4. Select **Load unpacked** and choose the project directory.
+5. Open a text-heavy page and activate ReadTrail from the extension popup.
 
-For automated checks:
+Run the automated checks:
 
 ```sh
 npm install
 npm test
 ```
 
-## Privacy Direction
+## Roadmap
 
-ReadTrail is intended to be opt-in per page, collect no reading state before activation, and keep saved data local by default. Permanent history should always be controlled by the reader.
+- Reliable restoration to the exact reading position
+- Intentional bookmarks and unfinished-reading navigation
+- Clear save behavior when closing or leaving a page
+- A private reading space for revisiting saved material
+- Reflection and knowledge connections built on top of reliable reading memory
 
-The current implementation is still being aligned with these commitments. Do not assume every planned privacy behavior is complete yet.
+Roadmap items are planned work, not completed claims.
 
-## Project Status
+## Why I built this
 
-The product vision is being shaped collaboratively before expanding the feature set. Exact reading-position restoration, intentional bookmarks, close-or-leave saving behavior, and the reading space are planned product areas rather than completed claims.
+ReadTrail is a product-engineering project focused on browser APIs, local-first state, interaction design, privacy constraints, and turning an ambiguous user problem into an incremental product roadmap. It is being built in public as part of my work across customer-facing AI and full-stack product engineering.
+
+## Development notes
+
+More detail on the development workflow is available in [DEVELOPMENT.md](DEVELOPMENT.md).
