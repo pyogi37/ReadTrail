@@ -46,7 +46,9 @@ function loadContent({
   deferSettings = false,
   deferPageState = false,
   deferSaves = false,
+  deferPersists = false,
   saveResponse = { ok: true },
+  persistResponse = { ok: true },
   settings = { enabled: true, style: "ruler", size: 30, opacity: 0.3, color: "#FF6B6B", highlightLine: false }
 } = {}) {
   let runtimeMessageHandler;
@@ -58,7 +60,7 @@ function loadContent({
   const addedWin = [];
   const removedDoc = [];
   const removedWin = [];
-  const deferred = { settings: [], pageState: [], saves: [] };
+  const deferred = { settings: [], pageState: [], saves: [], persists: [] };
 
   const renderer = {
     ensureCanvas: vi.fn(), removeCanvas: vi.fn(), clear: vi.fn(),
@@ -84,6 +86,9 @@ function loadContent({
         } else if (message.type === "savePagePosition") {
           if (deferSaves) deferred.saves.push(callback);
           else callback(saveResponse);
+        } else if (message.type === "persistResumePoint") {
+          if (deferPersists) deferred.persists.push(callback);
+          else callback(persistResponse);
         }
         else callback({ ok: false });
       }),
@@ -562,5 +567,141 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(line.classList.contains("readtrail-highlight")).toBe(false);
     expect(line.style.backgroundColor).toBe("rgb(1, 2, 3)");
     expect(renderer.clear).toHaveBeenCalled();
+  });
+});
+
+describe("saveForLater bridge", () => {
+  beforeEach(() => {
+    resetDom();
+    document.body.innerHTML = "";
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns inactive when the page has not been activated", async () => {
+    const { runtimeMessageHandler } = loadContent();
+    await flush();
+
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+
+    expect(response).toHaveBeenCalledWith({ ok: false, error: "inactive" });
+  });
+
+  it("returns no-checkpoint when active but no position has been captured", async () => {
+    const { runtimeMessageHandler } = loadContent();
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+
+    expect(response).toHaveBeenCalledWith({ ok: false, error: "no-checkpoint" });
+  });
+
+  it("sends persistResumePoint with the current-tab snapshot and returns ok", async () => {
+    const { runtimeMessageHandler, sentMsgs } = loadContent();
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+
+    const persistMsg = sentMsgs.find((m) => m.type === "persistResumePoint");
+    expect(persistMsg).toBeDefined();
+    expect(persistMsg.url).toBe(location.href);
+    expect(persistMsg.title).toBe(document.title);
+    expect(persistMsg.position).toBeDefined();
+    expect(persistMsg.position.anchor).toBeDefined();
+    expect(Number.isFinite(persistMsg.position.viewportOffset)).toBe(true);
+
+    expect(response).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it("snapshot is a deep copy whose mutation does not affect the in-memory checkpoint", async () => {
+    const { runtimeMessageHandler, sentMsgs, capture } = loadContent();
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    const original = makePosition({
+      viewportOffset: 42,
+      scrollY: 99,
+      anchor: { version: 1, path: [0, 1], offset: 5 }
+    });
+    capture.mockReturnValueOnce(original);
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+
+    const persistMsg = sentMsgs.find((m) => m.type === "persistResumePoint");
+    expect(persistMsg.position.viewportOffset).toBe(42);
+    expect(persistMsg.position.scrollY).toBe(99);
+    expect(persistMsg.position.anchor.path).toEqual([0, 1]);
+
+    // Mutate the snapshot; the next save must still see the original values.
+    persistMsg.position.viewportOffset = 999;
+    persistMsg.position.anchor.path.push(99);
+
+    const response2 = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response2);
+    const persistMsg2 = sentMsgs.find(
+      (m) => m.type === "persistResumePoint" && m !== persistMsg
+    );
+    expect(persistMsg2.position.viewportOffset).toBe(42);
+    expect(persistMsg2.position.anchor.path).toEqual([0, 1]);
+  });
+
+  it("returns persistence-rejected when the service worker rejects the save", async () => {
+    const { runtimeMessageHandler } = loadContent({
+      persistResponse: { ok: false, error: "invalid-input" }
+    });
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+
+    expect(response).toHaveBeenCalledWith({
+      ok: false,
+      error: "persistence-rejected",
+      detail: "invalid-input"
+    });
+  });
+
+  it("returns persistence-failure when chrome.runtime.lastError is set", async () => {
+    const { runtimeMessageHandler, deferred } = loadContent({ deferPersists: true });
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+
+    expect(deferred.persists).toHaveLength(1);
+
+    chrome.runtime.lastError = { message: "reconnect" };
+    deferred.persists[0](undefined);
+
+    expect(response).toHaveBeenCalledWith({ ok: false, error: "persistence-failure" });
+    chrome.runtime.lastError = null;
   });
 });

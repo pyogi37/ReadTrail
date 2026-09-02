@@ -509,6 +509,83 @@
     lastPosition = null;
   }
 
+  // --- Save for later bridge ---
+
+  // Deep-clone a position record so the caller cannot mutate the in-memory
+  // checkpoint after receiving the snapshot.
+  function snapshotPosition(position) {
+    if (!position || typeof position !== "object") return null;
+    if (
+      !position.anchor || typeof position.anchor !== "object"
+      || !Array.isArray(position.anchor.path)
+    ) return null;
+    return {
+      anchor: {
+        version: position.anchor.version,
+        path: [...position.anchor.path],
+        offset: position.anchor.offset
+      },
+      viewportOffset: position.viewportOffset,
+      scrollY: position.scrollY,
+      scrollRatio: position.scrollRatio,
+      savedAt: position.savedAt
+    };
+  }
+
+  function handleSaveForLater(sendResponse) {
+    if (!hasChrome()) {
+      if (sendResponse) sendResponse({ ok: false, error: "runtime-unavailable" });
+      return false;
+    }
+
+    if (!isActive()) {
+      if (sendResponse) sendResponse({ ok: false, error: "inactive" });
+      return false;
+    }
+
+    if (!lastPosition) {
+      if (sendResponse) sendResponse({ ok: false, error: "no-checkpoint" });
+      return false;
+    }
+
+    const snapshot = snapshotPosition(lastPosition);
+    if (!snapshot) {
+      if (sendResponse) sendResponse({ ok: false, error: "no-checkpoint" });
+      return false;
+    }
+
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: "persistResumePoint",
+          url: location.href,
+          title: document.title,
+          position: snapshot
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            if (sendResponse) sendResponse({ ok: false, error: "persistence-failure" });
+            return;
+          }
+          if (!response || !response.ok) {
+            if (sendResponse) sendResponse({
+              ok: false,
+              error: "persistence-rejected",
+              detail: response && response.error
+            });
+            return;
+          }
+          if (sendResponse) sendResponse({ ok: true });
+        }
+      );
+    } catch (_) {
+      if (sendResponse) sendResponse({ ok: false, error: "runtime-unavailable" });
+      return false;
+    }
+
+    return true;
+  }
+
   // --- Message and storage listeners ---
 
   function onRuntimeMessage(msg, _sender, sendResponse) {
@@ -538,6 +615,9 @@
         });
       }
       return true;
+    }
+    if (msg.type === "saveForLater") {
+      return handleSaveForLater(sendResponse);
     }
   }
 
