@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReadTrail — Reading Space</title>
+  <link rel="stylesheet" href="reading-space.css">
+</head>
+<body>
+  <main class="space-container">
+    <header class="header">
+      <div class="logo">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="3" stroke="#FF6B6B" stroke-width="2"/>
+          <line x1="7" y1="8" x2="17" y2="8" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round"/>
+          <line x1="7" y1="12" x2="14" y2="12" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+          <line x1="7" y1="16" x2="17" y2="16" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+        </svg>
+        <div>
+          <h1>Reading Space</h1>
+          <p class="subtitle">Saved pages, ready to continue</p>
+        </div>
+      </div>
+    </header>
+
+    <p class="privacy-note" id="privacyNote">
+      Pages appear here only after you choose <strong>Save for later</strong> on that page.
+      The exact page URL and title stay on this device.
+    </p>
+
+    <section class="clear-section" aria-label="Clear all saved pages">
+      <button type="button" id="clearAllButton" class="btn-danger" disabled>Clear all saved pages</button>
+      <div class="clear-confirm" id="clearConfirm" role="alertdialog" aria-modal="false" aria-label="Confirm clear all" hidden>
+        <span class="confirm-text">Remove every saved page from this device?</span>
+        <div class="confirm-actions">
+          <button type="button" id="clearConfirmYes" class="btn-danger-solid">Clear all</button>
+          <button type="button" id="clearConfirmCancel" class="btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="status-message" id="statusMessage" role="status" aria-live="polite" hidden></p>
+    <p class="error-message" id="errorMessage" role="alert" aria-live="polite" hidden></p>
+
+    <section class="content" id="contentRegion" aria-label="Saved pages">
+      <p class="loading" id="loadingState">Loading your saved pages…</p>
+
+      <div class="empty" id="emptyState" hidden>
+        <p class="empty-title">Nothing saved yet</p>
+        <p class="empty-text">
+          Open a page in ReadTrail, pause at a line, and choose <strong>Save for later</strong>
+          in the popup. It will appear here so you can continue reading.
+        </p>
+      </div>
+
+      <p class="load-error" id="loadErrorState" role="alert" hidden>
+        Your saved pages could not be loaded. Close and reopen this page to try again.
+      </p>
+
+      <ul class="list" id="savedList" hidden></ul>
+    </section>
+  </main>
+  <script src="reading-space.js"></script>
+</body>
+</html>

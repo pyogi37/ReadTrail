@@ -8,6 +8,7 @@ const saveSection = document.getElementById("saveSection");
 const saveHint = document.getElementById("saveHint");
 const saveButton = document.getElementById("saveButton");
 const saveStatus = document.getElementById("saveStatus");
+const readingSpaceButton = document.getElementById("readingSpaceButton");
 
 // State is scoped to the exact page currently in the active tab. The popup
 // never touches settings.enabled or chrome.storage.local; activation belongs to
@@ -361,5 +362,13 @@ openOptions.addEventListener("click", () => {
 });
 
 saveButton.addEventListener("click", saveForLater);
+
+readingSpaceButton.addEventListener("click", () => {
+  try {
+    chrome.tabs.create({ url: chrome.runtime.getURL("reading-space/reading-space.html") });
+  } catch (_) {
+    showError("Reading Space could not be opened. Please try again.");
+  }
+});
 
 loadState();

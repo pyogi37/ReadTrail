@@ -28,12 +28,14 @@ function loadPopup() {
         runtimeMsgs.push(msg);
         pending.runtime.push(cb);
       }),
-      openOptionsPage: vi.fn()
+      openOptionsPage: vi.fn(),
+      getURL: vi.fn((path) => `chrome-extension://test/${path}`)
     },
     tabs: {
       query: vi.fn((_query, cb) => {
         pending.query.push(cb);
       }),
+      create: vi.fn(),
       sendMessage: vi.fn((id, msg, cb) => {
         tabMsgs.push(msg);
         pending.tab.push(cb);
@@ -335,8 +337,8 @@ describe("ReadTrail popup save lifecycle (RT-203)", () => {
     initPopup(h, HTTP_TAB, { ok: true, state: makeState(false) });
     expect(saveSectionEl().hidden).toBe(true);
     expect(saveButtonEl().disabled).toBe(true);
-    expect(readingSpaceButtonEl().disabled).toBe(true);
-    expect(readingSpaceButtonEl().textContent).toContain("Coming next");
+    expect(readingSpaceButtonEl().disabled).toBe(false);
+    expect(readingSpaceButtonEl().textContent).toContain("Saved pages");
   });
 
   it("offers Save for later on an active page with no durable record", () => {
@@ -381,5 +383,13 @@ describe("ReadTrail popup save lifecycle (RT-203)", () => {
     expect(errorEl().textContent).toContain("Pause at a line first");
     expect(saveStatusEl().hidden).toBe(true);
     expect(saveButtonEl().textContent).toBe("Save for later");
+  });
+
+  it("opens the packaged Reading Space from the popup", () => {
+    loadPopup();
+    readingSpaceButtonEl().click();
+    expect(globalThis.chrome.tabs.create).toHaveBeenCalledWith({
+      url: "chrome-extension://test/reading-space/reading-space.html"
+    });
   });
 });
