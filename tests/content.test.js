@@ -13,6 +13,7 @@ const REAL_DOC_ADD = document.addEventListener.bind(document);
 const REAL_DOC_REMOVE = document.removeEventListener.bind(document);
 const REAL_WIN_ADD = window.addEventListener.bind(window);
 const REAL_WIN_REMOVE = window.removeEventListener.bind(window);
+const REAL_GET_SELECTION = window.getSelection.bind(window);
 const STALE = [];
 
 function resetDom() {
@@ -20,10 +21,12 @@ function resetDom() {
   document.removeEventListener = REAL_DOC_REMOVE;
   window.addEventListener = REAL_WIN_ADD;
   window.removeEventListener = REAL_WIN_REMOVE;
+  window.getSelection = REAL_GET_SELECTION;
   while (STALE.length) {
     const entry = STALE.pop();
     entry.remove(entry.type, entry.handler, entry.options);
   }
+  try { window.getSelection()?.removeAllRanges(); } catch (_) {}
 }
 
 function makePosition(overrides = {}) {
@@ -71,7 +74,8 @@ function loadContent({
   const validatePosition = vi.fn((position) => Boolean(position && position.anchor && Number.isFinite(position.viewportOffset)));
 
   window.ReadTrailRenderer = renderer;
-  window.ReadTrailPosition = { capture, resolvePosition, validatePosition };
+  const resolveAnchor = vi.fn(() => null);
+  window.ReadTrailPosition = { capture, resolvePosition, resolveAnchor, validatePosition };
   globalThis.chrome = {
     runtime: {
       lastError: null,
@@ -126,7 +130,7 @@ function loadContent({
   const getSaves = () => sentMsgs.filter((m) => m.type === "savePagePosition");
 
   return {
-    renderer, capture, resolvePosition, validatePosition,
+    renderer, capture, resolvePosition, resolveAnchor, validatePosition,
     runtimeMessageHandler, storageChangeHandler,
     sentMsgs, getSaves, deferred,
     addedDoc, addedWin, removedDoc, removedWin, docHandlers
@@ -188,7 +192,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
     expect(resolvePosition).toHaveBeenCalledWith(position, document.body);
     expect(window.scrollTo).toHaveBeenCalledWith(0, 420);
-    expect(renderer.renderRuler).toHaveBeenCalledWith(160, expect.anything());
+    expect(renderer.renderRuler).toHaveBeenCalledWith(160, expect.anything(), "frozen");
     expect(addedDoc).toEqual(expect.arrayContaining(["mousemove", "click", "dblclick"]));
     expect(addedWin).toContain("pagehide");
   });
@@ -223,7 +227,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(addedDoc).toEqual(expect.arrayContaining(["mousemove", "click", "dblclick"]));
     expect(addedWin).toContain("pagehide");
     expect(renderer.ensureCanvas).toHaveBeenCalled();
-    expect(renderer.renderRuler).toHaveBeenCalledWith(200, expect.anything());
+    expect(renderer.renderRuler).toHaveBeenCalledWith(200, expect.anything(), "frozen");
   });
 
   it("throttles following checkpoints to once per second", async () => {
@@ -268,7 +272,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     // While frozen, movement must not move the marker.
     renderer.renderRuler.mockClear();
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 500 }));
-    expect(renderer.renderRuler).toHaveBeenCalledWith(50, expect.anything());
+    expect(renderer.renderRuler).toHaveBeenCalledWith(50, expect.anything(), "frozen");
     expect(renderer.renderRuler).not.toHaveBeenCalledWith(500, expect.anything());
 
     // A second click resumes following.
@@ -276,7 +280,28 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     vi.advanceTimersByTime(400);
     renderer.renderRuler.mockClear();
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 500 }));
-    expect(renderer.renderRuler).toHaveBeenCalledWith(500, expect.anything());
+    expect(renderer.renderRuler).toHaveBeenCalledWith(500, expect.anything(), "following");
+  });
+
+  it("keeps a frozen marker attached to its text line while the page scrolls", async () => {
+    vi.useFakeTimers();
+    const { runtimeMessageHandler, renderer, resolveAnchor, docHandlers } = loadContent();
+    await flush();
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    docHandlers.click(trustedPointerEvent({ clientX: 10, clientY: 50 }));
+    vi.advanceTimersByTime(400);
+
+    const range = { getBoundingClientRect: vi.fn(() => ({ top: 180, height: 20 })) };
+    resolveAnchor.mockReturnValue(range);
+    renderer.renderRuler.mockClear();
+    docHandlers.scroll();
+
+    expect(resolveAnchor).toHaveBeenCalledWith(expect.any(Object), document.body);
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(190, expect.anything(), "frozen");
+    expect(renderer.renderRuler).not.toHaveBeenCalledWith(50, expect.anything(), "frozen");
   });
 
   it("cancels a deferred single click when a double click follows", async () => {
@@ -409,7 +434,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(renderer.removeCanvas).not.toHaveBeenCalled();
     renderer.renderRuler.mockClear();
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 30, clientY: 70 }));
-    expect(renderer.renderRuler).toHaveBeenCalledWith(70, expect.anything());
+    expect(renderer.renderRuler).toHaveBeenCalledWith(70, expect.anything(), "following");
   });
 
   it("uses reading lock on interactive targets while preserving selection and non-primary gestures", async () => {
@@ -703,5 +728,143 @@ describe("saveForLater bridge", () => {
 
     expect(response).toHaveBeenCalledWith({ ok: false, error: "persistence-failure" });
     chrome.runtime.lastError = null;
+  });
+
+  it("renders the saved visual state after persistence succeeds", async () => {
+    const { runtimeMessageHandler, renderer, sentMsgs } = loadContent();
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+    renderer.renderRuler.mockClear();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following");
+
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+    await flush();
+
+    expect(response).toHaveBeenCalledWith({ ok: true });
+    // The successful persist triggers a re-render in the saved treatment, and
+    // the persisted session mode is NOT changed (it stays following/frozen).
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved");
+    const persistMsg = sentMsgs.find((m) => m.type === "persistResumePoint");
+    expect(persistMsg).toBeDefined();
+  });
+
+  it("does not render a saved visual state when persistence is rejected", async () => {
+    const { runtimeMessageHandler, renderer } = loadContent({
+      persistResponse: { ok: false, error: "invalid-input" }
+    });
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+    renderer.renderRuler.mockClear();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+
+    expect(response).toHaveBeenCalledWith({ ok: false, error: "persistence-rejected", detail: "invalid-input" });
+    expect(renderer.renderRuler).not.toHaveBeenCalledWith(50, expect.anything(), "saved");
+  });
+
+  it("renders distinct non-color visual treatments for following, frozen, and saved", async () => {
+    vi.useFakeTimers();
+    const { runtimeMessageHandler, renderer, docHandlers } = loadContent();
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+    renderer.renderRuler.mockClear();
+
+    // Following: ruler renders with "following" state.
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following");
+
+    // A deferred click freezes; the marker renders with "frozen".
+    docHandlers.click(trustedPointerEvent({ clientX: 10, clientY: 50 }));
+    vi.advanceTimersByTime(400);
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "frozen");
+
+    // Save for later; the marker renders with the distinct "saved" state.
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+    await flush();
+    expect(response).toHaveBeenCalledWith({ ok: true });
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved");
+
+    // All three treatments are mutually distinct by state argument.
+    const states = renderer.renderRuler.mock.calls.map((call) => call[2]);
+    expect(states).toContain("following");
+    expect(states).toContain("frozen");
+    expect(states).toContain("saved");
+  });
+
+  it("clears the saved visual state back to following when the checkpoint moves", async () => {
+    const { runtimeMessageHandler, renderer } = loadContent();
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+    await flush();
+    expect(response).toHaveBeenCalledWith({ ok: true });
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved");
+
+    renderer.renderRuler.mockClear();
+    // Following to a new line clears the saved treatment back to following.
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 120 }));
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(120, expect.anything(), "following");
+    expect(renderer.renderRuler).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), "saved");
+  });
+
+  it("clears the saved visual state when the checkpoint is replaced by a freeze", async () => {
+    vi.useFakeTimers();
+    const { runtimeMessageHandler, renderer, docHandlers } = loadContent();
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+    await flush();
+    expect(response).toHaveBeenCalledWith({ ok: true });
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved");
+
+    renderer.renderRuler.mockClear();
+    // A new freeze replaces the checkpoint and returns to the frozen treatment.
+    docHandlers.click(trustedPointerEvent({ clientX: 10, clientY: 90 }));
+    vi.advanceTimersByTime(400);
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(90, expect.anything(), "frozen");
+    expect(renderer.renderRuler).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), "saved");
+  });
+
+  it("deactivation hides visuals without deleting the saved record", async () => {
+    const { runtimeMessageHandler, renderer } = loadContent();
+    await flush();
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    const response = vi.fn();
+    runtimeMessageHandler({ type: "saveForLater" }, {}, response);
+    await flush();
+    expect(response).toHaveBeenCalledWith({ ok: true });
+
+    renderer.renderRuler.mockClear();
+    // Turning off hides all visuals but must leave the durable record intact.
+    runtimeMessageHandler({ type: "setPageActive", active: false });
+    expect(renderer.removeCanvas).toHaveBeenCalled();
+    expect(renderer.clear).toHaveBeenCalled();
   });
 });

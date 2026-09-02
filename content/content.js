@@ -23,6 +23,12 @@
   let mode = "dormant"; // "dormant" | "following" | "frozen"
   let listenersAttached = false;
 
+  // In-memory-only "just explicitly saved" visual state. It is NOT a durable
+  // mode: the persisted session mode stays "following"/"frozen". Any checkpoint
+  // movement or replacement clears it back to the correct following/frozen
+  // rendering until the reader saves again.
+  let savedVisual = false;
+
   let trail = [];
   let lastHighlight = null;
   let lastHighlightStyle = null;
@@ -216,8 +222,9 @@
     const s = settings;
     if (!R || !s || !Number.isFinite(y)) return;
     try {
-      if (s.style === "ruler") R.renderRuler(y, s);
-      else if (s.style === "underline") R.renderUnderline(y, s);
+      const state = savedVisual ? "saved" : mode;
+      if (s.style === "ruler") R.renderRuler(y, s, state);
+      else if (s.style === "underline") R.renderUnderline(y, s, state);
       else if (s.style === "dots") {
         const x = Number.isFinite(window.innerWidth) ? window.innerWidth / 2 : 0;
         R.renderDots([{ x: x, y: y, alpha: 1 }], s);
@@ -231,10 +238,30 @@
     if (!R || !s) return;
     try {
       if (s.highlightLine) highlightLine(lineAtPoint(x, y));
+      const state = savedVisual ? "saved" : mode;
       if (s.style === "dots") addTrailPoint(x, y);
-      else if (s.style === "ruler") R.renderRuler(y, s);
-      else if (s.style === "underline") R.renderUnderline(y, s);
+      else if (s.style === "ruler") R.renderRuler(y, s, state);
+      else if (s.style === "underline") R.renderUnderline(y, s, state);
     } catch (_) { /* fail safely */ }
+  }
+
+  function renderFrozenAnchor() {
+    if (!lastPosition) return;
+    let y = lastPosition.viewportOffset;
+    const P = getPosition();
+    try {
+      const range = P && typeof P.resolveAnchor === "function"
+        ? P.resolveAnchor(lastPosition.anchor, document.body)
+        : null;
+      const rect = range && typeof range.getBoundingClientRect === "function"
+        ? range.getBoundingClientRect()
+        : null;
+      if (rect && Number.isFinite(rect.top)) {
+        const height = Number.isFinite(rect.height) && rect.height > 0 ? rect.height : 0;
+        y = rect.top + (height / 2);
+      }
+    } catch (_) { /* retain the captured viewport offset as a safe fallback */ }
+    renderAtY(y);
   }
 
   function addTrailPoint(x, y) {
@@ -370,6 +397,9 @@
 
   function toggleMode(clickPosition) {
     if (!guardActive()) return;
+    // A deliberate pause/resume is a checkpoint replacement: it clears any
+    // transient "just saved" visual until the reader saves again.
+    savedVisual = false;
     if (mode === "frozen") {
       setMode("following");
       lastPosition = clickPosition;
@@ -392,16 +422,15 @@
     cursor.x = e.clientX;
     cursor.y = e.clientY;
     if (mode === "frozen") {
-      // Frozen keeps its line fixed; movement must not move the marker.
-      if (lastPosition && Number.isFinite(lastPosition.viewportOffset)) {
-        renderAtY(lastPosition.viewportOffset);
-      }
+      // Frozen follows its anchored text line, not a fixed screen coordinate.
+      renderFrozenAnchor();
       return;
     }
-    renderAtPoint(cursor.x, cursor.y);
     const position = captureAt(cursor.x, cursor.y);
     if (position) {
       lastPosition = position;
+      savedVisual = false; // Following to a new line clears the saved visual.
+      renderAtPoint(cursor.x, cursor.y);
       throttleSave(position);
     }
   }
@@ -424,6 +453,11 @@
     clearClickTimer();
   }
 
+  function onScroll() {
+    if (!guardActive() || mode !== "frozen") return;
+    renderFrozenAnchor();
+  }
+
   function onPageHide() {
     flushPendingSave();
   }
@@ -436,6 +470,7 @@
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("click", onClick, true);
     document.addEventListener("dblclick", onDblClick, true);
+    document.addEventListener("scroll", onScroll, true);
     window.addEventListener("pagehide", onPageHide);
   }
 
@@ -445,6 +480,7 @@
     document.removeEventListener("mousemove", onMouseMove);
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("dblclick", onDblClick, true);
+    document.removeEventListener("scroll", onScroll, true);
     window.removeEventListener("pagehide", onPageHide);
   }
 
@@ -502,6 +538,7 @@
     lifecycleRevision += 1;
     pageActive = false;
     mode = "dormant";
+    savedVisual = false;
     clearClickTimer();
     clearSaveTimer();
     removeListeners();
@@ -574,6 +611,13 @@
               detail: response && response.error
             });
             return;
+          }
+          // Persistence succeeded: render the in-memory saved visual state for
+          // this checkpoint. This is not a durable mode change and never writes
+          // to session state.
+          if (pageActive && lastPosition) {
+            savedVisual = true;
+            renderAtY(lastPosition.viewportOffset);
           }
           if (sendResponse) sendResponse({ ok: true });
         }
