@@ -4,6 +4,10 @@ const description = document.getElementById("description");
 const readingLockNotice = document.getElementById("readingLockNotice");
 const error = document.getElementById("error");
 const openOptions = document.getElementById("openOptions");
+const saveSection = document.getElementById("saveSection");
+const saveHint = document.getElementById("saveHint");
+const saveButton = document.getElementById("saveButton");
+const saveStatus = document.getElementById("saveStatus");
 
 // State is scoped to the exact page currently in the active tab. The popup
 // never touches settings.enabled or chrome.storage.local; activation belongs to
@@ -13,6 +17,14 @@ let tabUrl = null;
 let pageState = null; // Last valid page state observed from the service worker.
 let state = "loading"; // "loading" | "unsupported" | "inactive" | "active" | "error"
 let changing = false; // True while an enable/disable transition is in flight.
+
+// Save lifecycle is a local mirror of the durable record for this exact URL.
+// `hasSavedRecord` reflects whether a readtrail.saved.v1 record exists; the
+// popup never compares temporary progress timestamps against it (that is an
+// out-of-scope integration gap) and only uses "was this exact URL saved before".
+let hasSavedRecord = false;
+let justSaved = false; // True right after a successful save so the UI confirms.
+let saving = false; // True while a saveForLater round-trip is in flight.
 
 // Callback-compatible wrappers surface "no receiver / messaging failure" as a
 // null response, keeping it distinct from an explicit {ok:false} reply. Both
@@ -115,6 +127,38 @@ function render() {
       description.textContent = "Close and reopen ReadTrail to try again.";
       break;
   }
+
+  renderSave();
+}
+
+// Refreshes the save action state for the current page. The action is only
+// relevant on an active, supported page; it is disabled while a save or an
+// activation/disable transition is in flight.
+function renderSave() {
+  const activePage = state === "active";
+  saveSection.hidden = !activePage;
+
+  if (activePage) {
+    if (justSaved) {
+      saveButton.textContent = "Saved";
+      saveHint.textContent = "Your place on this page is saved on this device.";
+    } else if (hasSavedRecord) {
+      saveButton.textContent = "Update saved position";
+      saveHint.textContent = "A place is already saved for this page. Update it to your current spot.";
+    } else {
+      saveButton.textContent = "Save for later";
+      saveHint.textContent = "Save exactly where you stopped, then continue later.";
+    }
+    saveStatus.textContent = "Saved on this device.";
+  } else {
+    saveHint.textContent = "";
+    saveStatus.textContent = "";
+  }
+
+  saveButton.disabled = !activePage || saving || changing;
+  saveButton.setAttribute("aria-disabled", String(saveButton.disabled));
+  saveButton.classList.toggle("is-saved", justSaved);
+  saveStatus.hidden = !justSaved;
 }
 
 // --- Initialize from the active tab and its exact page state ---
@@ -129,6 +173,9 @@ function loadState() {
     tabId = tab.id;
     tabUrl = tab.url;
 
+    justSaved = false;
+    hasSavedRecord = false;
+
     sendRuntimeMessage({ type: "getPageState", url: tabUrl }, (res) => {
       if (!res || !res.ok || !isPageState(res.state, Boolean(res.state && res.state.active))) {
         state = "error";
@@ -139,6 +186,15 @@ function loadState() {
       pageState = res.state;
       state = res.state.active ? "active" : "inactive";
       render();
+
+      // Determine whether this exact URL already has a durable resume point so
+      // the action can read "Save for later" vs "Update saved position". If the
+      // read fails, default to "no record" rather than guessing; saving will
+      // still create or update the record safely.
+      sendRuntimeMessage({ type: "getSavedResumePoint", url: tabUrl }, (savedRes) => {
+        hasSavedRecord = !!(savedRes && savedRes.ok && savedRes.record);
+        render();
+      });
     });
   });
 }
@@ -244,6 +300,49 @@ function reactivateAfterFailedDisable(previousState) {
   });
 }
 
+// --- Save for later: ask the content script to snapshot and persist ---
+
+function saveErrorText(res) {
+  if (!res) {
+    return "Could not reach the page to save your position. Please reload and try again.";
+  }
+  if (res.error === "no-checkpoint") {
+    return "Pause at a line first, then save your place.";
+  }
+  if (res.error === "inactive") {
+    return "ReadTrail is no longer active on this page.";
+  }
+  if (res.error === "persistence-failure" || res.error === "persistence-rejected") {
+    return "ReadTrail could not save your position. Please try again.";
+  }
+  return "ReadTrail could not save your position on this page.";
+}
+
+function saveForLater() {
+  if (saving || changing || state !== "active") return;
+  saving = true;
+  justSaved = false;
+  clearError();
+  render();
+
+  // The content script snapshots and persists the position itself; the popup
+  // never constructs or writes a position. Success is {ok:true}; anything else
+  // (missing receiver, runtime lastError, malformed, or explicit rejection)
+  // must never be shown as a successful save.
+  sendTabMessage({ type: "saveForLater" }, (res) => {
+    if (res && res.ok) {
+      hasSavedRecord = true;
+      justSaved = true;
+      saving = false;
+      render();
+      return;
+    }
+    saving = false;
+    render();
+    showError(saveErrorText(res));
+  });
+}
+
 // --- Wiring ---
 
 toggle.addEventListener("change", () => {
@@ -260,5 +359,7 @@ toggle.addEventListener("change", () => {
 openOptions.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
+
+saveButton.addEventListener("click", saveForLater);
 
 loadState();

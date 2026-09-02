@@ -10,6 +10,11 @@
   --error-text: #ffb3b3;
   --notice-surface: rgba(140, 200, 255, 0.12);
   --notice-border: rgba(140, 200, 255, 0.4);
+  --saved-surface: #4e3a1a;
+  --saved-border: #c9a227;
+  --saved-text: #ffe08a;
+  --save-button-bg: #b34444;
+  --save-button-hover: #c95959;
 }
 
 * {
@@ -92,6 +97,110 @@ body {
 .reading-lock-notice strong {
   color: var(--text);
   font-size: 12px;
+}
+
+.save-section {
+  margin-bottom: 14px;
+}
+
+.save-section[hidden] {
+  display: none;
+}
+
+.save-description {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.save-button {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--save-button-bg);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.save-button:hover:not(:disabled) {
+  background: var(--save-button-hover);
+}
+
+.save-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Unmistakable saved confirmation, distinguishable without color alone. */
+.save-button.is-saved {
+  background: var(--saved-surface);
+  border: 1px solid var(--saved-border);
+  color: var(--saved-text);
+  box-shadow: inset 0 0 0 1px var(--saved-border);
+}
+
+.saved-status {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--saved-border);
+  border-radius: 6px;
+  background: var(--saved-surface);
+  color: var(--saved-text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.saved-status[hidden] {
+  display: none;
+}
+
+.local-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.reading-space-section {
+  margin-bottom: 14px;
+}
+
+.reading-space-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--track);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: default;
+}
+
+.reading-space-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.reading-space-label {
+  font-weight: 600;
+}
+
+.reading-space-coming {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .error {

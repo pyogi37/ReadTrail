@@ -35,6 +35,20 @@
       </div>
     </div>
 
+    <section class="save-section" id="saveSection" aria-label="Save reading position" hidden>
+      <p class="save-description" id="saveHint"></p>
+      <button type="button" id="saveButton" class="save-button" disabled>Save for later</button>
+      <p class="saved-status" id="saveStatus" role="status" hidden></p>
+      <p class="local-note" id="localNote">The exact page URL and title are saved on this device.</p>
+    </section>
+
+    <section class="reading-space-section" aria-labelledby="readingSpaceButton">
+      <button type="button" id="readingSpaceButton" class="reading-space-button" disabled>
+        <span class="reading-space-label">Reading Space</span>
+        <span class="reading-space-coming">Coming next</span>
+      </button>
+    </section>
+
     <p class="error" id="error" role="alert" hidden></p>
 
     <footer class="footer">

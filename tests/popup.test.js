@@ -45,17 +45,30 @@ function loadPopup() {
   return { pending, runtimeMsgs, tabMsgs, openOptions: globalThis.chrome.runtime.openOptionsPage };
 }
 
-// Resolves the initial tab query and the getPageState read so the popup settles
-// into its real (inactive/active) state.
-function initPopup(h, tabs, stateResponse) {
+// Resolves the initial tab query, the getPageState read, and the subsequent
+// getSavedResumePoint read so the popup settles into its real state.
+// savedResponse defaults to "this exact URL has no durable record yet".
+// A guard keeps this safe for error paths that never emit getSavedResumePoint.
+function initPopup(h, tabs, stateResponse, savedResponse = { ok: true, record: null }) {
   h.pending.query[0](Array.isArray(tabs) ? tabs : [tabs]);
   h.pending.runtime[0](stateResponse);
+  if (h.pending.runtime[1]) h.pending.runtime[1](savedResponse);
 }
 
 const toggleEl = () => document.querySelector("#toggleSwitch");
 const statusEl = () => document.querySelector("#statusLabel");
 const errorEl = () => document.querySelector("#error");
 const readingLockNoticeEl = () => document.querySelector("#readingLockNotice");
+const saveSectionEl = () => document.querySelector("#saveSection");
+const saveButtonEl = () => document.querySelector("#saveButton");
+const saveStatusEl = () => document.querySelector("#saveStatus");
+const saveHintEl = () => document.querySelector("#saveHint");
+const readingSpaceButtonEl = () => document.querySelector("#readingSpaceButton");
+const localNoteEl = () => document.querySelector("#localNote");
+
+function clickSave() {
+  saveButtonEl().click();
+}
 
 function clickToggle(checked) {
   const toggle = toggleEl();
@@ -73,7 +86,10 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     expect(toggleEl().disabled).toBe(false);
     expect(readingLockNoticeEl().hidden).toBe(false);
     expect(readingLockNoticeEl().textContent).toContain("reserves primary clicks");
-    expect(h.runtimeMsgs).toEqual([{ type: "getPageState", url: HTTP_TAB.url }]);
+    expect(h.runtimeMsgs).toEqual([
+      { type: "getPageState", url: HTTP_TAB.url },
+      { type: "getSavedResumePoint", url: HTTP_TAB.url }
+    ]);
     // Never touches settings.enabled or chrome.storage.local.
     expect(globalThis.chrome.storage).toBeUndefined();
     expect(h.runtimeMsgs.some((m) => m.type === "getSettings" || m.type === "toggleEnabled")).toBe(false);
@@ -124,9 +140,10 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     initPopup(h, HTTP_TAB, { ok: true, state: makeState(false) });
 
     clickToggle(true);
-    expect(h.runtimeMsgs[1]).toEqual({ type: "setPageActive", url: HTTP_TAB.url, active: true });
+    // runtimeMsgs[0] is getPageState, [1] is getSavedResumePoint.
+    expect(h.runtimeMsgs[2]).toEqual({ type: "setPageActive", url: HTTP_TAB.url, active: true });
 
-    h.pending.runtime[1]({ ok: true, state: makeState(true) });
+    h.pending.runtime[2]({ ok: true, state: makeState(true) });
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
       HTTP_TAB.id,
       expect.any(Object),
@@ -146,7 +163,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     clickToggle(true);
     expect(toggleEl().disabled).toBe(true);
 
-    h.pending.runtime[1]({ ok: true, state: makeState(true) });
+    h.pending.runtime[2]({ ok: true, state: makeState(true) });
     expect(toggleEl().disabled).toBe(true);
 
     h.pending.tab[0]({ ok: true });
@@ -158,13 +175,13 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     initPopup(h, HTTP_TAB, { ok: true, state: makeState(false) });
 
     clickToggle(true);
-    h.pending.runtime[1]({ ok: true, state: makeState(true) });
+    h.pending.runtime[2]({ ok: true, state: makeState(true) });
     // Content script is unavailable on delivery.
     h.pending.tab[0](null);
 
     // Service state is rolled back to inactive.
     expect(h.runtimeMsgs.some((m) => m.type === "setPageActive" && m.url === HTTP_TAB.url && m.active === false)).toBe(true);
-    h.pending.runtime[2]({ ok: true, state: makeState(false) });
+    h.pending.runtime[3]({ ok: true, state: makeState(false) });
 
     expect(statusEl().textContent).toBe("Use on this page");
     expect(errorEl().hidden).toBe(false);
@@ -176,11 +193,11 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     initPopup(h, HTTP_TAB, { ok: true, state: makeState(false) });
 
     clickToggle(true);
-    h.pending.runtime[1]({ ok: true, state: makeState(true) });
+    h.pending.runtime[2]({ ok: true, state: makeState(true) });
     h.pending.tab[0]({ ok: false, error: "no-receiver" });
 
     expect(h.runtimeMsgs.some((m) => m.type === "setPageActive" && m.active === false)).toBe(true);
-    h.pending.runtime[2]({ ok: true, state: makeState(false) });
+    h.pending.runtime[3]({ ok: true, state: makeState(false) });
     expect(statusEl().textContent).toBe("Use on this page");
     expect(errorEl().hidden).toBe(false);
   });
@@ -190,9 +207,9 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     initPopup(h, HTTP_TAB, { ok: true, state: makeState(false) });
 
     clickToggle(true);
-    h.pending.runtime[1]({ ok: true, state: makeState(true) });
+    h.pending.runtime[2]({ ok: true, state: makeState(true) });
     h.pending.tab[0](null);
-    h.pending.runtime[2]({ ok: false, error: "session-storage-error" });
+    h.pending.runtime[3]({ ok: false, error: "session-storage-error" });
 
     expect(statusEl().textContent).toBe("Something went wrong");
     expect(toggleEl().disabled).toBe(true);
@@ -213,7 +230,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     expect(h.runtimeMsgs.filter((m) => m.type === "setPageActive")).
       toEqual([{ type: "setPageActive", url: HTTP_TAB.url, active: false }]);
 
-    h.pending.runtime[1]({ ok: true, state: makeState(false) });
+    h.pending.runtime[2]({ ok: true, state: makeState(false) });
     expect(statusEl().textContent).toBe("Use on this page");
     expect(toggleEl().checked).toBe(false);
     expect(toggleEl().disabled).toBe(false);
@@ -229,7 +246,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
 
     expect(h.runtimeMsgs.filter((m) => m.type === "setPageActive")).
       toEqual([{ type: "setPageActive", url: HTTP_TAB.url, active: false }]);
-    h.pending.runtime[1]({ ok: true, state: makeState(false) });
+    h.pending.runtime[2]({ ok: true, state: makeState(false) });
     expect(statusEl().textContent).toBe("Use on this page");
     expect(errorEl().hidden).toBe(true);
   });
@@ -255,7 +272,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
 
     clickToggle(false);
     h.pending.tab[0]({ ok: true });
-    h.pending.runtime[1]({ ok: false, error: "session-storage-error" });
+    h.pending.runtime[2]({ ok: false, error: "session-storage-error" });
 
     // It tries to reactivate the content with the previous state.
     expect(h.tabMsgs[1]).toEqual({ type: "setPageActive", active: true, state: makeState(true) });
@@ -272,7 +289,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
 
     clickToggle(false);
     h.pending.tab[0]({ ok: true });
-    h.pending.runtime[1]({ ok: false, error: "session-storage-error" });
+    h.pending.runtime[2]({ ok: false, error: "session-storage-error" });
     h.pending.tab[1](null);
 
     expect(statusEl().textContent).toBe("Active on this page");
@@ -308,5 +325,61 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     const h = loadPopup();
     document.querySelector("#openOptions").click();
     expect(h.openOptions).toHaveBeenCalled();
+  });
+});
+
+describe("ReadTrail popup save lifecycle (RT-203)", () => {
+  it("keeps save unavailable until the exact page is active", () => {
+    const h = loadPopup();
+    expect(saveSectionEl().hidden).toBe(true);
+    initPopup(h, HTTP_TAB, { ok: true, state: makeState(false) });
+    expect(saveSectionEl().hidden).toBe(true);
+    expect(saveButtonEl().disabled).toBe(true);
+    expect(readingSpaceButtonEl().disabled).toBe(true);
+    expect(readingSpaceButtonEl().textContent).toContain("Coming next");
+  });
+
+  it("offers Save for later on an active page with no durable record", () => {
+    const h = loadPopup();
+    initPopup(h, HTTP_TAB, { ok: true, state: makeState(true) });
+    expect(saveSectionEl().hidden).toBe(false);
+    expect(saveButtonEl().disabled).toBe(false);
+    expect(saveButtonEl().textContent).toBe("Save for later");
+    expect(localNoteEl().textContent).toContain("exact page URL and title");
+  });
+
+  it("offers Update saved position when this exact URL already has a record", () => {
+    const h = loadPopup();
+    initPopup(h, HTTP_TAB, { ok: true, state: makeState(true) }, {
+      ok: true,
+      record: { version: 1, title: "Article", position: {}, savedAt: 10 }
+    });
+    expect(saveButtonEl().textContent).toBe("Update saved position");
+  });
+
+  it("saves through the active tab, guards the in-flight request, and confirms success", () => {
+    const h = loadPopup();
+    initPopup(h, HTTP_TAB, { ok: true, state: makeState(true) });
+    clickSave();
+    clickSave();
+    expect(h.tabMsgs).toEqual([{ type: "saveForLater" }]);
+    expect(saveButtonEl().disabled).toBe(true);
+
+    h.pending.tab[0]({ ok: true });
+    expect(saveButtonEl().textContent).toBe("Saved");
+    expect(saveButtonEl().classList.contains("is-saved")).toBe(true);
+    expect(saveStatusEl().hidden).toBe(false);
+    expect(saveStatusEl().textContent).toContain("Saved on this device");
+  });
+
+  it("shows failures without claiming that the position was saved", () => {
+    const h = loadPopup();
+    initPopup(h, HTTP_TAB, { ok: true, state: makeState(true) });
+    clickSave();
+    h.pending.tab[0]({ ok: false, error: "no-checkpoint" });
+    expect(errorEl().hidden).toBe(false);
+    expect(errorEl().textContent).toContain("Pause at a line first");
+    expect(saveStatusEl().hidden).toBe(true);
+    expect(saveButtonEl().textContent).toBe("Save for later");
   });
 });
