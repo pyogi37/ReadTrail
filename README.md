@@ -58,6 +58,20 @@ It explores a simple product question:
 
 <br/>
 
+## 📸 Screenshots
+
+### Follow your place on long-form pages
+
+![ReadTrail reading guide highlighting the current passage on an arXiv article](docs/images/reading-guide-training.png)
+
+![ReadTrail reading guide moved farther down the same arXiv article](docs/images/reading-guide-results.png)
+
+### Customize the reading guide
+
+![ReadTrail appearance settings with trail style, color, size, opacity, and text highlighting controls](docs/images/appearance-settings.png)
+
+<br/>
+
 ## 🧭 Product Principles
 
 | Principle | What it means |
