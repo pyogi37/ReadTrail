@@ -17,6 +17,15 @@ const DEFAULT_PAGE_STATE = Object.freeze({
   position: null
 });
 
+const SAVED_PREFIX = "readtrail.saved.v1:";
+const SAVED_VERSION = 1;
+const SAVED_TITLE_MAX = 512;
+// Bound durable anchor geometry so malformed records cannot carry enormous
+// integers into persistent storage. Session-state anchors stay unconstrained.
+const SAVED_ANCHOR_MAX_DEPTH = 64;
+const SAVED_ANCHOR_MAX_INDEX = 100000;
+const SAVED_ANCHOR_MAX_OFFSET = 1000000;
+
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -119,6 +128,260 @@ function writePages(pages, state, sendResponse) {
   });
 }
 
+function isValidSavedPosition(position) {
+  return isValidPosition(position)
+    && position.anchor.path.length <= SAVED_ANCHOR_MAX_DEPTH
+    && position.anchor.path.every((index) => index <= SAVED_ANCHOR_MAX_INDEX)
+    && position.anchor.offset <= SAVED_ANCHOR_MAX_OFFSET;
+}
+
+function isValidSavedRecord(record) {
+  return isRecord(record)
+    && record.version === SAVED_VERSION
+    && typeof record.title === "string"
+    && record.title.length > 0
+    && record.title.length <= SAVED_TITLE_MAX
+    && record.title === record.title.trim()
+    && isValidSavedPosition(record.position)
+    && isFiniteNumber(record.savedAt)
+    && record.savedAt >= 0;
+}
+
+function cloneSavedRecord(record) {
+  return {
+    version: record.version,
+    title: record.title,
+    position: clonePosition(record.position),
+    savedAt: record.savedAt
+  };
+}
+
+function savedKey(url) {
+  return SAVED_PREFIX + url;
+}
+
+function urlFromSavedKey(key) {
+  if (typeof key !== "string" || !key.startsWith(SAVED_PREFIX)) return null;
+  const url = key.slice(SAVED_PREFIX.length);
+  return isValidPageUrl(url) ? url : null;
+}
+
+function getLocalStore() {
+  return chrome.storage && chrome.storage.local ? chrome.storage.local : null;
+}
+
+function handlePersistResumePoint(msg, sender, sendResponse) {
+  if (
+    !sender
+    || !sender.tab
+    || sender.tab.incognito === true
+    || !Number.isInteger(sender.tab.id)
+    || sender.tab.id < 0
+  ) {
+    sendResponse({ ok: false, error: "invalid-sender" });
+    return;
+  }
+  const url = msg.url;
+  if (!isValidPageUrl(url) || sender.tab.url !== url || typeof msg.title !== "string") {
+    sendResponse({ ok: false, error: "invalid-input" });
+    return;
+  }
+  const title = msg.title.trim();
+  if (title.length === 0 || title.length > SAVED_TITLE_MAX || !isValidSavedPosition(msg.position)) {
+    sendResponse({ ok: false, error: "invalid-input" });
+    return;
+  }
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ok: false, error: "storage-unavailable" });
+    return;
+  }
+  const record = {
+    version: SAVED_VERSION,
+    title,
+    position: clonePosition(msg.position),
+    savedAt: Date.now()
+  };
+  store.set({ [savedKey(url)]: record }, () => {
+    if (chrome.runtime.lastError) {
+      sendResponse({ ok: false, error: "save-storage-error" });
+      return;
+    }
+    sendResponse({ ok: true });
+  });
+}
+
+function handleGetSavedResumePoint(msg, sendResponse) {
+  if (!isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: "invalid-input" });
+    return;
+  }
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ok: false, error: "storage-unavailable" });
+    return;
+  }
+  const key = savedKey(msg.url);
+  store.get([key], (result) => {
+    if (chrome.runtime.lastError) {
+      sendResponse({ ok: false, error: "get-storage-error" });
+      return;
+    }
+    const record = result && result[key];
+    sendResponse({ ok: true, record: isValidSavedRecord(record) ? cloneSavedRecord(record) : null });
+  });
+}
+
+function handleListSavedResumePoints(sendResponse) {
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ok: false, error: "storage-unavailable" });
+    return;
+  }
+  store.get(null, (result) => {
+    if (chrome.runtime.lastError) {
+      sendResponse({ ok: false, error: "get-storage-error" });
+      return;
+    }
+    const items = [];
+    for (const [key, record] of Object.entries(result || {})) {
+      const url = urlFromSavedKey(key);
+      if (url && isValidSavedRecord(record)) {
+        items.push({ url, ...cloneSavedRecord(record) });
+      }
+    }
+    items.sort((a, b) => b.savedAt - a.savedAt);
+    sendResponse({ ok: true, items });
+  });
+}
+
+function handleRemoveSavedResumePoint(msg, sendResponse) {
+  if (!isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: "invalid-input" });
+    return;
+  }
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ok: false, error: "storage-unavailable" });
+    return;
+  }
+  store.remove([savedKey(msg.url)], () => {
+    if (chrome.runtime.lastError) {
+      sendResponse({ ok: false, error: "remove-storage-error" });
+      return;
+    }
+    sendResponse({ ok: true });
+  });
+}
+
+function handleClearSavedResumePoints(sendResponse) {
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ok: false, error: "storage-unavailable" });
+    return;
+  }
+  store.get(null, (result) => {
+    if (chrome.runtime.lastError) {
+      sendResponse({ ok: false, error: "get-storage-error" });
+      return;
+    }
+    const keys = Object.keys(result || {}).filter((key) => key.startsWith(SAVED_PREFIX));
+    if (keys.length === 0) {
+      sendResponse({ ok: true });
+      return;
+    }
+    store.remove(keys, () => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: "clear-storage-error" });
+        return;
+      }
+      sendResponse({ ok: true });
+    });
+  });
+}
+
+function restoreSeededSession(sessionStore, pages, previous, msgUrl, onDone) {
+  const rollbackPages = { ...pages };
+  if (previous === undefined) {
+    delete rollbackPages[msgUrl];
+  } else {
+    rollbackPages[msgUrl] = previous;
+  }
+  sessionStore.set({ readingPages: rollbackPages }, () => {
+    const failed = Boolean(chrome.runtime.lastError);
+    onDone(failed);
+  });
+}
+
+function handleContinueSavedResumePoint(msg, sendResponse) {
+  if (!isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: "invalid-input" });
+    return;
+  }
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ok: false, error: "storage-unavailable" });
+    return;
+  }
+  const key = savedKey(msg.url);
+  store.get([key], (result) => {
+    if (chrome.runtime.lastError) {
+      sendResponse({ ok: false, error: "get-storage-error" });
+      return;
+    }
+    const record = result && result[key];
+    if (!isValidSavedRecord(record)) {
+      sendResponse({ ok: false, error: "no-saved-record" });
+      return;
+    }
+    const sessionStore = getSessionStore();
+    if (!sessionStore) {
+      sendResponse({ ok: false, error: "session-storage-unavailable" });
+      return;
+    }
+    sessionStore.get("readingPages", (sessionResult) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: "session-read-error" });
+        return;
+      }
+      const pages = isRecord(sessionResult && sessionResult.readingPages) ? sessionResult.readingPages : {};
+      const previous = pages[msg.url];
+      const seededState = {
+        version: PAGE_STATE_VERSION,
+        active: true,
+        mode: "frozen",
+        position: clonePosition(record.position)
+      };
+      sessionStore.set({ readingPages: { ...pages, [msg.url]: seededState } }, () => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ ok: false, error: "session-storage-error" });
+          return;
+        }
+        const tabs = chrome.tabs;
+        if (!tabs || typeof tabs.create !== "function") {
+          restoreSeededSession(sessionStore, pages, previous, msg.url, (rollbackFailed) => {
+            sendResponse(rollbackFailed
+              ? { ok: false, error: "rollback-storage-error" }
+              : { ok: false, error: "tabs-unavailable" });
+          });
+          return;
+        }
+        tabs.create({ url: msg.url }, (tab) => {
+          if (chrome.runtime.lastError || !tab || !Number.isInteger(tab.id) || tab.id < 0) {
+            restoreSeededSession(sessionStore, pages, previous, msg.url, (rollbackFailed) => {
+              sendResponse(rollbackFailed
+                ? { ok: false, error: "rollback-storage-error" }
+                : { ok: false, error: "tab-create-failed" });
+            });
+            return;
+          }
+          sendResponse({ ok: true, tabId: tab.id });
+        });
+      });
+    });
+  });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get("settings", (result) => {
     if (!result.settings) {
@@ -192,6 +455,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       };
       writePages({ ...pages, [msg.url]: state }, state, sendResponse);
     });
+    return true;
+  }
+
+  if (msg.type === "persistResumePoint") {
+    handlePersistResumePoint(msg, sender, sendResponse);
+    return true;
+  }
+
+  if (msg.type === "getSavedResumePoint") {
+    handleGetSavedResumePoint(msg, sendResponse);
+    return true;
+  }
+
+  if (msg.type === "listSavedResumePoints") {
+    handleListSavedResumePoints(sendResponse);
+    return true;
+  }
+
+  if (msg.type === "removeSavedResumePoint") {
+    handleRemoveSavedResumePoint(msg, sendResponse);
+    return true;
+  }
+
+  if (msg.type === "clearSavedResumePoints") {
+    handleClearSavedResumePoints(sendResponse);
+    return true;
+  }
+
+  if (msg.type === "continueSavedResumePoint") {
+    handleContinueSavedResumePoint(msg, sendResponse);
     return true;
   }
   return false;
