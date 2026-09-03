@@ -6,7 +6,7 @@
 
 <br/>
 
-![Status](https://img.shields.io/badge/Status-Active%20Early--Stage%20Build-22C55E?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Working%20MVP-22C55E?style=for-the-badge)
 ![Manifest](https://img.shields.io/badge/Manifest-V3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
 ![License](https://img.shields.io/badge/Privacy-Local--First-8B5CF6?style=for-the-badge&logo=googlechrome&logoColor=white)
 
@@ -20,7 +20,7 @@
 
 ## 📖 What is ReadTrail?
 
-**ReadTrail adds a configurable visual reading guide to text-heavy pages and remembers page-level reading state locally.**
+**ReadTrail is a privacy-first Chrome reading companion that helps you follow the current line, pause on an exact place, and return to pages you intentionally save.**
 
 It explores a simple product question:
 
@@ -28,7 +28,7 @@ It explores a simple product question:
 
 <div align="center">
 
-> ⚡ **Status:** Active early-stage build. The core extension, reading guide, local preferences, page lifecycle, and automated tests exist today. The broader reading workspace is still being developed.
+> ⚡ **Status:** Working MVP. The reading guide, anchored pause points, explicit Save for later flow, persistent resume points, Reading Space, local preferences, and automated tests exist today.
 
 </div>
 
@@ -40,17 +40,20 @@ It explores a simple product question:
 <tr>
 <td width="50%" valign="top">
 
-- 🖊️ Canvas-based reading trail for following the current line
-- 🎨 Configurable line highlighting and visual preferences
-- ⚙️ Exact-page activation from the popup and a dedicated appearance settings page
+- 🖊️ A visual guide that follows the current reading line
+- 📍 A paused marker anchored to the selected text line while you scroll
+- 🎨 Configurable trail styles, colors, size, opacity, and highlighting
+- ⚙️ Explicit activation for the exact page you choose
 
 </td>
 <td width="50%" valign="top">
 
-- 💾 Local settings persistence
-- 📄 Session-only reading-position restore for the exact pages you activate
+- 💾 Explicit **Save for later** with one persistent resume point per exact page URL
+- 📚 A private Reading Space with Continue reading, Remove, and Clear all
+- 📄 Continue reading opens the page, activates reading lock, and restores the saved position
+- 🔒 Local-only settings and saved-page data—no account, analytics, or page-text collection
 - 🧩 Manifest V3 Chrome extension architecture
-- 🧪 Automated behavioral tests with Vitest
+- 🧪 128 automated behavioral tests with Vitest
 
 </td>
 </tr>
@@ -96,6 +99,7 @@ popup/       Quick controls
 options/     Extension settings
 content/     On-page reading experience
 background/  Extension lifecycle and page state
+reading-space/ Saved pages and resume actions
 tests/       Behavioral tests
 docs/        Product vision and engineering notes
 ```
@@ -111,6 +115,9 @@ The extension uses standard HTML, CSS, and JavaScript with Chrome Manifest V3 AP
 3. Enable **Developer mode**
 4. Select **Load unpacked** and choose the project directory
 5. Open a text-heavy page and activate ReadTrail from the extension popup
+6. Move to a line and click once to pause the marker there
+7. Choose **Save for later** in the popup when you want the place to survive a browser restart
+8. Open **Reading Space** from the popup to continue or remove saved pages
 
 After changing the source, you do not need to reinstall the extension: click **Reload** on the ReadTrail card in `chrome://extensions`, then refresh any page you want to test.
 
@@ -125,10 +132,12 @@ npm test
 
 ## 🗺️ Roadmap
 
-- [x] Session-only restoration to the exact reading position on unchanged pages
-- [ ] Intentional bookmarks and unfinished-reading navigation
-- [ ] Clear save behavior when closing or leaving a page
-- [ ] A private reading space for revisiting saved material
+- [x] Session restoration to the exact reading position on unchanged pages
+- [x] Explicit Save for later with one durable resume point per exact URL
+- [x] Private Reading Space for continuing and managing saved pages
+- [x] Anchored paused markers that remain attached to their text while scrolling
+- [ ] More resilient restoration when a page's structure changes significantly
+- [ ] Optional save prompt when closing a tab with unsaved reading progress
 - [ ] Reflection and knowledge connections built on top of reliable reading memory
 
 > Roadmap items are planned work, not completed claims.
