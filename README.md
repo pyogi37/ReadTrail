@@ -70,6 +70,10 @@ It explores a simple product question:
 
 ![ReadTrail appearance settings with trail style, color, size, opacity, and text highlighting controls](docs/images/appearance-settings.png)
 
+### Return to saved reading
+
+![ReadTrail Reading Space showing a saved article with Continue reading and Remove actions](docs/images/reading-space.png)
+
 <br/>
 
 ## 🧭 Product Principles
