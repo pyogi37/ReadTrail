@@ -100,16 +100,20 @@ function writeTabRecord(tabId, record, callback) {
   });
 }
 
-function removeTabRecord(tabId) {
+function removeTabRecord(tabId, callback = () => {}) {
   const store = getSessionStore();
-  if (!store || !S.isValidTabId(tabId)) return;
+  if (!store || !S.isValidTabId(tabId)) {
+    callback();
+    return;
+  }
   try {
     store.remove(tabKey(tabId), () => {
       // A failed cleanup is not recoverable here; the record is inert once the
       // tab is gone because no sender can present that tab id again.
       void chrome.runtime.lastError;
+      callback();
     });
-  } catch (_) { /* fail safely */ }
+  } catch (_) { callback(); }
 }
 
 function pageStateOf(record, url) {
@@ -631,8 +635,8 @@ function writeSavedFromPosition(url, title, position, callback) {
 // Runs on tabs.onRemoved. Reads the tab's last checkpoint before deleting the
 // record and, when that checkpoint is newer than the durable one, applies the
 // reader's closeSave preference. Incognito tabs never leave a trace.
-function handleTabRemoved(tabId) {
-  const finish = () => removeTabRecord(tabId);
+function processTabRemoved(tabId, done) {
+  const finish = () => removeTabRecord(tabId, done);
   readTabRecord(tabId, (record, error) => {
     if (error || !record || !record.active || !record.position || record.incognito) {
       finish();
@@ -685,6 +689,25 @@ function handleTabRemoved(tabId) {
       });
     });
   });
+}
+
+const pendingTabRemovals = [];
+let tabRemovalInProgress = false;
+
+function handleTabRemoved(tabId) {
+  pendingTabRemovals.push(tabId);
+  if (tabRemovalInProgress) return;
+
+  const runNext = () => {
+    const nextTabId = pendingTabRemovals.shift();
+    if (nextTabId === undefined) {
+      tabRemovalInProgress = false;
+      return;
+    }
+    tabRemovalInProgress = true;
+    processTabRemoved(nextTabId, runNext);
+  };
+  runNext();
 }
 
 function handleListRecentlyClosed(sendResponse) {

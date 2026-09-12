@@ -410,6 +410,27 @@ describe("ReadTrail service worker", () => {
       return tabRecord(url, { title: "Long read", position: makePosition({ savedAt: 500 }), ...overrides });
     }
 
+    it("serializes simultaneous tab removals so every recent item is retained", () => {
+      const h = loadWorker({});
+      const urlB = "https://example.com/second-read";
+      h.sessionData[TAB_KEY(1)] = closedTab();
+      h.sessionData[TAB_KEY(2)] = tabRecord(urlB, { title: "Second read", position: makePosition({ savedAt: 600 }) });
+
+      let releaseFirstRead;
+      h.sessionStore.get.mockImplementationOnce((key, callback) => {
+        releaseFirstRead = () => callback({ [key]: h.sessionData[key] });
+      });
+
+      h.emit.tabs.onRemoved(1);
+      h.emit.tabs.onRemoved(2);
+      expect(h.sessionStore.get).toHaveBeenCalledTimes(1);
+
+      releaseFirstRead();
+      expect(h.sessionData[RECENT].items.map((item) => item.url)).toEqual([urlB, url]);
+      expect(h.sessionData[TAB_KEY(1)]).toBeUndefined();
+      expect(h.sessionData[TAB_KEY(2)]).toBeUndefined();
+    });
+
     it("asks by default: records the closed tab, sets the badge, and deletes the tab record", () => {
       const h = loadWorker({});
       h.sessionData[TAB_KEY(1)] = closedTab();
