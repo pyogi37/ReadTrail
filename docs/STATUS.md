@@ -2,7 +2,7 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** Phases 1 to 5 implemented and reviewed. Ten review findings are listed in `docs/HANDOFF-2026-09-13.md`; fix 1 to 5 before submission. Then manual Chrome QA and owner items.
+- **Current phase:** Phases 1 to 5 implemented and reviewed. Handoff findings 1 to 5 are fixed; findings 6 to 10 remain optional 1.0.1 cleanup. Next: review, manual Chrome QA, and owner submission items.
 - **Active sprint doc:** `docs/sprints/SPRINT-007.md`
 - **Last commit:** see `git log -1`
 - **Release plan:** 1.0 = Phases 1 to 5 (done in code). 1.1 = BYO-key AI (Sprint 008, not started).
@@ -14,17 +14,13 @@ Rewritten at the end of every working session. Keep under 40 lines.
 - Phase 2: anchor v2, ratio fallback, restoreQuality, page-controls.
 - Phase 3: side panel, recently closed, closeSave, badge, Chrome 114 minimum.
 - Phase 4: library worker module, context menu, passage capture + highlights, knowledge view (search, connections, export/import), page actions.
-- Phase 5: excluded sites, packaging script, LICENSE, CHANGELOG, PRIVACY + Pages copy, store docs, release checklist, manual QA checklist, Playwright e2e harness (4 scenarios green in headless Chromium).
-- Test counts: 253 Vitest tests in 14 files; 4 Playwright scenarios.
-
-## Findings recorded this session
-
-- Worker never sees `tab.url`; `pageInfo` fallback is the normal path (DECISIONS 14).
-- Extension pages open in a tab carry `sender.tab`; trust rule fixed (DECISIONS 15).
+- Phase 5: excluded sites, packaging script, LICENSE, CHANGELOG, PRIVACY + Pages copy, store docs, release checklist, manual QA checklist, Playwright e2e harness.
+- Review fixes 1–5: serialized Recently closed updates; replacement tabs use save-on-close; durable passage anchors are bounded; current-page tags UI; confirmed bulk clear for passages, notes, and page tags.
+- Test counts: 257 Vitest tests in 14 files; 4 Playwright scenarios. `npm test`, `npm run test:e2e`, `npm run package:check`, and `git diff --check` green on 2026-09-13.
 
 ## In progress
 
-- Nothing in code. Next is review and QA.
+- Nothing. Stopped for owner review after findings 1 to 5.
 
 ## Blocked / needs owner
 
@@ -35,8 +31,7 @@ Rewritten at the end of every working session. Keep under 40 lines.
 
 ## Next task
 
-Start from `docs/HANDOFF-2026-09-13.md` (findings and owner actions).
-
-1. Codex: review `git diff 82cad57..HEAD` against Sprints 003 to 007 acceptance criteria; report defects with file:line.
+1. Owner/lead: review commits `aeba78a` through `8335787`.
 2. Codex or owner: run `docs/qa/MANUAL-QA.md` in Chrome with the zip from `npm run package`; log in `docs/qa/runs/`.
-3. Lead: fix findings, bump nothing (already 1.0.0), tag `v1.0.0` after submission.
+3. Owner: complete the submission actions in `docs/HANDOFF-2026-09-13.md`; tag `v1.0.0` after submission.
+4. Later: address handoff findings 6 to 10 for 1.0.1.
