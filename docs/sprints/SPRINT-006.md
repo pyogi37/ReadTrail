@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned. Starts after Sprint 005.
+Implemented; awaiting review.
 
 ## Goal
 

@@ -54,7 +54,8 @@ It explores a simple product question:
 - 📄 Continue reading opens the page, activates reading lock, and restores the saved position
 - 🔒 Local-only settings and saved-page data—no account, analytics, or page-text collection
 - 🧩 Manifest V3 Chrome extension architecture
-- 🧪 150+ automated behavioral tests with Vitest
+- 🧪 250+ automated tests with Vitest plus Playwright end-to-end scenarios
+- ✂️ Save passages, notes, and tags; search your library; export and import JSON
 
 </td>
 </tr>
@@ -128,7 +129,10 @@ After changing the source, you do not need to reinstall the extension: click **R
 
 ```sh
 npm install
-npm test
+npm test                 # unit and behavioral tests
+npx playwright install chromium
+npm run test:e2e         # end-to-end against the unpacked extension
+npm run package:check    # validates the store package
 ```
 
 <br/>
@@ -142,7 +146,9 @@ npm test
 - [x] Per-tab reading state so two tabs on the same page never interfere
 - [x] More resilient restoration when a page's structure changes (landmark anchors, structural checks, proportional fallback)
 - [x] Optional save offer when closing a tab with unsaved reading progress (side panel, no notifications)
-- [ ] Reflection and knowledge connections built on top of reliable reading memory
+- [x] Passages, notes, tags, local search, and simple connections built on top of reliable reading memory
+- [ ] Chrome Web Store 1.0 submission (release checklist in `docs/RELEASE-CHECKLIST.md`)
+- [ ] 1.1: optional AI actions with your own Anthropic key
 
 > Roadmap items are planned work, not completed claims.
 

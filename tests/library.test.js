@@ -60,6 +60,14 @@ describe("knowledge layer: passages", () => {
     expect(Object.keys(h.localData).filter((k) => k.startsWith("readtrail.passage"))).toHaveLength(1);
   });
 
+  it("takes the URL from the message when the extension page is itself open in a tab", () => {
+    const h = load();
+    const pageInTab = { ...PAGE, tab: { id: 9, url: "chrome-extension://test/sidepanel/sidepanel.html?mode=page", incognito: false } };
+    const res = call(h, { type: "savePassage", url: URL_A, text: "from page mode" }, pageInTab);
+    expect(res.ok).toBe(true);
+    expect(res.passage.url).toBe(URL_A);
+  });
+
   it("updates note and tags, rejects unknown ids, and removes", () => {
     const h = load();
     const { passage } = call(h, { type: "savePassage", url: URL_A, text: "Sentence" });

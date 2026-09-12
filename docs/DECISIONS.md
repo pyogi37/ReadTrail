@@ -20,3 +20,9 @@ Append-only log. Each entry: date, decision, why, consequences. Product-level de
 ## 2026-09-13: Design tooling
 
 13. **Side-panel polish uses the `impeccable` skill; motion stays CSS-only.** Why: impeccable runs in both Claude Code and Codex so both agents apply the same design rules; Framer Motion skills assume React, which ReadTrail does not use. Consequence: owner installs impeccable before Phase 3; every transition respects `prefers-reduced-motion`.
+
+## 2026-09-13: Verified in Chromium (e2e harness)
+
+14. **The worker never sees `tab.url` without the `tabs` permission.** Content-script host access does not expose tab URLs to `chrome.tabs.query` or `chrome.tabs.get`. Consequence: `getTabInfo` always falls back to the content script's `pageInfo` reply for http(s) tabs; this is the normal path, not an edge case. The `tabs` permission is still not added (decision 9).
+15. **An extension page open in a tab carries `sender.tab`.** The panel's "Open in a tab" mode would have been keyed as a content script. Consequence: the trust rule checks the sender's extension origin before checking `sender.tab`, in the worker and in the library handlers (`isExtensionPageSender`).
+16. **Playwright is the automated half of QA.** `npm run test:e2e` loads the unpacked extension in headless Chromium, serves fixtures over http, and drives the worker through a hidden extension page (a service worker cannot message itself). The real side panel surface stays on the manual checklist.

@@ -194,7 +194,21 @@
     confirmYes.type = "button";
     confirmYes.className = "btn-danger-solid";
     confirmYes.textContent = item.removeBusy ? "Removing…" : "Remove";
-    confirmYes.addEventListener("click", () => confirmRemove(item.url));
+    confirmYes.addEventListener("click", () => confirmRemove(item.url, false));
+
+    // When the page also has passages or notes, offer to remove those too.
+    const KV = NS.knowledgeView;
+    const counts = KV && typeof KV.countsFor === "function" ? KV.countsFor(item.url) : { passages: 0, notes: 0 };
+    const extra = counts.passages + counts.notes;
+    let confirmAll = null;
+    if (extra > 0) {
+      confirmAll = document.createElement("button");
+      confirmAll.type = "button";
+      confirmAll.className = "btn-danger-solid btn-remove-all";
+      confirmAll.textContent = `Remove page and ${extra} ${extra === 1 ? "note" : "notes"}`;
+      confirmAll.addEventListener("click", () => confirmRemove(item.url, true));
+      confirmText.textContent = `Remove this saved page? It also has ${extra} saved ${extra === 1 ? "passage or note" : "passages or notes"}.`;
+    }
 
     const cancelRemoveBtn = document.createElement("button");
     cancelRemoveBtn.type = "button";
@@ -203,6 +217,7 @@
     cancelRemoveBtn.addEventListener("click", () => cancelRemove(item.url));
 
     confirmActions.appendChild(confirmYes);
+    if (confirmAll) confirmActions.appendChild(confirmAll);
     confirmActions.appendChild(cancelRemoveBtn);
     confirmRow.appendChild(confirmText);
     confirmRow.appendChild(confirmActions);
@@ -277,7 +292,7 @@
     render();
   }
 
-  function confirmRemove(url) {
+  function confirmRemove(url, includePageData) {
     const item = items.find((i) => i.url === url);
     if (!item || item.removeBusy || item.continueBusy) return;
     item.removeBusy = true;
@@ -289,6 +304,17 @@
 
     sendMessage({ type: "removeSavedResumePoint", url }, (res) => {
       if (res && res.ok) {
+        if (includePageData) {
+          sendMessage({ type: "removePageData", url }, (pageRes) => {
+            const KV = NS.knowledgeView;
+            if (KV && typeof KV.reload === "function") KV.reload();
+            if (!pageRes || !pageRes.ok) {
+              setError("The page was removed, but its passages and notes could not be. Remove them from the library below.");
+            }
+            loadItems(true);
+          });
+          return;
+        }
         loadItems(true);
         return;
       }

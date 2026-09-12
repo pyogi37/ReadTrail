@@ -21,7 +21,7 @@ First Chrome Web Store release.
 - Per-tab reading state: two tabs on the same page never share activation, position, or reading lock.
 - Resilient restoration: landmark-based anchors with structural checks and a proportional fallback when a page changed.
 - Knowledge layer: saved passages, notes, tags, local search, connections, and JSON export/import.
-- Options for appearance and closing-tab behavior.
+- Options for appearance, closing-tab behavior, and excluded sites.
 
 ### Privacy
 

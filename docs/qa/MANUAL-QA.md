@@ -4,6 +4,8 @@ Automated tests run in JSDOM and cannot prove Chrome behavior. Run this checklis
 
 **Setup.** Fresh Chrome profile (114 or newer), Developer mode on, load the packaged zip or the unpacked repo. Open the extension's service-worker console from `chrome://extensions` and keep it visible.
 
+**Automated first.** Run `npm test` and `npm run test:e2e` (needs `npx playwright install chromium` once). The e2e suite covers dormancy, activation, pause, reload restore, per-tab isolation, save, continue into a new tab, recently closed, passages, search, and export/import against a fixture page. This checklist then focuses on the real side panel, real sites, and Chrome restart behavior.
+
 **Test pages.** Use at least four: an arXiv HTML paper, a Wikipedia article, an MDN reference page, and a news site with a cookie banner. Add an SPA documentation site (for example a React docs page) for route-change cases.
 
 Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (screenshot name or console excerpt).

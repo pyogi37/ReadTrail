@@ -323,6 +323,20 @@ describe("ReadTrail service worker", () => {
       expect(sessionData[TAB_KEY(99)].position).toBeNull();
     });
 
+    it("treats an extension page that is open in a tab as an extension page, not a content script", () => {
+      const { messageHandler, sessionData } = loadWorker({}, {}, { tabs: [{ id: 1, url: urlA, title: "A" }] });
+      const pageInTab = { ...senders.page("sidepanel/sidepanel.html?mode=page"), tab: { id: 77, url: "chrome-extension://test/sidepanel/sidepanel.html?mode=page" } };
+      const done = vi.fn();
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, pageInTab, done);
+      expect(done.mock.calls[0][0].ok).toBe(true);
+      expect(sessionData[TAB_KEY(1)]).toBeDefined();
+      expect(sessionData[TAB_KEY(77)]).toBeUndefined();
+
+      const info = vi.fn();
+      messageHandler({ type: "getTabInfo", tabId: 1 }, pageInTab, info);
+      expect(info.mock.calls[0][0].ok).toBe(true);
+    });
+
     it("refuses extension pages without a tabId and unknown senders", () => {
       const { messageHandler, sessionSet } = loadWorker({});
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Active. Launch-blocking.
+Implemented; awaiting review.
 
 ## Goal
 

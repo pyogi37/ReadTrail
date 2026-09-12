@@ -54,17 +54,18 @@ function extensionOrigin() {
 // ignored. An extension page (side panel, popup, options) has no sender.tab and
 // must name the tab it is acting on; it is trusted only when its sender URL is
 // inside this extension. Anything else is refused.
+// An extension page may itself live in a tab (the panel's "Open in a tab"
+// mode) and then carries sender.tab too, so the origin check comes first.
 function resolveTabId(msg, sender) {
+  if (LIBRARY.isExtensionPageSender(sender)) {
+    return S.isValidTabId(msg.tabId)
+      ? { tabId: msg.tabId, fromContent: false }
+      : { error: ERRORS.INVALID_INPUT };
+  }
   if (sender && sender.tab) {
     return S.isValidTabId(sender.tab.id)
       ? { tabId: sender.tab.id, fromContent: true }
       : { error: ERRORS.INVALID_SENDER };
-  }
-  const origin = extensionOrigin();
-  if (sender && typeof sender.url === "string" && origin && sender.url.startsWith(origin)) {
-    return S.isValidTabId(msg.tabId)
-      ? { tabId: msg.tabId, fromContent: false }
-      : { error: ERRORS.INVALID_INPUT };
   }
   return { error: ERRORS.INVALID_SENDER };
 }
@@ -250,7 +251,7 @@ function setPageActiveForTab(msg, sender, tabId, sendResponse) {
     const next = current
       ? { ...S.cloneTabRecord(current), active: msg.active, updatedAt: Date.now() }
       : newTabRecord(msg.url, { active: true });
-    if (sender && sender.tab && typeof sender.tab.incognito === "boolean") {
+    if (LIBRARY.isContentSender(sender) && typeof sender.tab.incognito === "boolean") {
       next.incognito = sender.tab.incognito;
     }
     writeTabRecord(resolved.tabId, next, (writeError) => {
@@ -295,7 +296,7 @@ function handleSavePagePosition(msg, sender, sendResponse) {
     const title = cleanTitle(msg.title);
     if (title !== null) next.title = title;
     if (S.isRestoreQuality(msg.restoreQuality)) next.restoreQuality = msg.restoreQuality;
-    if (sender && sender.tab && typeof sender.tab.incognito === "boolean") {
+    if (LIBRARY.isContentSender(sender) && typeof sender.tab.incognito === "boolean") {
       next.incognito = sender.tab.incognito;
     }
     writeTabRecord(resolved.tabId, next, (writeError) => {

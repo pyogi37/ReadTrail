@@ -40,7 +40,11 @@ A sprint increment is done when:
 
 ```sh
 npm install
-npm test
+npm test                      # Vitest + JSDOM unit and behavioral tests
+npx playwright install chromium   # once, for the e2e harness
+npm run test:e2e              # Playwright against the unpacked extension
+npm run package:check         # release package validation
+npm run package               # writes dist/readtrail-<version>.zip
 git diff --check
 ```
 

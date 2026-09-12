@@ -15,6 +15,24 @@
     return chrome.storage && chrome.storage.local ? chrome.storage.local : null;
   }
 
+  // An extension page is identified by its URL inside this extension. It may
+  // also carry sender.tab when it is open in a tab (?mode=page), so this check
+  // must run before any "is it a content script" check. Chrome sets
+  // sender.url; a content script cannot claim an extension URL.
+  function isExtensionPageSender(sender) {
+    if (!sender || typeof sender.url !== "string") return false;
+    try {
+      const origin = chrome.runtime && typeof chrome.runtime.getURL === "function" ? chrome.runtime.getURL("") : null;
+      return Boolean(origin) && sender.url.startsWith(origin);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isContentSender(sender) {
+    return Boolean(sender && sender.tab) && !isExtensionPageSender(sender);
+  }
+
   function passageKey(id) { return KEYS.PASSAGE_PREFIX + id; }
   function noteKey(id) { return KEYS.NOTE_PREFIX + id; }
   function pageMetaKey(url) { return KEYS.PAGEMETA_PREFIX + url; }
@@ -158,14 +176,15 @@
 
   function handleSavePassage(msg, sender, sendResponse) {
     // A content script's sender URL is authoritative; extension pages name it.
-    const url = sender && sender.tab ? sender.tab.url : msg.url;
+    const fromContent = isContentSender(sender);
+    const url = fromContent ? sender.tab.url : msg.url;
     const text = cleanText(msg.text);
     const tags = S.normalizeTags(msg.tags === undefined ? [] : msg.tags);
     if (!S.isValidPageUrl(url) || !S.isValidText(text, false) || tags === null) {
       reply(sendResponse, ERRORS.INVALID_INPUT);
       return;
     }
-    if (sender && sender.tab && sender.tab.incognito === true) {
+    if (fromContent && sender.tab.incognito === true) {
       reply(sendResponse, ERRORS.INVALID_SENDER);
       return;
     }
@@ -271,14 +290,15 @@
   // --- Notes ---
 
   function handleSaveNote(msg, sender, sendResponse) {
-    const url = sender && sender.tab ? sender.tab.url : msg.url;
+    const fromContent = isContentSender(sender);
+    const url = fromContent ? sender.tab.url : msg.url;
     const text = cleanText(msg.text);
     const tags = S.normalizeTags(msg.tags === undefined ? [] : msg.tags);
     if (!S.isValidPageUrl(url) || !S.isValidText(text, false) || tags === null) {
       reply(sendResponse, ERRORS.INVALID_INPUT);
       return;
     }
-    if (sender && sender.tab && sender.tab.incognito === true) {
+    if (fromContent && sender.tab.incognito === true) {
       reply(sendResponse, ERRORS.INVALID_SENDER);
       return;
     }
@@ -617,6 +637,8 @@
 
   globalThis.ReadTrailLibrary = {
     MENU_ID,
+    isExtensionPageSender,
+    isContentSender,
     registerContextMenu,
     onContextMenuClick,
     readLibrary,

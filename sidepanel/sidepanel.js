@@ -15,6 +15,8 @@
   const pageView = NS.pageView;
   const libraryView = NS.libraryView;
   const recentView = NS.recentView;
+  const knowledgeView = NS.knowledgeView;
+  const LIBRARY_PREFIXES = ["readtrail.passage.v1:", "readtrail.note.v1:", "readtrail.pagemeta.v1:"];
 
   function hasChrome() {
     return typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.sendMessage === "function";
@@ -71,7 +73,8 @@
           tabId: tab.id,
           url: info.supported ? info.url : null,
           title: info.title || "",
-          supported: Boolean(info.supported)
+          supported: Boolean(info.supported),
+          excluded: Boolean(info.excluded)
         });
       });
     });
@@ -84,8 +87,12 @@
       if (tabId !== null && changes[KEYS.TAB_PREFIX + String(tabId)]) pageView.refresh();
       if (changes[KEYS.RECENT] && recentView) recentView.reload();
     } else if (areaName === "local") {
-      const touchedSaved = Object.keys(changes).some((key) => key.startsWith(KEYS.SAVED_PREFIX));
+      const keys = Object.keys(changes);
+      const touchedSaved = keys.some((key) => key.startsWith(KEYS.SAVED_PREFIX));
       if (touchedSaved && libraryView) libraryView.reload(true);
+      const touchedLibrary = touchedSaved || keys.some((key) => LIBRARY_PREFIXES.some((prefix) => key.startsWith(prefix)));
+      if (touchedLibrary && knowledgeView) knowledgeView.scheduleReload();
+      if (changes.settings && pageView && mode === "panel") syncTab();
     }
   }
 
@@ -118,6 +125,7 @@
       pageView.init();
     }
     if (recentView) recentView.init();
+    if (knowledgeView) knowledgeView.init();
     if (libraryView) libraryView.init();
 
     if (openOptions) {

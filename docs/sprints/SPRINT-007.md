@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned. Starts after Sprint 006.
+Active.
 
 ## Goal
 

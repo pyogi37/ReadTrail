@@ -523,3 +523,188 @@ button:focus-visible {
     transition: none !important;
   }
 }
+
+/* --- Page actions and notes --- */
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.btn-exclude {
+  margin-left: auto;
+}
+
+.note-form {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.note-form label,
+.item-editor label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+textarea,
+input[type="text"],
+input[type="search"] {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+textarea:focus-visible,
+input[type="text"]:focus-visible,
+input[type="search"]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* --- Knowledge section --- */
+
+.knowledge-section {
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.usage {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.usage.is-full {
+  color: var(--warn-text);
+}
+
+.search-wrap {
+  margin-bottom: 10px;
+}
+
+.sub-heading {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 12px 0 6px;
+}
+
+.knowledge-item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--rule);
+  display: grid;
+  gap: 6px;
+}
+
+.passage-text {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--saved-border);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.passage-note,
+.note-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tag-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--notice-surface);
+  border: 1px solid var(--notice-border);
+  color: var(--notice-text);
+}
+
+.tag-chip-page {
+  opacity: 0.7;
+}
+
+.btn-edit-tags {
+  font-size: 11px;
+}
+
+.item-editor {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.connections summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.connections-heading {
+  margin: 6px 0 2px;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.connections-list {
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.transfer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.file-label {
+  cursor: pointer;
+  display: inline-block;
+}
+
+.checkbox-inline {
+  font-size: 12px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

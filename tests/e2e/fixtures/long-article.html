@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Long fixture article</title>
+  <style>
+    body { font: 18px/1.7 Georgia, serif; max-width: 680px; margin: 40px auto; padding: 0 20px; }
+    p { margin: 0 0 1.2em; }
+    .banner { background: #ffe; padding: 12px; border: 1px solid #cc9; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <main id="main">
+    <h1 id="title">A long fixture article</h1>
+    <p id="intro">This page exists so the ReadTrail e2e harness has enough text to scroll, pause on, and restore. Every paragraph carries an id so anchors can use landmarks.</p>
+    <a id="link" href="/long-article.html#end">Jump to the end (a link that reading lock should intercept)</a>
+    <div id="body">
+      <!-- paragraphs are generated below -->
+    </div>
+    <p id="end">The end of the fixture article.</p>
+  </main>
+  <script>
+    const body = document.getElementById("body");
+    for (let i = 1; i <= 80; i++) {
+      const p = document.createElement("p");
+      p.id = "p" + i;
+      p.textContent = "Paragraph " + i + ". Reading is a slow negotiation between the page and the reader, and the line you were on is easy to lose when the tab, the window, or the day changes. This sentence is here to give the paragraph some honest length.";
+      body.appendChild(p);
+    }
+  </script>
+</body>
+</html>

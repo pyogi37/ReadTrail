@@ -11,7 +11,7 @@
   let els = null;
   let tab = null; // { tabId, url, title, supported } or null
   let pageState = null;
-  let state = "loading"; // "loading" | "unsupported" | "inactive" | "active" | "error"
+  let state = "loading"; // "loading" | "unsupported" | "excluded" | "inactive" | "active" | "error"
   let changing = false;
   let savedRecord = null;
   let justSaved = false;
@@ -88,6 +88,10 @@
         els.statusLabel.textContent = "Not available on this page";
         els.description.textContent = "ReadTrail works on http and https pages.";
         break;
+      case "excluded":
+        els.statusLabel.textContent = "Off for this site";
+        els.description.textContent = "You excluded this site in Settings. ReadTrail stays dormant here.";
+        break;
       case "inactive":
         els.statusLabel.textContent = "Use on this page";
         els.description.textContent = "ReadTrail will only work on this exact page in this tab and lasts for this browser session.";
@@ -102,6 +106,21 @@
         break;
     }
     renderSave();
+    renderPageActions();
+  }
+
+  function renderPageActions() {
+    const supported = state === "inactive" || state === "active";
+    els.pageActions.hidden = !supported;
+    els.excludeSite.hidden = !supported;
+    if (!supported) {
+      els.noteForm.hidden = true;
+    }
+  }
+
+  function showPageStatus(message) {
+    els.pageStatus.textContent = message || "";
+    els.pageStatus.hidden = !message;
   }
 
   function renderSave() {
@@ -135,6 +154,12 @@
       render();
       return;
     }
+    if (tab.excluded) {
+      state = "excluded";
+      pageState = null;
+      render();
+      return;
+    }
     sendRuntimeMessage({ type: "getPageState", tabId: tab.tabId, url: tab.url }, (res) => {
       if (revision !== loadRevision) return;
       if (!res || !res.ok || !isPageState(res.state, Boolean(res.state && res.state.active))) {
@@ -163,6 +188,12 @@
     const { tabId, url } = tab;
 
     sendRuntimeMessage({ type: "setPageActive", tabId, url, active: true }, (res) => {
+      if (res && res.ok === false && res.error === "site-excluded") {
+        state = "excluded";
+        changing = false;
+        render();
+        return;
+      }
       if (!res || !res.ok || !isPageState(res.state, true)) {
         state = "error";
         changing = false;
@@ -274,6 +305,95 @@
     });
   }
 
+  // --- Passages, notes, and exclusions for the current page ---
+
+  function passageErrorText(res) {
+    if (!res) return "Could not reach the page. Please reload it and try again.";
+    if (res.error === "no-selection") return "Select some text on the page first.";
+    if (res.error === "too-long") return "That selection is too long. Passages are limited to 4,000 characters.";
+    if (res.error === "library-full") return "Your library is full. Remove some passages or notes first.";
+    if (res.error === "runtime-unavailable") return "Could not reach the page. Please reload it and try again.";
+    return "Could not save the selection. Please try again.";
+  }
+
+  function saveSelection() {
+    const KV = NS.knowledgeView;
+    if (!KV || !tab) return;
+    els.savePassageButton.disabled = true;
+    clearError();
+    KV.savePassageFromTab(tab, (res) => {
+      els.savePassageButton.disabled = false;
+      if (res && res.ok) {
+        showPageStatus("Passage saved to your library.");
+        return;
+      }
+      showPageStatus("");
+      showError(passageErrorText(res));
+    });
+  }
+
+  function submitNote(event) {
+    event.preventDefault();
+    const KV = NS.knowledgeView;
+    if (!KV || !tab) return;
+    const text = els.noteInput.value.trim();
+    if (text.length === 0) {
+      showError("Write something first.");
+      return;
+    }
+    els.noteSaveButton.disabled = true;
+    clearError();
+    KV.saveNoteForTab(tab, text, (res) => {
+      els.noteSaveButton.disabled = false;
+      if (res && res.ok) {
+        els.noteInput.value = "";
+        els.noteForm.hidden = true;
+        showPageStatus("Note saved to your library.");
+        return;
+      }
+      showError(res && res.error === "library-full"
+        ? "Your library is full. Remove some passages or notes first."
+        : "Could not save the note. Please try again.");
+    });
+  }
+
+  function excludeSite() {
+    if (!tab || !tab.url) return;
+    let host = null;
+    try {
+      host = shared.normalizeHost ? shared.normalizeHost(new URL(tab.url).hostname) : null;
+    } catch (_) {
+      host = null;
+    }
+    if (!host) return;
+    sendRuntimeMessage({ type: "getSettings" }, (settings) => {
+      const current = settings && Array.isArray(settings.excludedHosts) ? settings.excludedHosts : [];
+      if (current.includes(host)) {
+        tab.excluded = true;
+        loadState();
+        return;
+      }
+      sendRuntimeMessage({ type: "setSettings", settings: { excludedHosts: [...current, host] } }, (res) => {
+        if (!res || !res.ok) {
+          showError("Could not update your excluded sites.");
+          return;
+        }
+        if (state === "active") {
+          // Turn the page off first so the reading lock does not linger.
+          sendTabMessage({ type: "setPageActive", active: false }, () => {
+            sendRuntimeMessage({ type: "setPageActive", tabId: tab.tabId, url: tab.url, active: false }, () => {
+              tab.excluded = true;
+              loadState();
+            });
+          });
+          return;
+        }
+        tab.excluded = true;
+        loadState();
+      });
+    });
+  }
+
   // --- Public API for the shell ---
 
   function init() {
@@ -290,8 +410,28 @@
       saveHint: $("saveHint"),
       saveButton: $("saveButton"),
       saveStatus: $("saveStatus"),
-      restoreNote: $("restoreNote")
+      restoreNote: $("restoreNote"),
+      pageActions: $("pageActions"),
+      savePassageButton: $("savePassageButton"),
+      addNoteButton: $("addNoteButton"),
+      excludeSite: $("excludeSiteButton"),
+      noteForm: $("noteForm"),
+      noteInput: $("noteInput"),
+      noteSaveButton: $("noteSaveButton"),
+      noteCancelButton: $("noteCancelButton"),
+      pageStatus: $("pageStatus")
     };
+    els.savePassageButton.addEventListener("click", saveSelection);
+    els.addNoteButton.addEventListener("click", () => {
+      els.noteForm.hidden = !els.noteForm.hidden;
+      if (!els.noteForm.hidden) els.noteInput.focus();
+    });
+    els.noteCancelButton.addEventListener("click", () => {
+      els.noteForm.hidden = true;
+      els.noteInput.value = "";
+    });
+    els.noteForm.addEventListener("submit", submitNote);
+    els.excludeSite.addEventListener("click", excludeSite);
     els.toggle.addEventListener("change", () => {
       if (changing) return;
       if (state === "inactive" && els.toggle.checked) {
@@ -308,7 +448,8 @@
 
   // Called by the shell whenever the tracked tab or its URL changes.
   function setTab(nextTab) {
-    const sameTab = tab && nextTab && tab.tabId === nextTab.tabId && tab.url === nextTab.url;
+    const sameTab = tab && nextTab && tab.tabId === nextTab.tabId && tab.url === nextTab.url
+      && Boolean(tab.excluded) === Boolean(nextTab.excluded);
     tab = nextTab ? { ...nextTab } : null;
     if (sameTab) {
       if (tab) tab.title = nextTab.title;
@@ -321,7 +462,11 @@
     justSaved = false;
     saving = false;
     changing = false;
-    if (els) clearError();
+    if (els) {
+      clearError();
+      showPageStatus("");
+      els.noteForm.hidden = true;
+    }
     render();
     loadState();
   }

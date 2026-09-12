@@ -6,9 +6,11 @@
   "scripts": {
     "test": "vitest run",
     "package": "node scripts/package.mjs",
-    "package:check": "node scripts/package.mjs --check"
+    "package:check": "node scripts/package.mjs --check",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "jsdom": "^30.0.1",
     "vitest": "^4.1.11"
   },

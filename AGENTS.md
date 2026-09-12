@@ -67,9 +67,10 @@ Model routing and token rules: `docs/AI-WORKFLOW.md`.
 
 ```sh
 npm install
-npm test
+npm test                # unit + behavioral (Vitest, JSDOM)
+npm run test:e2e        # Playwright against the unpacked extension (npx playwright install chromium once)
+npm run package:check   # release package validation
 git diff --check
-npm run package:check   # from Phase 5
 ```
 
 Chrome behavior must also be checked by loading the unpacked extension (`chrome://extensions` → Reload → refresh test pages). The manual checklist lives in `docs/qa/MANUAL-QA.md`.
