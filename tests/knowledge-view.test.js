@@ -209,6 +209,8 @@ const noteListEl = () => document.querySelector("#noteList");
 const exportButtonEl = () => document.querySelector("#exportButton");
 const importInputEl = () => document.querySelector("#importInput");
 const importReplaceEl = () => document.querySelector("#importReplace");
+const pageTagsInputEl = () => document.querySelector("#pageTagsInput");
+const pageTagsFormEl = () => document.querySelector("#pageTagsForm");
 
 function findPassage(id) {
   return [...document.querySelectorAll(".passage-item")].find((li) => li.dataset.id === id);
@@ -299,6 +301,24 @@ describe("knowledge view rendering", () => {
 });
 
 describe("knowledge view editing", () => {
+  it("loads and saves tags for the current page", () => {
+    const h = loadSidePanel();
+    initTab(h, HTTP_TAB);
+    setupLibrary(h, {
+      pagemeta: [{ version: 1, url: HTTP_TAB.url, tags: ["research", "favorite"], updatedAt: 1 }]
+    });
+    expect(pageTagsInputEl().value).toBe("research, favorite");
+
+    pageTagsInputEl().value = "later, reference";
+    pageTagsFormEl().dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+    expect(h.runtimeMsgs).toContainEqual({
+      type: "setPageTags", url: HTTP_TAB.url, tags: ["later", "reference"]
+    });
+
+    h.shiftType("setPageTags")({ ok: true, tags: ["later", "reference"] });
+    expect(h.pendingCount("listLibrary")).toBeGreaterThan(0);
+  });
+
   it("clicking Add tags reveals the editor for a passage; submitting sends updatePassage and closes after reload", () => {
     const h = loadSidePanel();
     setupLibrary(h, { passages: [makePassage({ id: "p1", tags: [], note: "" })] });

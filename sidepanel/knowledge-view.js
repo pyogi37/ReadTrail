@@ -76,6 +76,7 @@
       records = SI ? SI.recordsFromLibrary(library) : [];
       index = SI ? SI.buildIndex(records) : null;
       render();
+      if (NS.pageView && typeof NS.pageView.syncPageTags === "function") NS.pageView.syncPageTags();
       if (callback) callback(true);
     });
   }
@@ -479,6 +480,17 @@
     });
   }
 
+  function setPageTagsForTab(tab, tags, callback) {
+    if (!tab || !tab.url) {
+      callback({ ok: false, error: "inactive" });
+      return;
+    }
+    sendMessage({ type: "setPageTags", url: tab.url, tags }, (res) => {
+      if (res && res.ok) load();
+      callback(res || { ok: false, error: "runtime-unavailable" });
+    });
+  }
+
   // --- Export / import ---
 
   function onExport() {
@@ -558,8 +570,10 @@
     reload: load,
     scheduleReload,
     countsFor,
+    pageTagsFor,
     savePassageFromTab,
     saveNoteForTab,
+    setPageTagsForTab,
     getLibrary: () => library
   };
 })();

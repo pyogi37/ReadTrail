@@ -357,6 +357,30 @@
     });
   }
 
+  function syncPageTags() {
+    const KV = NS.knowledgeView;
+    if (!els || !tab || !tab.url || !KV || typeof KV.pageTagsFor !== "function") return;
+    els.pageTagsInput.value = KV.pageTagsFor(tab.url).join(", ");
+  }
+
+  function submitPageTags(event) {
+    event.preventDefault();
+    const KV = NS.knowledgeView;
+    if (!KV || !tab) return;
+    const tags = els.pageTagsInput.value.split(",").map((value) => value.trim()).filter(Boolean);
+    els.pageTagsSaveButton.disabled = true;
+    KV.setPageTagsForTab(tab, tags, (res) => {
+      els.pageTagsSaveButton.disabled = false;
+      if (res && res.ok) {
+        showPageStatus("Page tags saved.");
+        return;
+      }
+      showError(res && res.error === "invalid-input"
+        ? "Use up to 20 tags of 40 characters each."
+        : "Could not save page tags. Please try again.");
+    });
+  }
+
   function excludeSite() {
     if (!tab || !tab.url) return;
     let host = null;
@@ -419,6 +443,9 @@
       noteInput: $("noteInput"),
       noteSaveButton: $("noteSaveButton"),
       noteCancelButton: $("noteCancelButton"),
+      pageTagsForm: $("pageTagsForm"),
+      pageTagsInput: $("pageTagsInput"),
+      pageTagsSaveButton: $("pageTagsSaveButton"),
       pageStatus: $("pageStatus")
     };
     els.savePassageButton.addEventListener("click", saveSelection);
@@ -431,6 +458,7 @@
       els.noteInput.value = "";
     });
     els.noteForm.addEventListener("submit", submitNote);
+    els.pageTagsForm.addEventListener("submit", submitPageTags);
     els.excludeSite.addEventListener("click", excludeSite);
     els.toggle.addEventListener("change", () => {
       if (changing) return;
@@ -466,6 +494,7 @@
       clearError();
       showPageStatus("");
       els.noteForm.hidden = true;
+      els.pageTagsInput.value = "";
     }
     render();
     loadState();
@@ -482,5 +511,5 @@
     return tab ? tab.tabId : null;
   }
 
-  NS.pageView = { init, setTab, refresh, currentTabId };
+  NS.pageView = { init, setTab, refresh, currentTabId, syncPageTags };
 })();

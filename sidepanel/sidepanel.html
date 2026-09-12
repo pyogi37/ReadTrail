@@ -57,6 +57,13 @@
         <button type="button" id="savePassageButton" class="btn-ghost btn-small">Save selection</button>
         <button type="button" id="addNoteButton" class="btn-ghost btn-small">Add a note</button>
         <button type="button" id="excludeSiteButton" class="link-button btn-exclude">Exclude this site</button>
+        <form class="page-tags-form" id="pageTagsForm">
+          <label for="pageTagsInput">Tags for this page</label>
+          <div class="page-tags-row">
+            <input type="text" id="pageTagsInput" placeholder="research, favorites" autocomplete="off">
+            <button type="submit" id="pageTagsSaveButton" class="btn-ghost btn-small">Save tags</button>
+          </div>
+        </form>
       </div>
       <form class="note-form" id="noteForm" hidden>
         <label for="noteInput">Note for this page</label>
