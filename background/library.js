@@ -190,7 +190,7 @@
     }
     const start = msg.start === undefined || msg.start === null ? null : msg.start;
     const end = msg.end === undefined || msg.end === null ? null : msg.end;
-    if ((start !== null && !S.isValidAnchor(start)) || (end !== null && !S.isValidAnchor(end))) {
+    if ((start !== null && !S.isValidSavedAnchor(start)) || (end !== null && !S.isValidSavedAnchor(end))) {
       reply(sendResponse, ERRORS.INVALID_INPUT);
       return;
     }

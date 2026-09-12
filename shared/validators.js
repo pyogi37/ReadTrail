@@ -108,12 +108,15 @@
       && path.every((index) => index <= LIMITS.SAVED_ANCHOR_MAX_INDEX);
   }
 
+  function isValidSavedAnchor(anchor) {
+    if (!isValidAnchor(anchor)) return false;
+    if (!isBoundedPath(anchor.path) || anchor.offset > LIMITS.SAVED_ANCHOR_MAX_OFFSET) return false;
+    return anchor.version !== 2 || !anchor.landmark || isBoundedPath(anchor.landmark.path);
+  }
+
   function isValidSavedPosition(position) {
     if (!isValidPosition(position)) return false;
-    const anchor = position.anchor;
-    if (!isBoundedPath(anchor.path) || anchor.offset > LIMITS.SAVED_ANCHOR_MAX_OFFSET) return false;
-    if (anchor.version === 2 && anchor.landmark && !isBoundedPath(anchor.landmark.path)) return false;
-    return true;
+    return isValidSavedAnchor(position.anchor);
   }
 
   function isValidTitle(value) {
@@ -334,7 +337,7 @@
   }
 
   function isValidOptionalAnchor(value) {
-    return value === null || isValidAnchor(value);
+    return value === null || isValidSavedAnchor(value);
   }
 
   function isValidPassage(record) {
@@ -439,6 +442,7 @@
     isValidTabId,
     isValidPageUrl,
     isValidAnchor,
+    isValidSavedAnchor,
     isValidPosition,
     clonePosition,
     isValidSavedPosition,

@@ -111,6 +111,12 @@ describe("shared constants and validators", () => {
     expect(S.isValidSavedRecord({ version: 2, title: "A", position: position(), savedAt: 1 })).toBe(false);
   });
 
+  it("bounds anchors stored with passages", () => {
+    expect(S.isValidSavedAnchor({ version: 1, path: [0, 1], offset: 2 })).toBe(true);
+    expect(S.isValidSavedAnchor({ version: 1, path: new Array(65).fill(0), offset: 2 })).toBe(false);
+    expect(S.isValidSavedAnchor({ version: 1, path: [0], offset: 1000001 })).toBe(false);
+  });
+
   it("validates and clones tab records", () => {
     const record = {
       version: 1,

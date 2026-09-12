@@ -53,7 +53,9 @@ describe("knowledge layer: passages", () => {
       { type: "savePassage", url: URL_A, text: "x".repeat(4001) },
       { type: "savePassage", url: URL_A, text: "hi", tags: ["a".repeat(41)] },
       { type: "savePassage", url: URL_A, text: "hi", tags: "ideas" },
-      { type: "savePassage", url: URL_A, text: "hi", start: { version: 9 } }
+      { type: "savePassage", url: URL_A, text: "hi", start: { version: 9 } },
+      { type: "savePassage", url: URL_A, text: "hi", start: anchor(new Array(65).fill(0)) },
+      { type: "savePassage", url: URL_A, text: "hi", end: anchor([0], 1000001) }
     ]) {
       expect(call(h, bad)).toEqual({ ok: false, error: "invalid-input" });
     }
