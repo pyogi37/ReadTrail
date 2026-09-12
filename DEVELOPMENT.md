@@ -5,8 +5,11 @@ ReadTrail uses a small, review-led agent workflow. The goal is not maximum agent
 ## Roles
 
 - **Product owner:** chooses outcomes, resolves product questions, and approves changes to vision.
-- **Codex:** converts approved outcomes into sprint scope, defines interfaces, delegates bounded work, reviews every diff, integrates changes, and verifies the result.
-- **OpenCode:** implements or tests one bounded task at a time using the configured free-tier worker. It does not own product or architecture decisions.
+- **Claude Code (lead):** converts approved outcomes into sprint scope, defines interfaces, implements, delegates bounded work, integrates changes, verifies the result, and commits.
+- **Codex (reviewer and QA):** reviews every phase diff against the sprint acceptance criteria and runs the browser-driven manual QA checklist.
+- **OpenCode (worker):** implements or tests one bounded task at a time using the configured free-tier worker. It does not own product or architecture decisions.
+
+Roles, model routing, and token rules are detailed in `AGENTS.md` and `docs/AI-WORKFLOW.md`. `docs/STATUS.md` is the handoff file between sessions and agents.
 
 ## Delivery loop
 
@@ -30,7 +33,8 @@ A sprint increment is done when:
 - Privacy and accessibility constraints have been reviewed.
 - Browser-only behavior has a manual verification record.
 - Documentation describes actual behavior and does not overclaim.
-- Codex has reviewed the complete integrated diff.
+- The reviewer has reviewed the complete integrated diff and the lead has resolved every finding.
+- `docs/STATUS.md` reflects the new state.
 
 ## Commands
 

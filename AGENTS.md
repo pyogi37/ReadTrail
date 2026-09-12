@@ -1,60 +1,75 @@
 # ReadTrail Agent Instructions
 
+Canonical instructions for every AI collaborator (Claude Code, Codex, OpenCode). `CLAUDE.md` imports this file. Keep this file short; link to docs instead of inlining them.
+
+## Start of every session
+
+1. Read `docs/STATUS.md` (current phase, last commit, next task). It is the handoff file between agents.
+2. Read the active sprint doc it names under `docs/sprints/`.
+3. Read `docs/ARCHITECTURE.md` only if the task touches messages, storage, or a new surface.
+4. Do not re-read the whole repo. Name files and line ranges; use search tools for discovery.
+
 ## Product authority
 
-- The user is the product owner and owns product vision.
-- `docs/PRODUCT-VISION.md` is the product source of truth.
-- `docs/sprints/SPRINT-002.md` is the active delivery source of truth. Sprint 001's revised Chrome verification is its first gate.
-- Do not introduce features, product behavior, analytics, external services, or permanent data collection that are not in an approved sprint.
-- Treat unresolved items in the product vision as questions, not permission to decide them silently.
+- The user (`pyogi37`) is the product owner. `docs/PRODUCT-VISION.md` is the product source of truth; `docs/DECISIONS.md` records decisions already made.
+- Do not add features, permissions, external services, or data collection that are not in the active sprint.
+- Unresolved items in the vision are questions for the owner, not permission to decide silently.
 
-## Agent roles
+## Roles
 
-- Codex is the lead engineering partner. It owns scope alignment, architecture, task decomposition, review, integration, verification, and commits.
-- OpenCode is a bounded implementation worker. It edits only the files named in its task, runs relevant checks, and reports assumptions or blockers.
-- No implementation worker may commit, push, rewrite history, change the sprint scope, or edit the product vision.
-- Agents must not edit the same files concurrently.
+| Role | Who | Owns |
+|---|---|---|
+| Lead | Claude Code | Sprint scope, architecture, implementation, tests, integration, commits, `docs/STATUS.md` |
+| Reviewer + QA | Codex | Independent review of each phase diff against sprint acceptance criteria; browser-driven manual QA logged in `docs/qa/runs/` |
+| Worker | OpenCode (`.opencode/agents/readtrail-worker.md`) | One bounded task in named files; no commits, no scope changes |
 
-## Current architecture
+Only the lead commits. Nobody pushes without the owner. No agent rewrites history or edits the product vision. Agents never edit the same files concurrently.
 
-- Manifest V3 Chrome extension using plain JavaScript, HTML, and CSS.
-- `background/service-worker.js` owns extension state and message validation.
-- `content/` owns page interaction, position detection, and rendering.
-- `popup/` owns current-page controls.
-- `options/` owns global appearance preferences.
-- Tests use Vitest with JSDOM.
+Model routing and token rules: `docs/AI-WORKFLOW.md`.
 
-## Privacy and interaction constraints
+## Architecture in ten lines
 
-- A page is dormant until the reader explicitly activates ReadTrail for that exact page.
-- Dormant means no pointer tracking, DOM inspection for reading position, canvas, or reading-state writes.
-- Temporary reading state belongs in `chrome.storage.session` and must be accessed through the service worker.
-- Appearance preferences belong in `chrome.storage.local`.
-- Never store passage text, page content, or browsing history unless a future approved sprint explicitly requires it.
-- Dormant pages preserve all normal interaction. On an explicitly activated page, primary clicks are reserved for ReadTrail's reading lock and must not activate underlying links, buttons, or controls; scrolling and text selection remain available.
-- Turning ReadTrail off hides its UI but does not delete the current session anchor.
+- Manifest V3, plain JavaScript/HTML/CSS, no bundler, no runtime dependencies.
+- `background/service-worker.js` is the single trust boundary: every runtime message and stored record is validated there.
+- `shared/` holds constants and validators loaded by every surface (classic scripts, `importScripts` in the worker).
+- `content/` owns page interaction, anchoring, and the canvas overlay. It is dormant until the reader activates that exact page in that tab.
+- `sidepanel/` (replaces `popup/` and `reading-space/` from Phase 3) owns current-tab controls and the library.
+- `options/` owns global appearance and behavior preferences, written only through the worker.
+- Temporary reading state: `chrome.storage.session`, keyed per tab. Durable data: `chrome.storage.local`, one key per record. Never `storage.sync`.
+- Protocol and schema tables: `docs/ARCHITECTURE.md`.
 
-## Engineering workflow
+## Privacy and interaction rules
 
-1. Read this file, `docs/PRODUCT-VISION.md`, and the active sprint document.
-2. Inspect existing code and tests before editing.
-3. State any assumption that changes behavior or data shape.
-4. Keep the change within the assigned files and acceptance criteria.
-5. Add or update tests with behavior changes.
-6. Run `npm test` and `git diff --check` before handoff.
-7. Report changed files, test results, remaining risks, and any out-of-scope findings.
+- Nothing is captured before activation: no pointer tracking, DOM inspection, canvas, or state writes on a dormant page.
+- Passage text is stored only when the reader explicitly saves a passage. Never store page content, selections, or history otherwise.
+- Incognito tabs never produce durable records.
+- On an active page, primary clicks belong to the reading lock; scrolling and text selection stay available. Turning ReadTrail off hides UI but keeps the session anchor.
+- No network requests exist in 1.0. In 1.1 the only request is to Anthropic with the reader's own key, triggered by the reader.
+
+## Workflow
+
+1. Inspect existing code and tests before editing. Reuse `shared/validators.js` and existing patterns.
+2. State any assumption that changes behavior or a data shape.
+3. Stay inside the sprint's files and acceptance criteria.
+4. Add or update tests with every behavior change.
+5. Run the touched test file, then `npm test`, then `git diff --check`.
+6. Update `docs/STATUS.md` before ending the session: what is done, what is next, what is blocked.
+7. Commit only a coherent green increment. Message: imperative summary, body lists behavior changes.
 
 ## Code conventions
 
-- Prefer small functions and explicit state transitions.
-- Validate every runtime message and stored record at trust boundaries.
-- Fail safely when Chrome APIs, DOM anchors, or layout information are unavailable.
-- Avoid new production dependencies unless the sprint explicitly approves one.
-- Preserve accessibility semantics and reduced-motion support.
-- Comments should explain non-obvious constraints, not restate code.
+- Small functions, explicit state transitions, validate at every trust boundary, fail safely when Chrome APIs or DOM anchors are missing.
+- Comments explain constraints, not code.
+- Preserve accessibility (labels, focus styles, `role`s) and `prefers-reduced-motion`.
+- Tests: Vitest + JSDOM; sources are evaluated into the window; Chrome APIs come from `tests/helpers/chrome-mock.js`.
 
-## Git safety
+## Commands
 
-- Preserve unrelated and uncommitted user changes.
-- Do not use destructive Git commands.
-- Only Codex creates commits or pushes, after review and verification.
+```sh
+npm install
+npm test
+git diff --check
+npm run package:check   # from Phase 5
+```
+
+Chrome behavior must also be checked by loading the unpacked extension (`chrome://extensions` → Reload → refresh test pages). The manual checklist lives in `docs/qa/MANUAL-QA.md`.
