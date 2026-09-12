@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReadTrail</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <main class="panel" id="panel" data-mode="panel">
+    <header class="header">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="3" stroke="#FF6B6B" stroke-width="2"/>
+          <line x1="7" y1="8" x2="17" y2="8" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round"/>
+          <line x1="7" y1="12" x2="14" y2="12" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+          <line x1="7" y1="16" x2="17" y2="16" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+        </svg>
+        <h1 class="title">ReadTrail</h1>
+      </div>
+      <button type="button" id="openOptions" class="icon-button" aria-label="Open settings" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </header>
+
+    <section class="page-section" id="pageSection" aria-labelledby="pageHeading">
+      <h2 class="section-heading" id="pageHeading">This page</h2>
+      <p class="page-title" id="pageTitle" hidden></p>
+
+      <div class="activation" id="activation" aria-live="polite">
+        <div class="status-row">
+          <span class="status" id="statusLabel">Loading…</span>
+          <label class="toggle" id="toggleLabel">
+            <input type="checkbox" id="toggleSwitch" aria-label="Use ReadTrail on this page" disabled>
+            <span class="slider" aria-hidden="true"></span>
+          </label>
+        </div>
+        <p class="description" id="description"></p>
+        <div class="reading-lock-notice" id="readingLockNotice" role="note" hidden>
+          <strong>Reading lock</strong>
+          <span>While active, ReadTrail reserves primary clicks for pausing or resuming. Turn it off before using page links or controls.</span>
+        </div>
+      </div>
+
+      <div class="save-section" id="saveSection" aria-label="Save reading position" hidden>
+        <p class="restore-note" id="restoreNote" role="note" hidden></p>
+        <p class="save-description" id="saveHint"></p>
+        <button type="button" id="saveButton" class="save-button" disabled>Save for later</button>
+        <p class="saved-status" id="saveStatus" role="status" hidden></p>
+        <p class="local-note" id="localNote">The exact page URL and title are saved on this device.</p>
+      </div>
+
+      <p class="error" id="error" role="alert" hidden></p>
+    </section>
+
+    <details class="first-use" id="firstUse">
+      <summary>How ReadTrail works</summary>
+      <ol>
+        <li><strong>Turn it on for a page.</strong> Nothing is tracked until you do. While on, clicks pause or resume your reading line instead of opening links.</li>
+        <li><strong>Your place is temporary.</strong> It survives reloads in this browser session and disappears when you close Chrome.</li>
+        <li><strong>Save for later keeps it.</strong> Only pages you save appear below, with their exact URL and title stored on this device.</li>
+      </ol>
+    </details>
+
+    <section class="recent-section" id="recentSection" aria-labelledby="recentHeading" hidden>
+      <h2 class="section-heading" id="recentHeading">Recently closed</h2>
+      <p class="section-hint">Tabs you closed with unsaved reading. They disappear after 30 minutes.</p>
+      <p class="error" id="recentError" role="alert" hidden></p>
+      <ul class="list" id="recentList"></ul>
+    </section>
+
+    <section class="library-section" id="librarySection" aria-labelledby="libraryHeading">
+      <div class="section-row">
+        <h2 class="section-heading" id="libraryHeading">Saved pages</h2>
+        <button type="button" id="clearAllButton" class="btn-danger btn-small" disabled>Clear all</button>
+      </div>
+      <p class="privacy-note" id="privacyNote">
+        Pages appear here only after you choose <strong>Save for later</strong> on that page.
+        The exact page URL and title stay on this device.
+      </p>
+      <div class="clear-confirm" id="clearConfirm" role="alertdialog" aria-modal="false" aria-label="Confirm clear all" hidden>
+        <span class="confirm-text">Remove every saved page from this device?</span>
+        <div class="confirm-actions">
+          <button type="button" id="clearConfirmYes" class="btn-danger-solid">Clear all</button>
+          <button type="button" id="clearConfirmCancel" class="btn-ghost">Cancel</button>
+        </div>
+      </div>
+
+      <p class="status-message" id="statusMessage" role="status" aria-live="polite" hidden></p>
+      <p class="error-message" id="errorMessage" role="alert" aria-live="polite" hidden></p>
+
+      <div class="content" id="contentRegion" aria-label="Saved pages">
+        <p class="loading" id="loadingState">Loading your saved pages…</p>
+        <div class="empty" id="emptyState" hidden>
+          <p class="empty-title">Nothing saved yet</p>
+          <p class="empty-text">
+            Turn ReadTrail on for a page, pause at a line, and choose <strong>Save for later</strong>.
+            It will appear here so you can continue reading.
+          </p>
+        </div>
+        <p class="load-error" id="loadErrorState" role="alert" hidden>
+          Your saved pages could not be loaded. Close and reopen this panel to try again.
+        </p>
+        <ul class="list" id="savedList" hidden></ul>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <button type="button" id="openInTab" class="link-button">Open in a tab</button>
+    </footer>
+  </main>
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/validators.js"></script>
+  <script src="../shared/page-controls.js"></script>
+  <script src="page-view.js"></script>
+  <script src="library-view.js"></script>
+  <script src="recent-view.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

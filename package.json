@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "package": "node scripts/package.mjs",
+    "package:check": "node scripts/package.mjs --check"
   },
   "devDependencies": {
     "jsdom": "^30.0.1",
     "vitest": "^4.1.11"
-  }
+  },
+  "license": "MIT"
 }

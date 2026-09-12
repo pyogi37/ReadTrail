@@ -46,7 +46,7 @@ git diff --check
 
 Chrome extension behavior must also be checked by loading the unpacked extension from this repository.
 
-For an already loaded unpacked copy, click **Reload** on the ReadTrail card in `chrome://extensions`, then refresh each test page so its content scripts update. Reinstall only if the extension was removed or the project directory moved.
+For an already loaded unpacked copy, click **Reload** on the ReadTrail card in `chrome://extensions`, then refresh each test page so its content scripts update and close and reopen the side panel. Reinstall only if the extension was removed or the project directory moved. Chrome 114 or newer is required for the side panel.
 
 ## OpenCode worker
 

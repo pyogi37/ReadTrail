@@ -35,8 +35,68 @@ const els = {
   highlightOptions: $("highlightOptions"),
   dotsOptions: $("dotsOptions"),
   resetBtn: $("resetBtn"),
-  saveStatus: $("saveStatus")
+  saveStatus: $("saveStatus"),
+  closeSaveInputs: Array.from(document.querySelectorAll('input[name="closeSave"]')),
+  excludedForm: $("excludedForm"),
+  excludedHostInput: $("excludedHostInput"),
+  excludedError: $("excludedError"),
+  excludedList: $("excludedList"),
+  excludedEmpty: $("excludedEmpty")
 };
+
+// Excluded hosts are kept as local state and written through setSettings like
+// everything else. The list is rendered with textContent only.
+let excludedHosts = [];
+
+function renderExcluded() {
+  els.excludedList.textContent = "";
+  for (const host of excludedHosts) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = host;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Stop excluding ${host}`);
+    remove.addEventListener("click", () => {
+      excludedHosts = excludedHosts.filter((h) => h !== host);
+      renderExcluded();
+      save();
+    });
+    li.appendChild(label);
+    li.appendChild(remove);
+    els.excludedList.appendChild(li);
+  }
+  els.excludedEmpty.hidden = excludedHosts.length > 0;
+}
+
+function showExcludedError(message) {
+  els.excludedError.textContent = message;
+  els.excludedError.hidden = !message;
+}
+
+function addExcludedHost(raw) {
+  const shared = globalThis.ReadTrailShared || {};
+  const host = typeof shared.normalizeHost === "function" ? shared.normalizeHost(raw) : null;
+  if (!host) {
+    showExcludedError("Enter a hostname like example.com.");
+    return false;
+  }
+  if (excludedHosts.includes(host)) {
+    showExcludedError("That site is already excluded.");
+    return false;
+  }
+  excludedHosts = [...excludedHosts, host];
+  showExcludedError("");
+  renderExcluded();
+  save();
+  return true;
+}
+
+function selectedCloseSave() {
+  const checked = els.closeSaveInputs.find((input) => input.checked);
+  return checked ? checked.value : "ask";
+}
 
 let statusTimer = null;
 
@@ -63,7 +123,9 @@ function save() {
     dotCount: parseInt(els.dotCount.value),
     fadeSpeed: parseInt(els.fadeSpeed.value) / 100,
     highlightLine: els.highlightLine.checked,
-    highlightColor: els.highlightColor.value
+    highlightColor: els.highlightColor.value,
+    closeSave: selectedCloseSave(),
+    excludedHosts: [...excludedHosts]
   };
   sendMessage({ type: "setSettings", settings }, (res) => {
     announce(res && res.ok ? "Settings saved" : "Settings could not be saved");
@@ -92,6 +154,9 @@ function loadSettings() {
     setRangeValue(els.fadeSpeed, els.fadeSpeedValue, Math.round(s.fadeSpeed * 100), " percent");
     els.highlightLine.checked = s.highlightLine;
     els.highlightColor.value = s.highlightColor;
+    for (const input of els.closeSaveInputs) input.checked = input.value === s.closeSave;
+    excludedHosts = Array.isArray(s.excludedHosts) ? [...s.excludedHosts] : [];
+    renderExcluded();
 
     document.querySelectorAll(".style-btn").forEach((btn) => {
       const active = btn.dataset.style === s.style;
@@ -136,6 +201,11 @@ els.fadeSpeed.addEventListener("input", () => {
 });
 
 els.color.addEventListener("input", save);
+for (const input of els.closeSaveInputs) input.addEventListener("change", save);
+els.excludedForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (addExcludedHost(els.excludedHostInput.value)) els.excludedHostInput.value = "";
+});
 els.highlightLine.addEventListener("change", () => { updateVisibility(); save(); });
 els.highlightColor.addEventListener("input", save);
 els.resetBtn.addEventListener("click", () => {

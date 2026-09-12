@@ -30,7 +30,9 @@ describe("shared constants and validators", () => {
       dotCount: 20,
       fadeSpeed: 0.9,
       highlightLine: false,
-      highlightColor: "#FFEB3B"
+      highlightColor: "#FFEB3B",
+      closeSave: "ask",
+      excludedHosts: []
     });
     expect(S.KEYS.TAB_PREFIX).toBe("readtrail.tab.v1:");
     expect(S.KEYS.SAVED_PREFIX).toBe("readtrail.saved.v1:");
@@ -142,6 +144,21 @@ describe("shared constants and validators", () => {
     expect(S.isValidSettings({ size: 101 })).toBe(false);
     expect(S.isValidSettings(null)).toBe(false);
     expect(S.isValidSettings([])).toBe(false);
+  });
+
+  it("validates, normalizes, and matches excluded hosts", () => {
+    expect(S.normalizeHost(" WWW.Example.COM ")).toBe("example.com");
+    expect(S.normalizeHost("https://Docs.example.org/path?q=1")).toBe("docs.example.org");
+    expect(S.normalizeHost("not a host")).toBeNull();
+    expect(S.normalizeHost("")).toBeNull();
+    expect(S.isValidSettings({ excludedHosts: ["example.com", "a.b.c"] })).toBe(true);
+    expect(S.isValidSettings({ excludedHosts: ["Example.com"] })).toBe(false);
+    expect(S.isValidSettings({ excludedHosts: ["example.com", "example.com"] })).toBe(false);
+    expect(S.isValidSettings({ excludedHosts: "example.com" })).toBe(false);
+    expect(S.isHostExcluded("https://news.example.com/x", ["example.com"])).toBe(true);
+    expect(S.isHostExcluded("https://www.example.com/", ["example.com"])).toBe(true);
+    expect(S.isHostExcluded("https://notexample.com/", ["example.com"])).toBe(false);
+    expect(S.isHostExcluded("https://example.com/", [])).toBe(false);
   });
 
   it("merges settings over defaults, dropping invalid stored values and legacy flags", () => {

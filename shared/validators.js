@@ -211,8 +211,40 @@
     dotCount: (v) => Number.isInteger(v) && v >= 5 && v <= 50,
     fadeSpeed: (v) => isFiniteNumber(v) && v >= 0.8 && v <= 0.99,
     highlightLine: (v) => typeof v === "boolean",
-    highlightColor: (v) => typeof v === "string" && HEX_COLOR.test(v)
+    highlightColor: (v) => typeof v === "string" && HEX_COLOR.test(v),
+    closeSave: (v) => v === "ask" || v === "always" || v === "never",
+    excludedHosts: (v) => Array.isArray(v)
+      && v.length <= LIMITS.EXCLUDED_HOSTS_MAX
+      && v.every((host) => isValidHost(host))
+      && new Set(v).size === v.length
   };
+
+  const HOST_PATTERN = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+  function isValidHost(value) {
+    return typeof value === "string" && HOST_PATTERN.test(value);
+  }
+
+  // Lowercases and strips a leading "www." so "www.Example.com" and
+  // "example.com" mean the same site. Returns null for junk.
+  function normalizeHost(value) {
+    if (typeof value !== "string") return null;
+    let host = value.trim().toLowerCase();
+    if (host.includes("://")) {
+      try { host = new URL(host).hostname; } catch (_) { return null; }
+    }
+    host = host.replace(/^www\./, "").replace(/\.$/, "");
+    return isValidHost(host) ? host : null;
+  }
+
+  // True when the URL's hostname equals an excluded host or is a subdomain
+  // of one.
+  function isHostExcluded(url, excludedHosts) {
+    if (!Array.isArray(excludedHosts) || excludedHosts.length === 0) return false;
+    let host = null;
+    try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, ""); } catch (_) { return false; }
+    return excludedHosts.some((excluded) => host === excluded || host.endsWith("." + excluded));
+  }
 
   // Accepts a partial settings object: every present key must be known and
   // valid. Unknown keys (including the removed legacy `enabled`) are rejected so
@@ -232,11 +264,177 @@
       const rule = SETTING_RULES[key];
       if (Object.prototype.hasOwnProperty.call(base, key) && rule(base[key])) clean[key] = base[key];
     }
-    return { ...DEFAULTS, ...clean, ...(isRecord(patch) ? patch : {}) };
+    const merged = { ...DEFAULTS, ...clean, ...(isRecord(patch) ? patch : {}) };
+    merged.excludedHosts = [...merged.excludedHosts];
+    return merged;
+  }
+
+  function isValidRecentItem(item) {
+    return isRecord(item)
+      && isValidTabId(item.tabId)
+      && isValidPageUrl(item.url)
+      && typeof item.title === "string"
+      && item.title.length <= LIMITS.TITLE_MAX
+      && isValidSavedPosition(item.position)
+      && isFiniteNumber(item.closedAt)
+      && item.closedAt >= 0;
+  }
+
+  function cloneRecentItem(item) {
+    return {
+      tabId: item.tabId,
+      url: item.url,
+      title: item.title,
+      position: clonePosition(item.position),
+      closedAt: item.closedAt
+    };
+  }
+
+  // Drops malformed and expired entries; never trusts stored order.
+  function normalizeRecentList(value, now) {
+    const items = isRecord(value) && Array.isArray(value.items) ? value.items : [];
+    const fresh = items
+      .filter((item) => isValidRecentItem(item) && now - item.closedAt <= LIMITS.RECENT_TTL_MS)
+      .map(cloneRecentItem)
+      .sort((a, b) => b.closedAt - a.closedAt);
+    return { version: 1, items: fresh.slice(0, LIMITS.RECENT_MAX) };
+  }
+
+  // --- Knowledge layer records ---
+
+  const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  function isValidId(value) {
+    return typeof value === "string" && ID_PATTERN.test(value);
+  }
+
+  function isValidText(value, allowEmpty) {
+    if (typeof value !== "string" || value.length > LIMITS.TEXT_MAX) return false;
+    return allowEmpty || value.trim().length > 0;
+  }
+
+  // Tags are lowercased, trimmed, deduplicated, and bounded. Returns null when
+  // the input is not a list of strings or exceeds the limits.
+  function normalizeTags(value) {
+    if (!Array.isArray(value)) return null;
+    const out = [];
+    for (const raw of value) {
+      if (typeof raw !== "string") return null;
+      const tag = raw.trim().toLowerCase().replace(/\s+/g, " ");
+      if (tag.length === 0) continue;
+      if (tag.length > LIMITS.TAG_MAX) return null;
+      if (!out.includes(tag)) out.push(tag);
+    }
+    return out.length <= LIMITS.TAGS_MAX ? out : null;
+  }
+
+  function isValidTags(value) {
+    const tags = normalizeTags(value);
+    return tags !== null && tags.length === value.length && tags.every((tag, i) => tag === value[i]);
+  }
+
+  function isValidOptionalAnchor(value) {
+    return value === null || isValidAnchor(value);
+  }
+
+  function isValidPassage(record) {
+    return isRecord(record)
+      && record.version === 1
+      && isValidId(record.id)
+      && isValidPageUrl(record.url)
+      && typeof record.title === "string"
+      && record.title.length <= LIMITS.TITLE_MAX
+      && isValidText(record.text, false)
+      && isValidOptionalAnchor(record.start)
+      && isValidOptionalAnchor(record.end)
+      && isValidText(record.note, true)
+      && isValidTags(record.tags)
+      && isFiniteNumber(record.createdAt) && record.createdAt >= 0
+      && isFiniteNumber(record.updatedAt) && record.updatedAt >= 0;
+  }
+
+  function clonePassage(record) {
+    return {
+      version: 1,
+      id: record.id,
+      url: record.url,
+      title: record.title,
+      text: record.text,
+      start: record.start ? cloneAnchor(record.start) : null,
+      end: record.end ? cloneAnchor(record.end) : null,
+      note: record.note,
+      tags: [...record.tags],
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt
+    };
+  }
+
+  function isValidNote(record) {
+    return isRecord(record)
+      && record.version === 1
+      && isValidId(record.id)
+      && isValidPageUrl(record.url)
+      && typeof record.title === "string"
+      && record.title.length <= LIMITS.TITLE_MAX
+      && isValidText(record.text, false)
+      && isValidTags(record.tags)
+      && (record.source === undefined || record.source === "user" || record.source === "ai")
+      && isFiniteNumber(record.createdAt) && record.createdAt >= 0
+      && isFiniteNumber(record.updatedAt) && record.updatedAt >= 0;
+  }
+
+  function cloneNote(record) {
+    const clone = {
+      version: 1,
+      id: record.id,
+      url: record.url,
+      title: record.title,
+      text: record.text,
+      tags: [...record.tags],
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt
+    };
+    if (record.source === "ai") clone.source = "ai";
+    return clone;
+  }
+
+  function isValidPageMeta(record) {
+    return isRecord(record)
+      && record.version === 1
+      && isValidTags(record.tags)
+      && isFiniteNumber(record.updatedAt) && record.updatedAt >= 0;
+  }
+
+  function clonePageMeta(record) {
+    return { version: 1, tags: [...record.tags], updatedAt: record.updatedAt };
+  }
+
+  function isValidExport(payload) {
+    return isRecord(payload)
+      && payload.format === "readtrail-export"
+      && payload.version === 1
+      && Array.isArray(payload.saved)
+      && Array.isArray(payload.passages)
+      && Array.isArray(payload.notes)
+      && Array.isArray(payload.pagemeta);
   }
 
   Object.assign(shared, {
     isRecord,
+    isValidId,
+    isValidText,
+    normalizeTags,
+    isValidTags,
+    isValidPassage,
+    clonePassage,
+    isValidNote,
+    cloneNote,
+    isValidPageMeta,
+    clonePageMeta,
+    isValidExport,
+    isValidRecentItem,
+    cloneRecentItem,
+    normalizeRecentList,
     isFiniteNumber,
     isValidTabId,
     isValidPageUrl,
@@ -253,6 +451,9 @@
     cloneTabRecord,
     isRestoreQuality,
     isValidSettings,
-    mergeSettings
+    mergeSettings,
+    isValidHost,
+    normalizeHost,
+    isHostExcluded
   });
 })();

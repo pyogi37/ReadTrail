@@ -14,7 +14,9 @@ const storedSettings = {
   dotCount: 20,
   fadeSpeed: 0.9,
   highlightLine: false,
-  highlightColor: "#FFEB3B"
+  highlightColor: "#FFEB3B",
+  closeSave: "ask",
+  excludedHosts: []
 };
 
 function renderOptions(settings = storedSettings) {

@@ -48,6 +48,29 @@
     return (typeof window !== "undefined" && window.ReadTrailPosition) || null;
   }
 
+  function getPassage() {
+    return (typeof window !== "undefined" && window.ReadTrailPassage) || null;
+  }
+
+  // Draws the reader's saved passages for this page. Runs only on an active
+  // page and only reads records the reader already saved.
+  function refreshHighlights() {
+    const PS = getPassage();
+    if (!PS || !hasChrome() || !isActive()) return;
+    try {
+      chrome.runtime.sendMessage({ type: "listPassages", url: initialUrl }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.ok || !isActive()) return;
+        try { PS.applyHighlights(res.passages); } catch (_) { /* fail safely */ }
+      });
+    } catch (_) { /* runtime unavailable */ }
+  }
+
+  function clearHighlights() {
+    const PS = getPassage();
+    if (!PS) return;
+    try { PS.clearHighlights(); } catch (_) { /* fail safely */ }
+  }
+
   function hasChrome() {
     return typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.sendMessage === "function";
   }
@@ -530,6 +553,7 @@
     pageActive = true;
     ensureVisuals();
     attachListeners();
+    refreshHighlights();
     const applied = normalizePageState(suppliedState);
     if (applied && applied.active) {
       applyState(applied);
@@ -551,6 +575,7 @@
     clearSaveTimer();
     removeListeners();
     clearVisual();
+    clearHighlights();
     lastPosition = null;
     restoreQuality = null;
   }
@@ -662,6 +687,10 @@
             if (sendResponse) sendResponse({ ok: false, error: "superseded" });
             return;
           }
+          if (isExcludedHere()) {
+            if (sendResponse) sendResponse({ ok: false, error: "site-excluded" });
+            return;
+          }
           activate(msg.state, revision);
           if (sendResponse) sendResponse({ ok: pageActive });
         });
@@ -680,6 +709,21 @@
     }
     if (msg.type === "saveForLater") {
       return handleSaveForLater(sendResponse);
+    }
+    if (msg.type === "capturePassage") {
+      // Explicit reader action (context menu or side panel). Works on dormant
+      // pages too; it reads only the current selection.
+      const PS = getPassage();
+      if (sendResponse) {
+        if (!PS) {
+          sendResponse({ ok: false, error: "no-selection" });
+        } else {
+          let captured;
+          try { captured = PS.captureSelection(); } catch (_) { captured = { ok: false, error: "no-selection" }; }
+          sendResponse(captured);
+        }
+      }
+      return false;
     }
     if (msg.type === "pageInfo") {
       // Lets extension pages learn the exact URL and title of a tab whose URL
@@ -702,7 +746,11 @@
   const bindStorageEvents = (typeof chrome !== "undefined" && chrome.storage && chrome.storage.onChanged)
     ? chrome.storage.onChanged
     : null;
-  if (bindStorageEvents) bindStorageEvents.addListener((changes) => {
+  if (bindStorageEvents) bindStorageEvents.addListener((changes, areaName) => {
+    if (areaName === "local" && isActive()) {
+      const touchedPassages = Object.keys(changes).some((key) => key.startsWith("readtrail.passage.v1:"));
+      if (touchedPassages) refreshHighlights();
+    }
     if (!changes.settings) return;
     settings = { ...DEFAULTS, ...(changes.settings.newValue || {}) };
     cancelTrailFrame();
@@ -718,9 +766,24 @@
     }
   });
 
+  // An excluded site never reads page state and refuses activation. The
+  // hostname check runs locally against the settings the worker returned.
+  function isExcludedHere() {
+    const hosts = settings && Array.isArray(settings.excludedHosts) ? settings.excludedHosts : [];
+    if (hosts.length === 0) return false;
+    if (SHARED && typeof SHARED.isHostExcluded === "function") return SHARED.isHostExcluded(initialUrl, hosts);
+    try {
+      const host = new URL(initialUrl).hostname.toLowerCase().replace(/^www\./, "");
+      return hosts.some((h) => host === h || host.endsWith("." + h));
+    } catch (_) {
+      return false;
+    }
+  }
+
   const settingsReady = loadSettings();
   const bootstrapRevision = lifecycleRevision;
   settingsReady.then(() => {
+    if (isExcludedHere()) return;
     fetchPageState((state) => {
       if (lifecycleRevision !== bootstrapRevision) return;
       if (state && state.active) activate(state, bootstrapRevision);

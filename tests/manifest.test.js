@@ -6,9 +6,18 @@ const root = path.resolve(import.meta.dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 
 describe("ReadTrail manifest integration", () => {
-  it("uses only the permissions required for local page activation", () => {
-    expect(manifest.permissions).toEqual(["storage", "activeTab"]);
+  it("uses only the permissions required for local page activation and the side panel", () => {
+    expect(manifest.permissions).toEqual(["storage", "activeTab", "sidePanel", "contextMenus"]);
     expect(manifest).not.toHaveProperty("host_permissions");
+    expect(manifest.permissions).not.toContain("tabs");
+    expect(manifest.permissions).not.toContain("notifications");
+  });
+
+  it("opens the side panel from the toolbar action instead of a popup", () => {
+    expect(manifest.action).not.toHaveProperty("default_popup");
+    expect(manifest.action.default_title).toBe("ReadTrail");
+    expect(manifest.side_panel).toEqual({ default_path: "sidepanel/sidepanel.html" });
+    expect(manifest.minimum_chrome_version).toBe("114");
   });
 
   it("loads shared constants and position capture before the lifecycle content script", () => {
@@ -18,6 +27,7 @@ describe("ReadTrail manifest integration", () => {
       "shared/constants.js",
       "content/renderer.js",
       "content/position.js",
+      "content/passage.js",
       "content/content.js"
     ]);
   });

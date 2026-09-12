@@ -17,7 +17,7 @@
       </svg>
       <div>
         <h1>ReadTrail</h1>
-        <p class="subtitle">Reading marker appearance</p>
+        <p class="subtitle">Reading marker appearance and behavior</p>
       </div>
     </header>
 
@@ -77,6 +77,40 @@
         <label for="highlightColor">Highlight Color</label>
         <input type="color" id="highlightColor" value="#FFEB3B">
       </div>
+    </section>
+
+    <section class="section" aria-labelledby="close-save-heading">
+      <h2 id="close-save-heading">Closing tabs</h2>
+      <p class="section-help">When a tab closes with unsaved reading progress:</p>
+      <div class="radio-group" role="radiogroup" aria-labelledby="close-save-heading">
+        <div class="control radio-row">
+          <input type="radio" id="closeSaveAsk" name="closeSave" value="ask" checked>
+          <label for="closeSaveAsk">Ask me in the side panel (default)</label>
+        </div>
+        <div class="control radio-row">
+          <input type="radio" id="closeSaveAlways" name="closeSave" value="always">
+          <label for="closeSaveAlways">Always save my place</label>
+        </div>
+        <div class="control radio-row">
+          <input type="radio" id="closeSaveNever" name="closeSave" value="never">
+          <label for="closeSaveNever">Never save automatically</label>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="excluded-heading">
+      <h2 id="excluded-heading">Excluded sites</h2>
+      <p class="section-help">ReadTrail stays off on these sites. Enter a hostname such as <code>mail.example.com</code>; subdomains are included.</p>
+      <form class="control excluded-form" id="excludedForm">
+        <label for="excludedHostInput">Add a site</label>
+        <div class="excluded-row">
+          <input type="text" id="excludedHostInput" inputmode="url" autocomplete="off" placeholder="example.com">
+          <button type="submit" id="excludedAddBtn" class="btn-secondary">Add</button>
+        </div>
+        <p class="field-error" id="excludedError" role="alert" hidden></p>
+      </form>
+      <ul class="excluded-list" id="excludedList" aria-label="Excluded sites"></ul>
+      <p class="empty-hint" id="excludedEmpty">No sites excluded.</p>
     </section>
 
     <footer class="footer">

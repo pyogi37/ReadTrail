@@ -121,7 +121,8 @@ export function createChromeMock({
     tabsOnActivated: createEvent(),
     tabsOnUpdated: createEvent(),
     storageOnChanged: createEvent(),
-    windowsOnFocusChanged: createEvent()
+    windowsOnFocusChanged: createEvent(),
+    contextMenusOnClicked: createEvent()
   };
 
   const tabsMock = {
@@ -177,6 +178,11 @@ export function createChromeMock({
     tabs: disableTabs ? undefined : tabsMock,
     windows: { onFocusChanged: events.windowsOnFocusChanged },
     action: { setBadgeText: vi.fn((_details, callback) => callback?.()) },
+    contextMenus: {
+      create: vi.fn((_props, callback) => callback?.()),
+      removeAll: vi.fn((callback) => callback?.()),
+      onClicked: events.contextMenusOnClicked
+    },
     sidePanel: { setPanelBehavior: vi.fn(() => Promise.resolve()) }
   };
 
@@ -200,6 +206,9 @@ export function createChromeMock({
     },
     windows: {
       onFocusChanged: (windowId) => events.windowsOnFocusChanged.emit(windowId)
+    },
+    contextMenus: {
+      onClicked: (info, tab) => events.contextMenusOnClicked.emit(info, tab)
     }
   };
 

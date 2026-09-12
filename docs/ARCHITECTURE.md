@@ -39,8 +39,20 @@ All messages are `{ type, ... }` sent with `chrome.runtime.sendMessage`. Handler
 | `removeSavedResumePoint` | page | `{url}` | `{ok}` |
 | `clearSavedResumePoints` | page | none | `{ok}` |
 | `continueSavedResumePoint` | page | `{url}` | `{ok,tabId}` |
-| `listRecentlyClosed`, `saveRecentlyClosed`, `dismissRecentlyClosed` | page | none / `{url}` / `{url}` | Phase 3 |
-| `savePassage`, `updatePassage`, `removePassage`, `listPassages`, `saveNote`, `updateNote`, `removeNote`, `listNotes`, `setPageTags`, `listLibrary`, `clearLibrary`, `exportLibrary`, `importLibrary` | page | see Phase 4 sprint | Phase 4 |
+| `listRecentlyClosed` | page | none | `{ok,items:[{url,title,closedAt}]}` |
+| `saveRecentlyClosed` / `dismissRecentlyClosed` | page | `{url}` | `{ok}` |
+| `savePassage` | page / content | `{url,title,text,start?,end?,tags?,note?}` (content sender's tab URL wins) | `{ok,passage}` or `library-full` |
+| `updatePassage` | page | `{id,note?,tags?}` | `{ok,passage}` |
+| `removePassage` / `removeNote` | page | `{id}` | `{ok}` |
+| `listPassages` / `listNotes` | page / content | `{url?}` | `{ok,passages}` / `{ok,notes}` newest first |
+| `saveNote` | page | `{url,title,text,tags?,source?}` | `{ok,note}` |
+| `updateNote` | page | `{id,text?,tags?}` | `{ok,note}` |
+| `setPageTags` | page | `{url,tags}` | `{ok,tags}` |
+| `listLibrary` | page | none | `{ok,saved,passages,notes,pagemeta,counts,limit}` |
+| `clearLibrary` | page | `{kinds?:["saved","passages","notes","pagemeta"]}` | `{ok,removed}` (never touches settings) |
+| `removePageData` | page | `{url}` | `{ok,removed}` passages, notes, tags of one page |
+| `exportLibrary` | page | none | `{ok,payload}` |
+| `importLibrary` | page | `{payload,mode:"merge"|"replace"}` | `{ok,imported,skipped,rejected,mode}` |
 
 Messages delivered to a content script with `chrome.tabs.sendMessage(tabId, ...)`:
 
@@ -49,7 +61,9 @@ Messages delivered to a content script with `chrome.tabs.sendMessage(tabId, ...)
 | `setPageActive` | `{active, state?}` | `{ok}` or `{ok:false,error:"superseded" or "save-failed"}` |
 | `saveForLater` | none | `{ok}` or error code |
 | `pageInfo` | none | `{url,title}` |
-| `capturePassage` | none | `{ok,text,start,end}` (Phase 4) |
+| `capturePassage` | none | `{ok,text,start,end,url,title}` or `{ok:false,error:"no-selection"|"too-long"}` |
+
+The worker's `background/library.js` owns the knowledge-layer handlers and the "Save selection to ReadTrail" context menu. `content/passage.js` captures the selection on request and draws saved passages with the CSS Custom Highlight API (no DOM mutation).
 
 Error codes live in `shared/constants.js` (`ERRORS`). Do not invent new strings inline.
 
@@ -70,12 +84,12 @@ Error codes live in `shared/constants.js` (`ERRORS`). Do not invent new strings 
 
 ```
 settings = { style, color, size, opacity, dotCount, fadeSpeed, highlightLine, highlightColor,
-             closeSave:"ask"|"always"|"never", excludedHosts:string[] }
+             closeSave:"ask"|"always"|"never", excludedHosts:string[] }   // hosts lowercase, no www., subdomains match
 "readtrail.saved.v1:<exactUrl>" = { version:1, title, position, savedAt }
-"readtrail.passage.v1:<uuid>"   = { version:1, id, url, title, text, start, end, note, tags, createdAt, updatedAt }   // Phase 4
-"readtrail.note.v1:<uuid>"      = { version:1, id, url, title, text, tags, createdAt, updatedAt }                    // Phase 4
-"readtrail.pagemeta.v1:<url>"   = { version:1, tags, updatedAt }                                                     // Phase 4
-"readtrail.library.v1"          = { version:1, counts:{passages,notes}, updatedAt }                                  // Phase 4
+"readtrail.passage.v1:<uuid>"   = { version:1, id, url, title, text(<=4000), start, end, note, tags, createdAt, updatedAt }
+"readtrail.note.v1:<uuid>"      = { version:1, id, url, title, text, tags, source?:"ai", createdAt, updatedAt }
+"readtrail.pagemeta.v1:<url>"   = { version:1, tags, updatedAt }
+Bounds: 1,500 passages plus notes in total (refused with "library-full"), 20 tags of 40 characters, counts computed by listing keys.
 "readtrail.ai.v1"               = { version:1, apiKey, model, updatedAt }                                            // 1.1 only
 ```
 

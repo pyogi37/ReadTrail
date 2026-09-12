@@ -1,0 +1,13 @@
+title: ReadTrail
+description: A privacy-first reading companion for Chrome
+theme: jekyll-theme-minimal
+exclude:
+  - sprints/
+  - qa/
+  - store/
+  - images/
+  - STATUS.md
+  - ARCHITECTURE.md
+  - DECISIONS.md
+  - AI-WORKFLOW.md
+  - PRODUCT-VISION.md

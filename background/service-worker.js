@@ -1,10 +1,11 @@
 // ReadTrail service worker: the single trust boundary. Every runtime message
 // and stored record is validated here. The worker keeps no in-memory state so
 // Chrome may suspend it at any time; every handler reads, acts, and writes.
-importScripts("../shared/constants.js", "../shared/validators.js");
+importScripts("../shared/constants.js", "../shared/validators.js", "./library.js");
 
 const S = globalThis.ReadTrailShared;
 const { DEFAULTS, KEYS, VERSIONS, LIMITS, ERRORS } = S;
+const LIBRARY = globalThis.ReadTrailLibrary;
 
 const DEFAULT_PAGE_STATE = Object.freeze({
   version: VERSIONS.PAGE_STATE,
@@ -197,6 +198,18 @@ function handleGetPageState(msg, sender, sendResponse) {
   });
 }
 
+function readExcludedHosts(callback) {
+  const store = getLocalStore();
+  if (!store) {
+    callback([]);
+    return;
+  }
+  store.get(KEYS.SETTINGS, (result) => {
+    const settings = S.mergeSettings(result && result[KEYS.SETTINGS], null);
+    callback(settings.excludedHosts);
+  });
+}
+
 function handleSetPageActive(msg, sender, sendResponse) {
   if (!S.isValidPageUrl(msg.url) || typeof msg.active !== "boolean") {
     sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
@@ -207,6 +220,21 @@ function handleSetPageActive(msg, sender, sendResponse) {
     sendResponse({ ok: false, error: resolved.error });
     return;
   }
+  if (msg.active) {
+    readExcludedHosts((hosts) => {
+      if (S.isHostExcluded(msg.url, hosts)) {
+        sendResponse({ ok: false, error: ERRORS.SITE_EXCLUDED });
+        return;
+      }
+      setPageActiveForTab(msg, sender, resolved.tabId, sendResponse);
+    });
+    return;
+  }
+  setPageActiveForTab(msg, sender, resolved.tabId, sendResponse);
+}
+
+function setPageActiveForTab(msg, sender, tabId, sendResponse) {
+  const resolved = { tabId };
   readTabRecord(resolved.tabId, (record, error) => {
     if (error) {
       sendResponse({ ok: false, error });
@@ -296,12 +324,15 @@ function handleGetTabInfo(msg, sender, sendResponse) {
   const tabId = resolved.tabId;
   const reply = (url, title, incognito) => {
     const supported = S.isValidPageUrl(url);
-    sendResponse({
-      ok: true,
-      url: supported ? url : null,
-      title: supported && typeof title === "string" ? title : "",
-      incognito: Boolean(incognito),
-      supported
+    readExcludedHosts((hosts) => {
+      sendResponse({
+        ok: true,
+        url: supported ? url : null,
+        title: supported && typeof title === "string" ? title : "",
+        incognito: Boolean(incognito),
+        supported,
+        excluded: supported && S.isHostExcluded(url, hosts)
+      });
     });
   };
   try {
@@ -525,9 +556,219 @@ function handleContinueSavedResumePoint(msg, sendResponse) {
   });
 }
 
+// --- Recently closed: offer to save reading that was open in a closed tab ---
+
+function updateBadge(count) {
+  const action = chrome.action;
+  if (!action || typeof action.setBadgeText !== "function") return;
+  try {
+    action.setBadgeText({ text: count > 0 ? String(count) : "" }, () => { void chrome.runtime.lastError; });
+  } catch (_) { /* badge is cosmetic */ }
+}
+
+function readRecent(callback) {
+  const store = getSessionStore();
+  if (!store) {
+    callback(null, ERRORS.SESSION_UNAVAILABLE);
+    return;
+  }
+  store.get(KEYS.RECENT, (result) => {
+    if (chrome.runtime.lastError) {
+      callback(null, ERRORS.SESSION_READ);
+      return;
+    }
+    const raw = result && result[KEYS.RECENT];
+    const rawCount = raw && Array.isArray(raw.items) ? raw.items.length : 0;
+    const list = S.normalizeRecentList(raw, Date.now());
+    callback(list, null, rawCount !== list.items.length);
+  });
+}
+
+function writeRecent(list, callback) {
+  const store = getSessionStore();
+  if (!store) {
+    callback(ERRORS.SESSION_UNAVAILABLE);
+    return;
+  }
+  store.set({ [KEYS.RECENT]: list }, () => {
+    if (chrome.runtime.lastError) {
+      callback(ERRORS.SESSION_WRITE);
+      return;
+    }
+    updateBadge(list.items.length);
+    callback(null);
+  });
+}
+
+function titleForSaved(title, url) {
+  const clean = typeof title === "string" ? title.trim() : "";
+  if (S.isValidTitle(clean)) return clean;
+  try {
+    return new URL(url).hostname || "Saved page";
+  } catch (_) {
+    return "Saved page";
+  }
+}
+
+function writeSavedFromPosition(url, title, position, callback) {
+  const store = getLocalStore();
+  if (!store || !S.isValidSavedPosition(position)) {
+    callback(ERRORS.STORAGE_UNAVAILABLE);
+    return;
+  }
+  const record = {
+    version: VERSIONS.SAVED_RECORD,
+    title: titleForSaved(title, url),
+    position: S.clonePosition(position),
+    savedAt: Date.now()
+  };
+  store.set({ [savedKey(url)]: record }, () => {
+    callback(chrome.runtime.lastError ? ERRORS.SAVE_STORAGE : null);
+  });
+}
+
+// Runs on tabs.onRemoved. Reads the tab's last checkpoint before deleting the
+// record and, when that checkpoint is newer than the durable one, applies the
+// reader's closeSave preference. Incognito tabs never leave a trace.
+function handleTabRemoved(tabId) {
+  const finish = () => removeTabRecord(tabId);
+  readTabRecord(tabId, (record, error) => {
+    if (error || !record || !record.active || !record.position || record.incognito) {
+      finish();
+      return;
+    }
+    if (!S.isValidSavedPosition(record.position)) {
+      finish();
+      return;
+    }
+    const local = getLocalStore();
+    if (!local) {
+      finish();
+      return;
+    }
+    const key = savedKey(record.url);
+    local.get([key, KEYS.SETTINGS], (result) => {
+      if (chrome.runtime.lastError) {
+        finish();
+        return;
+      }
+      const saved = result && result[key];
+      if (S.isValidSavedRecord(saved) && saved.position.savedAt >= record.position.savedAt) {
+        finish();
+        return;
+      }
+      const settings = S.mergeSettings(result && result[KEYS.SETTINGS], null);
+      if (settings.closeSave === "never") {
+        finish();
+        return;
+      }
+      if (settings.closeSave === "always") {
+        writeSavedFromPosition(record.url, record.title, record.position, () => finish());
+        return;
+      }
+      readRecent((list) => {
+        if (!list) {
+          finish();
+          return;
+        }
+        const now = Date.now();
+        const items = list.items.filter((item) => item.url !== record.url);
+        items.unshift({
+          tabId,
+          url: record.url,
+          title: record.title,
+          position: S.clonePosition(record.position),
+          closedAt: now
+        });
+        writeRecent(S.normalizeRecentList({ items }, now), () => finish());
+      });
+    });
+  });
+}
+
+function handleListRecentlyClosed(sendResponse) {
+  readRecent((list, error, changed) => {
+    if (error) {
+      sendResponse({ ok: false, error });
+      return;
+    }
+    const reply = () => sendResponse({
+      ok: true,
+      items: list.items.map((item) => ({ url: item.url, title: item.title, closedAt: item.closedAt }))
+    });
+    if (changed) {
+      writeRecent(list, () => reply());
+      return;
+    }
+    updateBadge(list.items.length);
+    reply();
+  });
+}
+
+function handleSaveRecentlyClosed(msg, sendResponse) {
+  if (!S.isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
+    return;
+  }
+  readRecent((list, error) => {
+    if (error) {
+      sendResponse({ ok: false, error });
+      return;
+    }
+    const item = list.items.find((entry) => entry.url === msg.url);
+    if (!item) {
+      sendResponse({ ok: false, error: ERRORS.NO_RECENT_ITEM });
+      return;
+    }
+    // The stored item is the source of truth; the panel only names the URL.
+    writeSavedFromPosition(item.url, item.title, item.position, (saveError) => {
+      if (saveError) {
+        sendResponse({ ok: false, error: saveError });
+        return;
+      }
+      const remaining = { version: 1, items: list.items.filter((entry) => entry.url !== msg.url) };
+      writeRecent(remaining, (writeError) => {
+        sendResponse(writeError ? { ok: false, error: writeError } : { ok: true });
+      });
+    });
+  });
+}
+
+function handleDismissRecentlyClosed(msg, sendResponse) {
+  if (!S.isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
+    return;
+  }
+  readRecent((list, error) => {
+    if (error) {
+      sendResponse({ ok: false, error });
+      return;
+    }
+    const remaining = { version: 1, items: list.items.filter((entry) => entry.url !== msg.url) };
+    writeRecent(remaining, (writeError) => {
+      sendResponse(writeError ? { ok: false, error: writeError } : { ok: true });
+    });
+  });
+}
+
+// --- Side panel ---
+
+function enableSidePanelOnActionClick() {
+  const sidePanel = chrome.sidePanel;
+  if (!sidePanel || typeof sidePanel.setPanelBehavior !== "function") return;
+  try {
+    const result = sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    if (result && typeof result.catch === "function") result.catch(() => {});
+  } catch (_) { /* older Chrome without side panel support */ }
+}
+
+enableSidePanelOnActionClick();
+
 // --- Lifecycle ---
 
 chrome.runtime.onInstalled.addListener(() => {
+  enableSidePanelOnActionClick();
+  LIBRARY.registerContextMenu();
   chrome.storage.local.get(KEYS.SETTINGS, (result) => {
     const stored = result && result[KEYS.SETTINGS];
     if (!stored) {
@@ -544,8 +785,12 @@ chrome.runtime.onInstalled.addListener(() => {
   }
 });
 
+if (chrome.contextMenus && chrome.contextMenus.onClicked && typeof chrome.contextMenus.onClicked.addListener === "function") {
+  chrome.contextMenus.onClicked.addListener((info, tab) => LIBRARY.onContextMenuClick(info, tab));
+}
+
 if (chrome.tabs && chrome.tabs.onRemoved && typeof chrome.tabs.onRemoved.addListener === "function") {
-  chrome.tabs.onRemoved.addListener((tabId) => removeTabRecord(tabId));
+  chrome.tabs.onRemoved.addListener((tabId) => handleTabRemoved(tabId));
 }
 if (chrome.tabs && chrome.tabs.onReplaced && typeof chrome.tabs.onReplaced.addListener === "function") {
   chrome.tabs.onReplaced.addListener((_addedTabId, removedTabId) => removeTabRecord(removedTabId));
@@ -590,6 +835,57 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     case "continueSavedResumePoint":
       handleContinueSavedResumePoint(msg, sendResponse);
+      return true;
+    case "listRecentlyClosed":
+      handleListRecentlyClosed(sendResponse);
+      return true;
+    case "saveRecentlyClosed":
+      handleSaveRecentlyClosed(msg, sendResponse);
+      return true;
+    case "dismissRecentlyClosed":
+      handleDismissRecentlyClosed(msg, sendResponse);
+      return true;
+    case "savePassage":
+      LIBRARY.handlers.savePassage(msg, sender, sendResponse);
+      return true;
+    case "updatePassage":
+      LIBRARY.handlers.updatePassage(msg, sendResponse);
+      return true;
+    case "removePassage":
+      LIBRARY.handlers.removePassage(msg, sendResponse);
+      return true;
+    case "listPassages":
+      LIBRARY.handlers.listPassages(msg, sendResponse);
+      return true;
+    case "saveNote":
+      LIBRARY.handlers.saveNote(msg, sender, sendResponse);
+      return true;
+    case "updateNote":
+      LIBRARY.handlers.updateNote(msg, sendResponse);
+      return true;
+    case "removeNote":
+      LIBRARY.handlers.removeNote(msg, sendResponse);
+      return true;
+    case "listNotes":
+      LIBRARY.handlers.listNotes(msg, sendResponse);
+      return true;
+    case "setPageTags":
+      LIBRARY.handlers.setPageTags(msg, sendResponse);
+      return true;
+    case "listLibrary":
+      LIBRARY.handlers.listLibrary(sendResponse);
+      return true;
+    case "clearLibrary":
+      LIBRARY.handlers.clearLibrary(msg, sendResponse);
+      return true;
+    case "removePageData":
+      LIBRARY.handlers.removePageData(msg, sendResponse);
+      return true;
+    case "exportLibrary":
+      LIBRARY.handlers.exportLibrary(sendResponse);
+      return true;
+    case "importLibrary":
+      LIBRARY.handlers.importLibrary(msg, sendResponse);
       return true;
     default:
       return false;

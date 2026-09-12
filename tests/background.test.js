@@ -362,7 +362,8 @@ describe("ReadTrail service worker", () => {
         late
       );
       expect(late).toHaveBeenCalledWith({ ok: false, error: "page-inactive" });
-      expect(sessionStore.set).not.toHaveBeenCalled();
+      const tabWrites = sessionStore.set.mock.calls.filter(([obj]) => Object.keys(obj).some((k) => k.startsWith("readtrail.tab.v1:")));
+      expect(tabWrites).toEqual([]);
     });
 
     it("deletes the replaced tab's record on tabs.onReplaced", () => {
@@ -386,6 +387,145 @@ describe("ReadTrail service worker", () => {
     });
   });
 
+  describe("recently closed tabs", () => {
+    const url = "https://example.com/long-read";
+    const RECENT = "readtrail.recent.v1";
+    const SAVED = `readtrail.saved.v1:${url}`;
+
+    function closedTab(overrides = {}) {
+      return tabRecord(url, { title: "Long read", position: makePosition({ savedAt: 500 }), ...overrides });
+    }
+
+    it("asks by default: records the closed tab, sets the badge, and deletes the tab record", () => {
+      const h = loadWorker({});
+      h.sessionData[TAB_KEY(1)] = closedTab();
+      h.emit.tabs.onRemoved(1);
+
+      expect(h.sessionData[TAB_KEY(1)]).toBeUndefined();
+      expect(h.sessionData[RECENT].items).toHaveLength(1);
+      expect(h.sessionData[RECENT].items[0]).toEqual(expect.objectContaining({
+        tabId: 1, url, title: "Long read", position: expect.objectContaining({ savedAt: 500 })
+      }));
+      expect(h.chrome.action.setBadgeText).toHaveBeenCalledWith({ text: "1" }, expect.any(Function));
+      expect(h.localData[SAVED]).toBeUndefined();
+    });
+
+    it("always: writes the durable record with a hostname fallback title and no recent item", () => {
+      const h = loadWorker({ closeSave: "always" });
+      h.sessionData[TAB_KEY(1)] = closedTab({ title: "" });
+      h.emit.tabs.onRemoved(1);
+
+      expect(h.localData[SAVED]).toEqual(expect.objectContaining({
+        version: 1, title: "example.com", position: expect.objectContaining({ savedAt: 500 })
+      }));
+      expect(h.sessionData[RECENT]).toBeUndefined();
+      expect(h.sessionData[TAB_KEY(1)]).toBeUndefined();
+    });
+
+    it("never: writes nothing beyond deleting the tab record", () => {
+      const h = loadWorker({ closeSave: "never" });
+      h.sessionData[TAB_KEY(1)] = closedTab();
+      h.emit.tabs.onRemoved(1);
+      expect(h.localData[SAVED]).toBeUndefined();
+      expect(h.sessionData[RECENT]).toBeUndefined();
+      expect(h.sessionData[TAB_KEY(1)]).toBeUndefined();
+    });
+
+    it("skips inactive, positionless, incognito, and already-saved tabs", () => {
+      const h = loadWorker({});
+      h.sessionData[TAB_KEY(1)] = closedTab({ active: false });
+      h.sessionData[TAB_KEY(2)] = closedTab({ position: null });
+      h.sessionData[TAB_KEY(3)] = closedTab({ incognito: true });
+      h.sessionData[TAB_KEY(4)] = closedTab();
+      h.localData[SAVED] = { version: 1, title: "Long read", position: makePosition({ savedAt: 900 }), savedAt: 1 };
+      for (const id of [1, 2, 3, 4]) h.emit.tabs.onRemoved(id);
+      expect(h.sessionData[RECENT]).toBeUndefined();
+      expect(Object.keys(h.sessionData).filter((k) => k.startsWith("readtrail.tab.v1:"))).toEqual([]);
+    });
+
+    it("keeps the newest entry per URL, caps the list at 10, and drops expired items on read", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-09-13T10:00:00Z"));
+      const h = loadWorker({});
+      for (let i = 0; i < 12; i++) {
+        h.sessionData[TAB_KEY(i)] = tabRecord(`https://example.com/p${i}`, { position: makePosition({ savedAt: 500 }) });
+        h.emit.tabs.onRemoved(i);
+      }
+      expect(h.sessionData[RECENT].items).toHaveLength(10);
+      expect(h.sessionData[RECENT].items[0].url).toBe("https://example.com/p11");
+
+      // Same URL closed again replaces its earlier entry instead of duplicating.
+      h.sessionData[TAB_KEY(50)] = tabRecord("https://example.com/p11", { position: makePosition({ savedAt: 600 }) });
+      h.emit.tabs.onRemoved(50);
+      expect(h.sessionData[RECENT].items.filter((i) => i.url === "https://example.com/p11")).toHaveLength(1);
+
+      vi.setSystemTime(new Date("2026-09-13T10:31:00Z"));
+      const done = vi.fn();
+      h.messageHandler({ type: "listRecentlyClosed" }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({ ok: true, items: [] });
+      expect(h.sessionData[RECENT].items).toEqual([]);
+      expect(h.chrome.action.setBadgeText).toHaveBeenLastCalledWith({ text: "" }, expect.any(Function));
+      vi.useRealTimers();
+    });
+
+    it("lists only url, title, and closedAt, never the position", () => {
+      const h = loadWorker({});
+      h.sessionData[TAB_KEY(1)] = closedTab();
+      h.emit.tabs.onRemoved(1);
+      const done = vi.fn();
+      h.messageHandler({ type: "listRecentlyClosed" }, PAGE, done);
+      const items = done.mock.calls[0][0].items;
+      expect(items).toEqual([{ url, title: "Long read", closedAt: expect.any(Number) }]);
+      expect(items[0]).not.toHaveProperty("position");
+    });
+
+    it("saves a recent item from the stored position, removes it, and clears the badge", () => {
+      const h = loadWorker({});
+      h.sessionData[TAB_KEY(1)] = closedTab();
+      h.emit.tabs.onRemoved(1);
+
+      const done = vi.fn();
+      expect(h.messageHandler({ type: "saveRecentlyClosed", url }, PAGE, done)).toBe(true);
+      expect(done).toHaveBeenCalledWith({ ok: true });
+      expect(h.localData[SAVED]).toEqual(expect.objectContaining({ title: "Long read" }));
+      expect(h.sessionData[RECENT].items).toEqual([]);
+      expect(h.chrome.action.setBadgeText).toHaveBeenLastCalledWith({ text: "" }, expect.any(Function));
+
+      const missing = vi.fn();
+      h.messageHandler({ type: "saveRecentlyClosed", url }, PAGE, missing);
+      expect(missing).toHaveBeenCalledWith({ ok: false, error: "no-recent-item" });
+    });
+
+    it("dismisses a recent item without writing a durable record", () => {
+      const h = loadWorker({});
+      h.sessionData[TAB_KEY(1)] = closedTab();
+      h.emit.tabs.onRemoved(1);
+      const done = vi.fn();
+      h.messageHandler({ type: "dismissRecentlyClosed", url }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({ ok: true });
+      expect(h.sessionData[RECENT].items).toEqual([]);
+      expect(h.localData[SAVED]).toBeUndefined();
+    });
+
+    it("leaves the durable record untouched when the saved write fails", () => {
+      const h = loadWorker({}, {}, { localSetError: true });
+      h.sessionData[TAB_KEY(1)] = closedTab();
+      h.emit.tabs.onRemoved(1);
+      const done = vi.fn();
+      h.messageHandler({ type: "saveRecentlyClosed", url }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({ ok: false, error: "save-storage-error" });
+      expect(h.localData[SAVED]).toBeUndefined();
+      expect(h.sessionData[RECENT].items).toHaveLength(1);
+    });
+
+    it("enables opening the side panel from the toolbar action", () => {
+      const h = loadWorker({});
+      expect(h.chrome.sidePanel.setPanelBehavior).toHaveBeenCalledWith({ openPanelOnActionClick: true });
+      h.installedHandler();
+      expect(h.chrome.sidePanel.setPanelBehavior).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("tab info for extension pages", () => {
     const url = "https://example.com/article";
 
@@ -393,14 +533,14 @@ describe("ReadTrail service worker", () => {
       const { messageHandler } = loadWorker({}, {}, { tabs: [{ id: 3, url, title: "Article", incognito: true }] });
       const done = vi.fn();
       expect(messageHandler({ type: "getTabInfo", tabId: 3 }, PAGE, done)).toBe(true);
-      expect(done).toHaveBeenCalledWith({ ok: true, url, title: "Article", incognito: true, supported: true });
+      expect(done).toHaveBeenCalledWith({ ok: true, url, title: "Article", incognito: true, supported: true, excluded: false });
     });
 
     it("marks non-http tabs unsupported and unknown tabs unavailable", () => {
       const { messageHandler } = loadWorker({}, {}, { tabs: [{ id: 3, url: "chrome://extensions", title: "Ext" }] });
       const done = vi.fn();
       messageHandler({ type: "getTabInfo", tabId: 3 }, PAGE, done);
-      expect(done).toHaveBeenCalledWith({ ok: true, url: null, title: "", incognito: false, supported: false });
+      expect(done).toHaveBeenCalledWith({ ok: true, url: null, title: "", incognito: false, supported: false, excluded: false });
 
       const missing = vi.fn();
       messageHandler({ type: "getTabInfo", tabId: 8 }, PAGE, missing);
@@ -415,7 +555,19 @@ describe("ReadTrail service worker", () => {
       });
       const done = vi.fn();
       h.messageHandler({ type: "getTabInfo", tabId: 3 }, PAGE, done);
-      expect(done).toHaveBeenCalledWith({ ok: true, url, title: "From page", incognito: false, supported: true });
+      expect(done).toHaveBeenCalledWith({ ok: true, url, title: "From page", incognito: false, supported: true, excluded: false });
+    });
+
+    it("reports excluded sites and refuses to activate them", () => {
+      const h = loadWorker({ excludedHosts: ["example.com"] }, {}, { tabs: [{ id: 3, url, title: "Article" }] });
+      const info = vi.fn();
+      h.messageHandler({ type: "getTabInfo", tabId: 3 }, PAGE, info);
+      expect(info.mock.calls[0][0]).toEqual(expect.objectContaining({ supported: true, excluded: true }));
+
+      const activate = vi.fn();
+      h.messageHandler({ type: "setPageActive", tabId: 3, url, active: true }, PAGE, activate);
+      expect(activate).toHaveBeenCalledWith({ ok: false, error: "site-excluded" });
+      expect(h.sessionData["readtrail.tab.v1:3"]).toBeUndefined();
     });
 
     it("refuses content-script senders", () => {

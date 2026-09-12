@@ -13,7 +13,11 @@
     dotCount: 20,
     fadeSpeed: 0.9,
     highlightLine: false,
-    highlightColor: "#FFEB3B"
+    highlightColor: "#FFEB3B",
+    // What happens when a tab closes with unsaved reading progress.
+    closeSave: "ask",
+    // Hostnames where ReadTrail never activates; content scripts exit early.
+    excludedHosts: Object.freeze([])
   });
 
   const KEYS = Object.freeze({
@@ -21,6 +25,10 @@
     TAB_PREFIX: "readtrail.tab.v1:",
     SAVED_PREFIX: "readtrail.saved.v1:",
     RECENT: "readtrail.recent.v1",
+    PASSAGE_PREFIX: "readtrail.passage.v1:",
+    NOTE_PREFIX: "readtrail.note.v1:",
+    PAGEMETA_PREFIX: "readtrail.pagemeta.v1:",
+    LIBRARY: "readtrail.library.v1",
     LEGACY_PAGES: "readingPages"
   });
 
@@ -38,7 +46,18 @@
     SAVED_ANCHOR_MAX_DEPTH: 64,
     SAVED_ANCHOR_MAX_INDEX: 100000,
     SAVED_ANCHOR_MAX_OFFSET: 1000000,
-    LANDMARK_ID_MAX: 256
+    LANDMARK_ID_MAX: 256,
+    RECENT_MAX: 10,
+    RECENT_TTL_MS: 30 * 60 * 1000,
+    // Knowledge layer bounds: keep the library well inside the 10 MB
+    // storage.local quota and refuse politely instead of asking for more.
+    TEXT_MAX: 4000,
+    TAG_MAX: 40,
+    TAGS_MAX: 20,
+    LIBRARY_MAX: 1500,
+    IMPORT_MAX_BYTES: 8 * 1024 * 1024,
+    HOST_MAX: 253,
+    EXCLUDED_HOSTS_MAX: 200
   });
 
   const ERRORS = Object.freeze({
@@ -54,6 +73,11 @@
     REMOVE_STORAGE: "remove-storage-error",
     CLEAR_STORAGE: "clear-storage-error",
     NO_SAVED_RECORD: "no-saved-record",
+    NO_RECENT_ITEM: "no-recent-item",
+    NOT_FOUND: "not-found",
+    LIBRARY_FULL: "library-full",
+    NO_SELECTION: "no-selection",
+    SITE_EXCLUDED: "site-excluded",
     TABS_UNAVAILABLE: "tabs-unavailable",
     TAB_CREATE_FAILED: "tab-create-failed",
     TAB_UNAVAILABLE: "tab-unavailable",

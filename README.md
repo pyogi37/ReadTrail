@@ -28,7 +28,7 @@ It explores a simple product question:
 
 <div align="center">
 
-> ⚡ **Status:** Working MVP. The reading guide, anchored pause points, explicit Save for later flow, persistent resume points, Reading Space, local preferences, and automated tests exist today.
+> ⚡ **Status:** Preparing 1.0 for the Chrome Web Store. The reading guide, anchored pause points, explicit Save for later flow, persistent resume points, side panel with saved pages, per-tab state, local preferences, and automated tests exist today.
 
 </div>
 
@@ -49,7 +49,8 @@ It explores a simple product question:
 <td width="50%" valign="top">
 
 - 💾 Explicit **Save for later** with one persistent resume point per exact page URL
-- 📚 A private Reading Space with Continue reading, Remove, and Clear all
+- 🕒 A quiet "Recently closed" list when a tab closes with unsaved reading (ask, always save, or never)
+- 📚 A side panel with your saved pages: Continue reading, Remove, and Clear all
 - 📄 Continue reading opens the page, activates reading lock, and restores the saved position
 - 🔒 Local-only settings and saved-page data—no account, analytics, or page-text collection
 - 🧩 Manifest V3 Chrome extension architecture
@@ -73,9 +74,11 @@ It explores a simple product question:
 
 ![ReadTrail appearance settings with trail style, color, size, opacity, and text highlighting controls](docs/images/appearance-settings.png)
 
-### Return to saved reading
+### Return to saved reading (side panel)
 
 ![ReadTrail Reading Space showing a saved article with Continue reading and Remove actions](docs/images/reading-space.png)
+
+_Screenshot predates the side panel; the same list now lives in the panel._
 
 <br/>
 
@@ -95,12 +98,11 @@ It explores a simple product question:
 ## 🏗️ How It's Structured
 
 ```text
-shared/        Constants and validators used by every surface
-popup/         Quick controls
+shared/        Constants, validators, and the page-controls state machine
+sidepanel/     Side panel: current-tab controls, recently closed, saved pages
 options/       Extension settings
 content/       On-page reading experience
-background/    Extension lifecycle, validation, and per-tab page state
-reading-space/ Saved pages and resume actions
+background/    Extension lifecycle, validation, per-tab state, recently closed
 tests/         Behavioral tests
 docs/          Product vision, architecture, decisions, sprints
 ```
@@ -115,10 +117,10 @@ The extension uses standard HTML, CSS, and JavaScript with Chrome Manifest V3 AP
 2. Open `chrome://extensions` in Chrome
 3. Enable **Developer mode**
 4. Select **Load unpacked** and choose the project directory
-5. Open a text-heavy page and activate ReadTrail from the extension popup
+5. Open a text-heavy page, click the ReadTrail toolbar icon to open the side panel, and turn it on for that page
 6. Move to a line and click once to pause the marker there
-7. Choose **Save for later** in the popup when you want the place to survive a browser restart
-8. Open **Reading Space** from the popup to continue or remove saved pages
+7. Choose **Save for later** in the side panel when you want the place to survive a browser restart
+8. Use **Saved pages** in the side panel to continue or remove saved pages
 
 After changing the source, you do not need to reinstall the extension: click **Reload** on the ReadTrail card in `chrome://extensions`, then refresh any page you want to test.
 
@@ -135,11 +137,11 @@ npm test
 
 - [x] Session restoration to the exact reading position on unchanged pages
 - [x] Explicit Save for later with one durable resume point per exact URL
-- [x] Private Reading Space for continuing and managing saved pages
+- [x] Private saved-pages list (now in the side panel) for continuing and managing saved pages
 - [x] Anchored paused markers that remain attached to their text while scrolling
 - [x] Per-tab reading state so two tabs on the same page never interfere
 - [x] More resilient restoration when a page's structure changes (landmark anchors, structural checks, proportional fallback)
-- [ ] Optional save prompt when closing a tab with unsaved reading progress
+- [x] Optional save offer when closing a tab with unsaved reading progress (side panel, no notifications)
 - [ ] Reflection and knowledge connections built on top of reliable reading memory
 
 > Roadmap items are planned work, not completed claims.
