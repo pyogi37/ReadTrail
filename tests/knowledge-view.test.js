@@ -207,6 +207,7 @@ const searchResultsEl = () => document.querySelector("#searchResults");
 const passageListEl = () => document.querySelector("#passageList");
 const noteListEl = () => document.querySelector("#noteList");
 const exportButtonEl = () => document.querySelector("#exportButton");
+const clearKnowledgeButtonEl = () => document.querySelector("#clearKnowledgeButton");
 const importInputEl = () => document.querySelector("#importInput");
 const importReplaceEl = () => document.querySelector("#importReplace");
 const pageTagsInputEl = () => document.querySelector("#pageTagsInput");
@@ -389,6 +390,27 @@ describe("knowledge view editing", () => {
 });
 
 describe("knowledge view remove", () => {
+  it("confirms and clears passages, notes, and page tags without clearing saved pages", () => {
+    const h = loadSidePanel();
+    setupLibrary(h, {
+      saved: [{ url: HTTP_TAB.url, title: HTTP_TAB.title }],
+      passages: [makePassage()],
+      notes: [makeNote()],
+      pagemeta: [{ version: 1, url: HTTP_TAB.url, tags: ["research"], updatedAt: 1 }]
+    });
+    vi.spyOn(globalThis, "confirm").mockReturnValue(true);
+
+    clearKnowledgeButtonEl().click();
+    expect(h.runtimeMsgs).toContainEqual({
+      type: "clearLibrary", kinds: ["passages", "notes", "pagemeta"]
+    });
+    h.shiftType("clearLibrary")({ ok: true, removed: 3 });
+    setupLibrary(h, { saved: [{ url: HTTP_TAB.url, title: HTTP_TAB.title }] });
+
+    expect(knowledgeStatusEl().textContent).toContain("cleared");
+    expect(clearKnowledgeButtonEl().disabled).toBe(true);
+  });
+
   it("Remove sends removePassage and reloads the list on success", () => {
     const h = loadSidePanel();
     setupLibrary(h, { passages: [makePassage({ id: "p1" })] });

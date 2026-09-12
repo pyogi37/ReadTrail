@@ -113,6 +113,7 @@
     const used = usedEntries();
     els.usage.textContent = `${used} of ${library.limit} passages and notes used`;
     els.usage.classList.toggle("is-full", used >= library.limit);
+    els.clearButton.disabled = used === 0 && library.pagemeta.length === 0;
 
     const hasContent = library.passages.length > 0 || library.notes.length > 0;
     els.empty.hidden = hasContent;
@@ -509,6 +510,21 @@
     });
   }
 
+  function onClearKnowledge() {
+    const confirmed = globalThis.confirm("Clear all passages, notes, and page tags? Saved reading positions and settings will stay intact.");
+    if (!confirmed) return;
+    els.clearButton.disabled = true;
+    sendMessage({ type: "clearLibrary", kinds: ["passages", "notes", "pagemeta"] }, (res) => {
+      if (!res || !res.ok) {
+        setStatus("Could not clear passages and notes. Please try again.", "alert");
+        render();
+        return;
+      }
+      setStatus("Passages, notes, and page tags cleared.", "status");
+      load();
+    });
+  }
+
   function onImportFile(file) {
     const EI = exportImport();
     if (!EI || !file) return;
@@ -549,6 +565,7 @@
       usage: $("libraryUsage"),
       status: $("knowledgeStatus"),
       exportButton: $("exportButton"),
+      clearButton: $("clearKnowledgeButton"),
       importInput: $("importInput"),
       importReplace: $("importReplace")
     };
@@ -557,6 +574,7 @@
       render();
     });
     els.exportButton.addEventListener("click", onExport);
+    els.clearButton.addEventListener("click", onClearKnowledge);
     els.importInput.addEventListener("change", () => {
       const file = els.importInput.files && els.importInput.files[0];
       if (file) onImportFile(file);
