@@ -817,7 +817,7 @@ if (chrome.tabs && chrome.tabs.onRemoved && typeof chrome.tabs.onRemoved.addList
   chrome.tabs.onRemoved.addListener((tabId) => handleTabRemoved(tabId));
 }
 if (chrome.tabs && chrome.tabs.onReplaced && typeof chrome.tabs.onReplaced.addListener === "function") {
-  chrome.tabs.onReplaced.addListener((_addedTabId, removedTabId) => removeTabRecord(removedTabId));
+  chrome.tabs.onReplaced.addListener((_addedTabId, removedTabId) => handleTabRemoved(removedTabId));
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

@@ -380,11 +380,14 @@ describe("ReadTrail service worker", () => {
       expect(tabWrites).toEqual([]);
     });
 
-    it("deletes the replaced tab's record on tabs.onReplaced", () => {
+    it("runs save-on-close before deleting a replaced tab's record", () => {
       const { emit, sessionData } = loadWorker({});
-      sessionData[TAB_KEY(4)] = tabRecord(urlA);
+      sessionData[TAB_KEY(4)] = tabRecord(urlA, { title: "Replaced read", position: makePosition() });
       emit.tabs.onReplaced(9, 4);
       expect(sessionData[TAB_KEY(4)]).toBeUndefined();
+      expect(sessionData["readtrail.recent.v1"].items).toEqual([
+        expect.objectContaining({ tabId: 4, url: urlA, title: "Replaced read" })
+      ]);
     });
 
     it("reports session storage failures without inventing state", () => {
