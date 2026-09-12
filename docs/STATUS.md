@@ -2,7 +2,7 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** Phases 1 to 5 implemented. Remaining before 1.0 submission: Codex review, manual Chrome QA run, owner items below.
+- **Current phase:** Phases 1 to 5 implemented and reviewed. Ten review findings are listed in `docs/HANDOFF-2026-09-13.md`; fix 1 to 5 before submission. Then manual Chrome QA and owner items.
 - **Active sprint doc:** `docs/sprints/SPRINT-007.md`
 - **Last commit:** see `git log -1`
 - **Release plan:** 1.0 = Phases 1 to 5 (done in code). 1.1 = BYO-key AI (Sprint 008, not started).
@@ -34,6 +34,8 @@ Rewritten at the end of every working session. Keep under 40 lines.
 - Optional: install `impeccable` and run `/audit` + `/polish` on `sidepanel/` and `options/`.
 
 ## Next task
+
+Start from `docs/HANDOFF-2026-09-13.md` (findings and owner actions).
 
 1. Codex: review `git diff 82cad57..HEAD` against Sprints 003 to 007 acceptance criteria; report defects with file:line.
 2. Codex or owner: run `docs/qa/MANUAL-QA.md` in Chrome with the zip from `npm run package`; log in `docs/qa/runs/`.
