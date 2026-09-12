@@ -23,6 +23,11 @@
 | 5 | `security-review`, `design:ux-copy` | `web-quality-audit`, `webapp-testing` |
 | 6 | `claude-api` | `best-practices` |
 
+## Design skills for the side panel (Phase 3)
+
+- **impeccable** (`pbakaus/impeccable`): a design-language skill for Claude Code, Codex, and Gemini with `/craft`, `/audit`, `/polish`, `/normalize` passes and a 58-rule anti-pattern detector. Use `/audit` then `/polish` on `sidepanel/` and `options/` once they exist, and `/normalize` to keep spacing, radii, and type sizes consistent. Install per its README (owner action; third-party code is not pulled in by agents).
+- **Motion**: the Framer Motion skills found online target React. ReadTrail is plain JS, so motion stays CSS-only: 150 to 250 ms ease-out transitions for state changes, no layout-shifting animation, everything behind `prefers-reduced-motion`. The `frontend-design-review` Codex skill already covers motion review; no extra skill is needed.
+
 ## Token rules
 
 1. One phase per session. Start from `docs/STATUS.md` and `git log -3`, not the whole repo.

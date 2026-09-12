@@ -89,7 +89,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     expect(readingLockNoticeEl().hidden).toBe(false);
     expect(readingLockNoticeEl().textContent).toContain("reserves primary clicks");
     expect(h.runtimeMsgs).toEqual([
-      { type: "getPageState", url: HTTP_TAB.url },
+      { type: "getPageState", tabId: HTTP_TAB.id, url: HTTP_TAB.url },
       { type: "getSavedResumePoint", url: HTTP_TAB.url }
     ]);
     // Never touches settings.enabled or chrome.storage.local.
@@ -143,7 +143,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
 
     clickToggle(true);
     // runtimeMsgs[0] is getPageState, [1] is getSavedResumePoint.
-    expect(h.runtimeMsgs[2]).toEqual({ type: "setPageActive", url: HTTP_TAB.url, active: true });
+    expect(h.runtimeMsgs[2]).toEqual({ type: "setPageActive", tabId: HTTP_TAB.id, url: HTTP_TAB.url, active: true });
 
     h.pending.runtime[2]({ ok: true, state: makeState(true) });
     expect(globalThis.chrome.tabs.sendMessage).toHaveBeenCalledWith(
@@ -230,7 +230,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
 
     h.pending.tab[0]({ ok: true });
     expect(h.runtimeMsgs.filter((m) => m.type === "setPageActive")).
-      toEqual([{ type: "setPageActive", url: HTTP_TAB.url, active: false }]);
+      toEqual([{ type: "setPageActive", tabId: HTTP_TAB.id, url: HTTP_TAB.url, active: false }]);
 
     h.pending.runtime[2]({ ok: true, state: makeState(false) });
     expect(statusEl().textContent).toBe("Use on this page");
@@ -247,7 +247,7 @@ describe("ReadTrail popup current-page activation (RT-005A)", () => {
     h.pending.tab[0](null);
 
     expect(h.runtimeMsgs.filter((m) => m.type === "setPageActive")).
-      toEqual([{ type: "setPageActive", url: HTTP_TAB.url, active: false }]);
+      toEqual([{ type: "setPageActive", tabId: HTTP_TAB.id, url: HTTP_TAB.url, active: false }]);
     h.pending.runtime[2]({ ok: true, state: makeState(false) });
     expect(statusEl().textContent).toBe("Use on this page");
     expect(errorEl().hidden).toBe(true);

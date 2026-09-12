@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
+const sharedConstants = fs.readFileSync(path.join(root, "shared/constants.js"), "utf8");
 const script = fs.readFileSync(path.join(root, "content/content.js"), "utf8");
 
 // jsdom shares the window/document across tests in a file, so event listeners
@@ -125,6 +126,7 @@ function loadContent({
   });
   window.removeEventListener = vi.fn((type, handler) => { removedWin.push(type); REAL_WIN_REMOVE(type, handler); });
 
+  window.eval(sharedConstants);
   window.eval(script);
 
   const getSaves = () => sentMsgs.filter((m) => m.type === "savePagePosition");
@@ -866,5 +868,53 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "setPageActive", active: false });
     expect(renderer.removeCanvas).toHaveBeenCalled();
     expect(renderer.clear).toHaveBeenCalled();
+  });
+});
+
+describe("ReadTrail content per-tab protocol (RT-304)", () => {
+  beforeEach(() => {
+    resetDom();
+    document.body.innerHTML = "";
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("reads defaults from the shared module instead of a local copy", () => {
+    expect(script).not.toMatch(/highlightColor:\s*"#FFEB3B"/);
+    expect(globalThis.ReadTrailShared.DEFAULTS.highlightColor).toBe("#FFEB3B");
+  });
+
+  it("includes the document title in every session checkpoint", async () => {
+    document.title = "A long article";
+    const { runtimeMessageHandler, getSaves } = loadContent();
+    await flush();
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    expect(getSaves()).toHaveLength(1);
+    expect(getSaves()[0]).toEqual(expect.objectContaining({
+      type: "savePagePosition",
+      url: location.href,
+      mode: "following",
+      title: "A long article"
+    }));
+  });
+
+  it("answers pageInfo on a dormant page without activating anything", async () => {
+    document.title = "Dormant page";
+    const { runtimeMessageHandler, addedDoc, renderer, getSaves } = loadContent();
+    await flush();
+
+    const response = vi.fn();
+    const keepOpen = runtimeMessageHandler({ type: "pageInfo" }, {}, response);
+    expect(response).toHaveBeenCalledWith({ url: location.href, title: "Dormant page" });
+    expect(keepOpen).toBe(false);
+    expect(addedDoc).toEqual([]);
+    expect(renderer.ensureCanvas).not.toHaveBeenCalled();
+    expect(getSaves()).toHaveLength(0);
   });
 });

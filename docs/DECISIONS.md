@@ -16,3 +16,7 @@ Append-only log. Each entry: date, decision, why, consequences. Product-level de
 10. **Claude Code leads, Codex reviews and drives browser QA, OpenCode free tier does bounded boilerplate.** `AGENTS.md` is canonical; `CLAUDE.md` imports it.
 11. **License is MIT.**
 12. **No new production dependencies, no bundler.** Playwright is a devDependency only for the e2e harness.
+
+## 2026-09-13: Design tooling
+
+13. **Side-panel polish uses the `impeccable` skill; motion stays CSS-only.** Why: impeccable runs in both Claude Code and Codex so both agents apply the same design rules; Framer Motion skills assume React, which ReadTrail does not use. Consequence: owner installs impeccable before Phase 3; every transition respects `prefers-reduced-motion`.

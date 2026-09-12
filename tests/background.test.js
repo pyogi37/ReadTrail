@@ -1,123 +1,49 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import fs from "node:fs";
-import path from "node:path";
+import { loadServiceWorker, senders } from "./helpers/chrome-mock.js";
 
-const root = path.resolve(import.meta.dirname, "..");
-const script = fs.readFileSync(path.join(root, "background/service-worker.js"), "utf8");
-
-// Build a mock chrome.storage.* store backed by an in-memory object so reads
-// observe earlier writes, while `set`/`get`/`remove` remain callable mocks.
-// The `errors` map can mark a specific operation to fail by setting
-// `chrome.runtime.lastError` inside its callback, WITHOUT mutating stored data
-// (so failure tests remain meaningful). `set`/`remove` error specs may be a
-// boolean or a function (obj, perOperationCallIndex) => boolean for call-scoped
-// failures.
-function createBackedStore(initial = {}, errors = {}) {
-  const data = { ...initial };
-  const getCalls = { n: 0 };
-  const setCalls = { n: 0 };
-  const removeCalls = { n: 0 };
-
-  function shouldFail(spec, arg, callIndex) {
-    if (typeof spec === "function") return Boolean(spec(arg, callIndex));
-    return Boolean(spec);
-  }
-
-  const get = vi.fn((key, callback) => {
-    getCalls.n += 1;
-    const fail = shouldFail(errors.get, key, getCalls.n);
-    let result = {};
-    if (key === null || key === undefined) {
-      result = { ...data };
-    } else if (typeof key === "string") {
-      if (Object.prototype.hasOwnProperty.call(data, key)) result[key] = data[key];
-    } else if (Array.isArray(key)) {
-      for (const k of key) {
-        if (Object.prototype.hasOwnProperty.call(data, k)) result[k] = data[k];
-      }
-    }
-    chrome.runtime.lastError = fail ? { message: "operation failed" } : null;
-    callback(result);
-    chrome.runtime.lastError = null;
+// Compatibility wrapper around the shared helper so the persistent-service
+// suite keeps its `loadWorker(settings, _pages, options)` call shape.
+function loadWorker(storedSettings, _storedPages = {}, options = {}) {
+  const local = storedSettings !== undefined ? { settings: storedSettings } : {};
+  return loadServiceWorker({
+    local,
+    errors: {
+      local: { get: options.localGetError, set: options.localSetError, remove: options.localRemoveError },
+      session: { get: options.sessionGetError, set: options.sessionSetError, remove: options.sessionRemoveError }
+    },
+    disableTabs: options.disableTabs,
+    onTabsCreate: options.onTabsCreate,
+    tabsCreateError: options.tabsCreateError,
+    tabs: options.tabs
   });
-
-  const set = vi.fn((obj, callback) => {
-    setCalls.n += 1;
-    const fail = shouldFail(errors.set, obj, setCalls.n);
-    chrome.runtime.lastError = fail ? { message: "operation failed" } : null;
-    if (!fail) Object.assign(data, obj);
-    callback?.();
-    chrome.runtime.lastError = null;
-  });
-
-  const remove = vi.fn((keys, callback) => {
-    removeCalls.n += 1;
-    const fail = shouldFail(errors.remove, keys, removeCalls.n);
-    const list = Array.isArray(keys) ? keys : [keys];
-    chrome.runtime.lastError = fail ? { message: "operation failed" } : null;
-    if (!fail) for (const k of list) delete data[k];
-    callback?.();
-    chrome.runtime.lastError = null;
-  });
-
-  return { get, set, remove, data };
 }
 
-function loadWorker(storedSettings, storedPages = {}, options = {}) {
-  let installedHandler;
-  let messageHandler;
-  const localInit = storedSettings !== undefined ? { settings: storedSettings } : {};
-  const sessionInit = storedPages ? { readingPages: storedPages } : {};
-  const local = createBackedStore(localInit, {
-    get: options.localGetError,
-    set: options.localSetError,
-    remove: options.localRemoveError
-  });
-  const session = createBackedStore(sessionInit, {
-    get: options.sessionGetError,
-    set: options.sessionSetError,
-    remove: options.sessionRemoveError
-  });
-  const onTabsCreate = options.onTabsCreate;
-  const tabsMock = {
-    create: vi.fn((props, callback) => {
-      if (onTabsCreate) {
-        onTabsCreate(props, callback);
-      } else if (options.tabsCreateError) {
-        chrome.runtime.lastError = { message: "create failed" };
-        callback();
-        chrome.runtime.lastError = null;
-      } else {
-        callback({ id: 123, url: props.url });
-      }
-    })
-  };
+const TAB_KEY = (id) => `readtrail.tab.v1:${id}`;
+const PAGE = senders.page("popup/popup.html");
 
-  globalThis.chrome = {
-    runtime: {
-      lastError: null,
-      onInstalled: { addListener: vi.fn((handler) => { installedHandler = handler; }) },
-      onMessage: { addListener: vi.fn((handler) => { messageHandler = handler; }) }
-    },
-    storage: {
-      local: { get: local.get, set: local.set, remove: local.remove },
-      session: { get: session.get, set: session.set, remove: session.remove }
-    },
-    tabs: options.disableTabs ? undefined : tabsMock
-  };
-
-  window.eval(script);
+function makePosition(overrides = {}) {
   return {
-    installedHandler,
-    messageHandler,
-    localSet: local.set,
-    sessionSet: session.set,
-    localStore: local,
-    sessionStore: session,
-    localData: local.data,
-    sessionData: session.data,
-    tabsCreate: chrome.tabs ? chrome.tabs.create : undefined,
-    chromeRef: chrome
+    anchor: { version: 1, path: [0, 1], offset: 2 },
+    viewportOffset: 40,
+    scrollY: 300,
+    scrollRatio: 0.25,
+    savedAt: 123,
+    ...overrides
+  };
+}
+
+function tabRecord(url, overrides = {}) {
+  return {
+    version: 1,
+    url,
+    title: "",
+    active: true,
+    mode: "following",
+    position: null,
+    incognito: false,
+    origin: "user",
+    updatedAt: 1,
+    ...overrides
   };
 }
 
@@ -143,14 +69,17 @@ describe("ReadTrail service worker", () => {
     );
   });
 
-  it("removes the legacy global enable setting during extension updates", () => {
-    const { installedHandler, localSet } = loadWorker({ enabled: false, style: "underline" });
+  it("removes the legacy global enable setting and the legacy session map on update", () => {
+    const { installedHandler, localSet, sessionStore, sessionData } = loadWorker({ enabled: false, style: "underline" });
+    sessionData.readingPages = { "https://example.com/a": { version: 1, active: true, mode: "following", position: null } };
     installedHandler();
 
     expect(localSet).toHaveBeenCalledWith({
       settings: expect.objectContaining({ style: "underline" })
     });
     expect(localSet.mock.calls[0][0].settings).not.toHaveProperty("enabled");
+    expect(sessionStore.remove).toHaveBeenCalledWith("readingPages", expect.any(Function));
+    expect(sessionData).not.toHaveProperty("readingPages");
   });
 
   it("does not expose or accept the removed global enable setting", () => {
@@ -162,108 +91,317 @@ describe("ReadTrail service worker", () => {
     expect(messageHandler({ type: "toggleEnabled", enabled: false }, {}, vi.fn())).toBe(false);
   });
 
-  it("returns an inactive default for a page without session state", () => {
-    const { messageHandler, sessionSet } = loadWorker({});
-    const sendResponse = vi.fn();
+  describe("settings writes", () => {
+    it("accepts a validated partial update and merges it over stored values", () => {
+      const { messageHandler, localData } = loadWorker({ style: "dots", size: 40 });
+      const done = vi.fn();
 
-    expect(messageHandler(
-      { type: "getPageState", url: "https://example.com/article#part" },
-      {},
-      sendResponse
-    )).toBe(true);
-    expect(sendResponse).toHaveBeenCalledWith({
-      ok: true,
-      state: { version: 1, active: false, mode: "following", position: null }
+      expect(messageHandler({ type: "setSettings", settings: { color: "#123456" } }, PAGE, done)).toBe(true);
+      expect(done).toHaveBeenCalledWith({
+        ok: true,
+        settings: expect.objectContaining({ style: "dots", size: 40, color: "#123456" })
+      });
+      expect(localData.settings).toEqual(expect.objectContaining({ style: "dots", size: 40, color: "#123456" }));
     });
-    expect(sessionSet).not.toHaveBeenCalled();
+
+    it("rejects malformed or unknown settings without writing", () => {
+      const { messageHandler, localSet, localData } = loadWorker({ style: "dots" });
+      const bad = [
+        { size: "30" },
+        { color: "red" },
+        { style: "laser" },
+        { enabled: true },
+        { opacity: 2 },
+        "nope",
+        null
+      ];
+      for (const settings of bad) {
+        const done = vi.fn();
+        expect(messageHandler({ type: "setSettings", settings }, PAGE, done)).toBe(true);
+        expect(done).toHaveBeenCalledWith({ ok: false, error: "invalid-input" });
+      }
+      expect(localSet).not.toHaveBeenCalled();
+      expect(localData.settings).toEqual({ style: "dots" });
+    });
   });
 
-  it("isolates activation by exact page URL and retains an existing position", () => {
-    const url = "https://example.com/article?edition=1#part";
-    const position = {
-      anchor: { version: 1, path: [0, 1], offset: 2 },
-      viewportOffset: 40,
-      scrollY: 300,
-      scrollRatio: 0.25,
-      savedAt: 123
-    };
-    const storedPages = {
-      [url]: { version: 1, active: true, mode: "frozen", position }
-    };
-    const { messageHandler, sessionSet } = loadWorker({}, storedPages);
-    const sendResponse = vi.fn();
+  describe("per-tab session state", () => {
+    const urlA = "https://example.com/article?edition=1#part";
+    const urlB = "https://example.com/other";
 
-    expect(messageHandler({ type: "setPageActive", url, active: false }, {}, sendResponse)).toBe(true);
-    expect(sessionSet).toHaveBeenCalledWith({
-      readingPages: expect.objectContaining({
-        [url]: expect.objectContaining({ active: false, mode: "frozen", position })
-      })
-    }, expect.any(Function));
-    expect(storedPages[url].active).toBe(true);
-    expect(storedPages["https://example.com/article?edition=2#part"]).toBeUndefined();
+    it("returns an inactive default for a tab without session state", () => {
+      const { messageHandler, sessionSet } = loadWorker({});
+      const sendResponse = vi.fn();
+
+      expect(messageHandler({ type: "getPageState", url: urlA }, senders.content(1, urlA), sendResponse)).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith({
+        ok: true,
+        state: { version: 1, active: false, mode: "following", position: null }
+      });
+      expect(sessionSet).not.toHaveBeenCalled();
+    });
+
+    it("activates one tab without touching another tab on the same exact URL", () => {
+      const { messageHandler, sessionData } = loadWorker({});
+
+      const done = vi.fn();
+      expect(messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, PAGE, done)).toBe(true);
+      expect(done).toHaveBeenCalledWith({
+        ok: true,
+        state: { version: 1, active: true, mode: "following", position: null }
+      });
+      expect(sessionData[TAB_KEY(1)]).toEqual(expect.objectContaining({ url: urlA, active: true, origin: "user" }));
+      expect(sessionData[TAB_KEY(2)]).toBeUndefined();
+
+      const other = vi.fn();
+      messageHandler({ type: "getPageState", url: urlA }, senders.content(2, urlA), other);
+      expect(other).toHaveBeenCalledWith({
+        ok: true,
+        state: { version: 1, active: false, mode: "following", position: null }
+      });
+    });
+
+    it("keeps positions separate across two active tabs on the same URL", () => {
+      const { messageHandler, sessionData } = loadWorker({});
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, PAGE, vi.fn());
+      messageHandler({ type: "setPageActive", tabId: 2, url: urlA, active: true }, PAGE, vi.fn());
+
+      messageHandler(
+        { type: "savePagePosition", url: urlA, mode: "frozen", position: makePosition({ scrollY: 100 }), title: " Tab one " },
+        senders.content(1, urlA),
+        vi.fn()
+      );
+      messageHandler(
+        { type: "savePagePosition", url: urlA, mode: "following", position: makePosition({ scrollY: 900 }) },
+        senders.content(2, urlA),
+        vi.fn()
+      );
+
+      expect(sessionData[TAB_KEY(1)]).toEqual(expect.objectContaining({
+        mode: "frozen",
+        title: "Tab one",
+        position: expect.objectContaining({ scrollY: 100 })
+      }));
+      expect(sessionData[TAB_KEY(2)]).toEqual(expect.objectContaining({
+        mode: "following",
+        position: expect.objectContaining({ scrollY: 900 })
+      }));
+    });
+
+    it("turning off one tab leaves the other tab's record byte-identical", () => {
+      const before = tabRecord(urlA, { mode: "frozen", position: makePosition() });
+      const { messageHandler, sessionData } = loadWorker({}, {}, {});
+      sessionData[TAB_KEY(2)] = before;
+      const snapshot = JSON.stringify(before);
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, PAGE, vi.fn());
+
+      const done = vi.fn();
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: false }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({
+        ok: true,
+        state: { version: 1, active: false, mode: "following", position: null }
+      });
+      expect(sessionData[TAB_KEY(1)].active).toBe(false);
+      expect(JSON.stringify(sessionData[TAB_KEY(2)])).toBe(snapshot);
+    });
+
+    it("retains the position when a tab is turned off and reports the record for its exact URL only", () => {
+      const { messageHandler, sessionData } = loadWorker({});
+      sessionData[TAB_KEY(1)] = tabRecord(urlA, { mode: "frozen", position: makePosition() });
+
+      const done = vi.fn();
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: false }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({
+        ok: true,
+        state: { version: 1, active: false, mode: "frozen", position: makePosition() }
+      });
+
+      const drifted = vi.fn();
+      messageHandler({ type: "getPageState", url: urlB }, senders.content(1, urlB), drifted);
+      expect(drifted).toHaveBeenCalledWith({
+        ok: true,
+        state: { version: 1, active: false, mode: "following", position: null }
+      });
+    });
+
+    it("deactivating a tab with no record replies with the default and writes nothing", () => {
+      const { messageHandler, sessionSet } = loadWorker({});
+      const done = vi.fn();
+      messageHandler({ type: "setPageActive", tabId: 5, url: urlA, active: false }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({
+        ok: true,
+        state: { version: 1, active: false, mode: "following", position: null }
+      });
+      expect(sessionSet).not.toHaveBeenCalled();
+    });
+
+    it("activating a tab that navigated replaces the stale record for the old URL", () => {
+      const { messageHandler, sessionData } = loadWorker({});
+      sessionData[TAB_KEY(1)] = tabRecord(urlB, { mode: "frozen", position: makePosition() });
+
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, PAGE, vi.fn());
+      expect(sessionData[TAB_KEY(1)]).toEqual(expect.objectContaining({ url: urlA, active: true, position: null }));
+    });
+
+    it("rejects position writes for inactive tabs, other URLs, and malformed records", () => {
+      const { messageHandler, sessionSet, sessionData } = loadWorker({});
+      sessionData[TAB_KEY(1)] = tabRecord(urlA, { active: false });
+      sessionData[TAB_KEY(2)] = tabRecord(urlB);
+      const position = makePosition();
+
+      const inactive = vi.fn();
+      messageHandler({ type: "savePagePosition", url: urlA, mode: "following", position }, senders.content(1, urlA), inactive);
+      expect(inactive).toHaveBeenCalledWith({ ok: false, error: "page-inactive" });
+
+      const otherUrl = vi.fn();
+      messageHandler({ type: "savePagePosition", url: urlA, mode: "following", position }, senders.content(2, urlA), otherUrl);
+      expect(otherUrl).toHaveBeenCalledWith({ ok: false, error: "page-inactive" });
+
+      const noRecord = vi.fn();
+      messageHandler({ type: "savePagePosition", url: urlA, mode: "following", position }, senders.content(3, urlA), noRecord);
+      expect(noRecord).toHaveBeenCalledWith({ ok: false, error: "page-inactive" });
+
+      const malformed = vi.fn();
+      messageHandler(
+        { type: "savePagePosition", url: urlA, mode: "following", position: { ...position, scrollRatio: 2 } },
+        senders.content(2, urlB),
+        malformed
+      );
+      expect(malformed).toHaveBeenCalledWith({ ok: false, error: "invalid-input" });
+
+      const badUrl = vi.fn();
+      messageHandler({ type: "setPageActive", tabId: 1, url: "chrome://extensions", active: true }, PAGE, badUrl);
+      expect(badUrl).toHaveBeenCalledWith({ ok: false, error: "invalid-input" });
+
+      expect(sessionSet).not.toHaveBeenCalled();
+    });
+
+    it("records incognito from the content-script sender on checkpoints", () => {
+      const { messageHandler, sessionData } = loadWorker({});
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, PAGE, vi.fn());
+      messageHandler(
+        { type: "savePagePosition", url: urlA, mode: "following", position: makePosition() },
+        senders.content(1, urlA, { incognito: true }),
+        vi.fn()
+      );
+      expect(sessionData[TAB_KEY(1)].incognito).toBe(true);
+    });
+
+    it("keys content-script senders by sender.tab.id and ignores a spoofed tabId", () => {
+      const { messageHandler, sessionData } = loadWorker({});
+      sessionData[TAB_KEY(1)] = tabRecord(urlA);
+      sessionData[TAB_KEY(99)] = tabRecord(urlA);
+
+      messageHandler(
+        { type: "savePagePosition", tabId: 99, url: urlA, mode: "frozen", position: makePosition({ scrollY: 7 }) },
+        senders.content(1, urlA),
+        vi.fn()
+      );
+      expect(sessionData[TAB_KEY(1)].position).toEqual(expect.objectContaining({ scrollY: 7 }));
+      expect(sessionData[TAB_KEY(99)].position).toBeNull();
+    });
+
+    it("refuses extension pages without a tabId and unknown senders", () => {
+      const { messageHandler, sessionSet } = loadWorker({});
+
+      const missing = vi.fn();
+      messageHandler({ type: "setPageActive", url: urlA, active: true }, PAGE, missing);
+      expect(missing).toHaveBeenCalledWith({ ok: false, error: "invalid-input" });
+
+      const foreign = vi.fn();
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, { url: "https://evil.example/x" }, foreign);
+      expect(foreign).toHaveBeenCalledWith({ ok: false, error: "invalid-sender" });
+
+      const empty = vi.fn();
+      messageHandler({ type: "getPageState", tabId: 1, url: urlA }, {}, empty);
+      expect(empty).toHaveBeenCalledWith({ ok: false, error: "invalid-sender" });
+
+      const badTab = vi.fn();
+      messageHandler({ type: "getPageState", url: urlA }, { tab: { id: -1, url: urlA } }, badTab);
+      expect(badTab).toHaveBeenCalledWith({ ok: false, error: "invalid-sender" });
+
+      expect(sessionSet).not.toHaveBeenCalled();
+    });
+
+    it("deletes the record when its tab closes and refuses a late checkpoint afterwards", () => {
+      const { messageHandler, emit, sessionData, sessionStore } = loadWorker({});
+      sessionData[TAB_KEY(1)] = tabRecord(urlA, { position: makePosition() });
+      sessionData[TAB_KEY(2)] = tabRecord(urlB);
+
+      emit.tabs.onRemoved(1);
+      expect(sessionStore.remove).toHaveBeenCalledWith(TAB_KEY(1), expect.any(Function));
+      expect(sessionData[TAB_KEY(1)]).toBeUndefined();
+      expect(sessionData[TAB_KEY(2)]).toBeDefined();
+
+      const late = vi.fn();
+      messageHandler(
+        { type: "savePagePosition", url: urlA, mode: "following", position: makePosition() },
+        senders.content(1, urlA),
+        late
+      );
+      expect(late).toHaveBeenCalledWith({ ok: false, error: "page-inactive" });
+      expect(sessionStore.set).not.toHaveBeenCalled();
+    });
+
+    it("deletes the replaced tab's record on tabs.onReplaced", () => {
+      const { emit, sessionData } = loadWorker({});
+      sessionData[TAB_KEY(4)] = tabRecord(urlA);
+      emit.tabs.onReplaced(9, 4);
+      expect(sessionData[TAB_KEY(4)]).toBeUndefined();
+    });
+
+    it("reports session storage failures without inventing state", () => {
+      const { messageHandler } = loadWorker({}, {}, { sessionGetError: true });
+      const done = vi.fn();
+      messageHandler({ type: "getPageState", url: urlA }, senders.content(1, urlA), done);
+      expect(done).toHaveBeenCalledWith({ ok: false, error: "session-read-error" });
+
+      const failingWrite = loadWorker({}, {}, { sessionSetError: true });
+      const write = vi.fn();
+      failingWrite.messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, PAGE, write);
+      expect(write).toHaveBeenCalledWith({ ok: false, error: "session-storage-error" });
+      expect(failingWrite.sessionData[TAB_KEY(1)]).toBeUndefined();
+    });
   });
 
-  it("saves a validated position only for an active page", () => {
+  describe("tab info for extension pages", () => {
     const url = "https://example.com/article";
-    const position = {
-      anchor: { version: 1, path: [0, 1], offset: 2 },
-      viewportOffset: 40,
-      scrollY: 300,
-      scrollRatio: 0.25,
-      savedAt: 123
-    };
-    const { messageHandler, sessionSet } = loadWorker({}, {
-      [url]: { version: 1, active: true, mode: "following", position: null }
+
+    it("returns url, title, incognito, and support for a visible tab", () => {
+      const { messageHandler } = loadWorker({}, {}, { tabs: [{ id: 3, url, title: "Article", incognito: true }] });
+      const done = vi.fn();
+      expect(messageHandler({ type: "getTabInfo", tabId: 3 }, PAGE, done)).toBe(true);
+      expect(done).toHaveBeenCalledWith({ ok: true, url, title: "Article", incognito: true, supported: true });
     });
-    const sendResponse = vi.fn();
 
-    expect(messageHandler(
-      { type: "savePagePosition", url, mode: "frozen", position },
-      {},
-      sendResponse
-    )).toBe(true);
-    expect(sessionSet).toHaveBeenCalledWith({
-      readingPages: expect.objectContaining({
-        [url]: { version: 1, active: true, mode: "frozen", position }
-      })
-    }, expect.any(Function));
-    expect(sendResponse).toHaveBeenCalledWith({
-      ok: true,
-      state: { version: 1, active: true, mode: "frozen", position }
+    it("marks non-http tabs unsupported and unknown tabs unavailable", () => {
+      const { messageHandler } = loadWorker({}, {}, { tabs: [{ id: 3, url: "chrome://extensions", title: "Ext" }] });
+      const done = vi.fn();
+      messageHandler({ type: "getTabInfo", tabId: 3 }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({ ok: true, url: null, title: "", incognito: false, supported: false });
+
+      const missing = vi.fn();
+      messageHandler({ type: "getTabInfo", tabId: 8 }, PAGE, missing);
+      expect(missing).toHaveBeenCalledWith({ ok: false, error: "tab-unavailable" });
     });
-  });
 
-  it("rejects writes for inactive pages and malformed records", () => {
-    const url = "https://example.com/article";
-    const position = {
-      anchor: { version: 1, path: [0], offset: 0 },
-      viewportOffset: 10,
-      scrollY: 0,
-      scrollRatio: 0,
-      savedAt: 123
-    };
-    const { messageHandler, sessionSet } = loadWorker({});
-    const sendResponse = vi.fn();
+    it("falls back to the content script's pageInfo when the tab URL is hidden", () => {
+      const h = loadWorker({}, {}, { tabs: [{ id: 3, title: "" }] });
+      h.chrome.tabs.sendMessage.mockImplementation((_id, msg, cb) => {
+        expect(msg).toEqual({ type: "pageInfo" });
+        cb({ url, title: "From page" });
+      });
+      const done = vi.fn();
+      h.messageHandler({ type: "getTabInfo", tabId: 3 }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({ ok: true, url, title: "From page", incognito: false, supported: true });
+    });
 
-    expect(messageHandler(
-      { type: "savePagePosition", url, mode: "following", position },
-      {},
-      sendResponse
-    )).toBe(true);
-    expect(sendResponse).toHaveBeenCalledWith({ ok: false, error: "page-inactive" });
-    expect(sessionSet).not.toHaveBeenCalled();
-
-    expect(messageHandler(
-      { type: "savePagePosition", url, mode: "following", position: { ...position, scrollRatio: 2 } },
-      {},
-      vi.fn()
-    )).toBe(false);
-    expect(messageHandler(
-      { type: "setPageActive", url: "chrome://extensions", active: true },
-      {},
-      vi.fn()
-    )).toBe(false);
-    expect(sessionSet).not.toHaveBeenCalled();
+    it("refuses content-script senders", () => {
+      const { messageHandler } = loadWorker({}, {}, { tabs: [{ id: 3, url }] });
+      const done = vi.fn();
+      messageHandler({ type: "getTabInfo", tabId: 3 }, senders.content(3, url), done);
+      expect(done).toHaveBeenCalledWith({ ok: false, error: "invalid-sender" });
+    });
   });
 
   describe("persistent saved-page service", () => {
@@ -617,53 +755,60 @@ describe("ReadTrail service worker", () => {
       expect(localData["readtrail.unrelated"]).toBe(unrelated);
     });
 
-    it("continues: seeds session state active/frozen with persistent position before opening the tab", () => {
-      const storedRecord = {
-        version: 1,
-        title: "A",
-        position: position({ scrollY: 42 }),
-        savedAt: 500
-      };
+    it("continue: creates the tab first, then seeds that tab's record before replying", () => {
+      const storedRecord = { version: 1, title: "A", position: position({ scrollY: 42 }), savedAt: 500 };
       const { messageHandler, localStore, sessionData, tabsCreate } = loadWorker(
         {},
         {},
         {
           onTabsCreate: (_props, callback) => {
-            // At the moment the tab is opened, the session must already be
-            // seeded with the persistent position (proving order).
-            const state = sessionData.readingPages && sessionData.readingPages[urlA];
-            expect(state).toMatchObject({
-              version: 1,
-              active: true,
-              mode: "frozen",
-              position: expect.objectContaining({ scrollY: 42 })
-            });
-            callback({ id: 9, url: urlA });
+            // No tab record may exist before the tab id is known.
+            expect(Object.keys(sessionData).filter((k) => k.startsWith("readtrail.tab.v1:"))).toEqual([]);
+            callback({ id: 9, url: urlA, incognito: false });
           }
         }
       );
       localStore.data[savedKeyFor(urlA)] = storedRecord;
 
       const done = vi.fn();
-      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, {}, done)).toBe(true);
+      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, PAGE, done)).toBe(true);
       expect(tabsCreate).toHaveBeenCalledWith({ url: urlA }, expect.any(Function));
+      expect(sessionData[TAB_KEY(9)]).toEqual(expect.objectContaining({
+        url: urlA,
+        title: "A",
+        active: true,
+        mode: "frozen",
+        origin: "continue",
+        position: expect.objectContaining({ scrollY: 42 })
+      }));
       expect(done).toHaveBeenCalledWith({ ok: true, tabId: 9 });
+    });
+
+    it("continue: a tab already open on the same URL gains no record", () => {
+      const storedRecord = { version: 1, title: "A", position: position({ scrollY: 42 }), savedAt: 500 };
+      const { messageHandler, localStore, sessionData } = loadWorker({});
+      localStore.data[savedKeyFor(urlA)] = storedRecord;
+      sessionData[TAB_KEY(1)] = tabRecord(urlA, { active: false });
+      const before = JSON.stringify(sessionData[TAB_KEY(1)]);
+
+      const done = vi.fn();
+      messageHandler({ type: "continueSavedResumePoint", url: urlA }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({ ok: true, tabId: expect.any(Number) });
+      expect(JSON.stringify(sessionData[TAB_KEY(1)])).toBe(before);
     });
 
     it("continue: takes no valid tab without stored record and never writes persistent data", () => {
       const storedRecord = { version: 1, title: "A", position: position({ scrollY: 7 }), savedAt: 500 };
-      const { messageHandler, localData, sessionData, tabsCreate } = loadWorker({});
+      const { messageHandler, localData, sessionSet, tabsCreate } = loadWorker({});
       const keyA = savedKeyFor(urlA);
       localData[keyA] = storedRecord;
-      const before = { ...localData[keyA] };
 
       const done = vi.fn();
-      expect(messageHandler({ type: "continueSavedResumePoint", url: urlB }, {}, done)).toBe(true);
+      expect(messageHandler({ type: "continueSavedResumePoint", url: urlB }, PAGE, done)).toBe(true);
       expect(done).toHaveBeenCalledWith({ ok: false, error: "no-saved-record" });
       expect(tabsCreate).not.toHaveBeenCalled();
-      expect(sessionData.readingPages || {}).not.toHaveProperty(urlB);
+      expect(sessionSet).not.toHaveBeenCalled();
       expect(localData[keyA]).toEqual(storedRecord);
-      expect(before).toEqual(storedRecord);
     });
 
     it("continue: does not modify the persistent record", () => {
@@ -672,34 +817,26 @@ describe("ReadTrail service worker", () => {
       localData[savedKeyFor(urlA)] = storedRecord;
 
       const done = vi.fn();
-      messageHandler({ type: "continueSavedResumePoint", url: urlA }, {}, done);
-      expect(done).toHaveBeenCalledWith({ ok: true, tabId: 123 });
+      messageHandler({ type: "continueSavedResumePoint", url: urlA }, PAGE, done);
+      expect(done).toHaveBeenCalledWith({ ok: true, tabId: expect.any(Number) });
       expect(localData[savedKeyFor(urlA)]).toEqual(storedRecord);
     });
 
-    it("continue: rolls back session state exactly when tab creation fails", () => {
+    it("continue: reports a seed failure with the tab id and leaves the tab dormant", () => {
       const storedRecord = { version: 1, title: "A", position: position({ scrollY: 5 }), savedAt: 500 };
-      const previous = { version: 1, active: true, mode: "following", position: position({ scrollY: 999 }) };
-      const { messageHandler, localStore, sessionStore, sessionData, tabsCreate } = loadWorker(
+      const { messageHandler, localStore, sessionData, tabsCreate } = loadWorker(
         {},
-        { [urlA]: previous },
-        { onTabsCreate: (_props, callback) => callback(null) }
+        {},
+        { onTabsCreate: (_props, callback) => callback({ id: 9, url: urlA }), sessionSetError: true }
       );
       localStore.data[savedKeyFor(urlA)] = storedRecord;
-      // Retain the same object identity so restoration is verified exactly.
-      const previousValue = sessionData.readingPages[urlA];
 
       const done = vi.fn();
-      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, {}, done)).toBe(true);
-      expect(tabsCreate).toHaveBeenCalledWith({ url: urlA }, expect.any(Function));
-      expect(done).toHaveBeenCalledWith({ ok: false, error: "tab-create-failed" });
-      // The session seed was rolled back to the exact previous state.
-      expect(sessionData.readingPages[urlA]).toEqual(previousValue);
-      expect(sessionData.readingPages[urlA]).toEqual(previous);
-      // The persistent record was never touched.
+      messageHandler({ type: "continueSavedResumePoint", url: urlA }, PAGE, done);
+      expect(tabsCreate).toHaveBeenCalled();
+      expect(done).toHaveBeenCalledWith({ ok: false, error: "session-storage-error", tabId: 9 });
+      expect(sessionData[TAB_KEY(9)]).toBeUndefined();
       expect(localStore.data[savedKeyFor(urlA)]).toEqual(storedRecord);
-      // Rollback wrote session storage (the removed seed either restored or removed the key).
-      expect(sessionStore.set).toHaveBeenCalledTimes(2);
     });
 
     it("persist: a failed storage write does not store the record", () => {
@@ -709,81 +846,29 @@ describe("ReadTrail service worker", () => {
       const done = vi.fn();
       expect(failing.messageHandler(msg, senderFor(urlA), done)).toBe(true);
       expect(done).toHaveBeenCalledWith({ ok: false, error: "save-storage-error" });
-      // No data was mutated on the failed write.
       expect(failing.localData).not.toHaveProperty(savedKeyFor(urlA));
     });
 
-    it("continue: fails safely when chrome.tabs is unavailable", () => {
+    it("continue: fails safely when chrome.tabs is unavailable, writing nothing", () => {
       const storedRecord = { version: 1, title: "A", position: position({ scrollY: 13 }), savedAt: 500 };
-      const previous = { version: 1, active: true, mode: "following", position: position({ scrollY: 999 }) };
-      const { messageHandler, localStore, sessionStore } = loadWorker(
-        {},
-        { [urlA]: previous },
-        { disableTabs: true }
-      );
+      const { messageHandler, localStore, sessionSet } = loadWorker({}, {}, { disableTabs: true });
       localStore.data[savedKeyFor(urlA)] = storedRecord;
 
       const done = vi.fn();
-      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, {}, done)).toBe(true);
+      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, PAGE, done)).toBe(true);
       expect(done).toHaveBeenCalledWith({ ok: false, error: "tabs-unavailable" });
-      expect(sessionStore.set).toHaveBeenCalledTimes(2); // seed + rollback
-      // Seed was rolled back to the exact previous state.
-      expect(sessionStore.data.readingPages[urlA]).toEqual(previous);
+      expect(sessionSet).not.toHaveBeenCalled();
     });
 
-    it("continue: returns a stable error when the session get fails, without seeding or opening a tab", () => {
-      const storedRecord = { version: 1, title: "A", position: position({ scrollY: 21 }), savedAt: 500 };
-      const { messageHandler, localStore, sessionStore, sessionData, tabsCreate } = loadWorker(
-        {},
-        {},
-        { sessionGetError: true }
-      );
-      localStore.data[savedKeyFor(urlA)] = storedRecord;
-
-      const done = vi.fn();
-      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, {}, done)).toBe(true);
-      expect(done).toHaveBeenCalledWith({ ok: false, error: "session-read-error" });
-      expect(sessionStore.set).not.toHaveBeenCalled();
-      expect(tabsCreate).not.toHaveBeenCalled();
-      expect((sessionData.readingPages || {})[urlA]).toBeUndefined();
-    });
-
-    it("continue: reports tab-create lastError as tab-create-failed after rolling back", () => {
+    it("continue: reports tab-create lastError as tab-create-failed with no session write", () => {
       const storedRecord = { version: 1, title: "A", position: position({ scrollY: 29 }), savedAt: 500 };
-      const previous = { version: 1, active: true, mode: "following", position: position({ scrollY: 999 }) };
-      const { messageHandler, localStore, sessionStore, sessionData } = loadWorker(
-        {},
-        { [urlA]: previous },
-        { tabsCreateError: true }
-      );
+      const { messageHandler, localStore, sessionSet } = loadWorker({}, {}, { tabsCreateError: true });
       localStore.data[savedKeyFor(urlA)] = storedRecord;
 
       const done = vi.fn();
-      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, {}, done)).toBe(true);
+      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, PAGE, done)).toBe(true);
       expect(done).toHaveBeenCalledWith({ ok: false, error: "tab-create-failed" });
-      expect(sessionStore.set).toHaveBeenCalledTimes(2); // seed + rollback
-      expect(sessionData.readingPages[urlA]).toEqual(previous);
-    });
-
-    it("continue: reports a distinct error when the rollback session write itself fails", () => {
-      const storedRecord = { version: 1, title: "A", position: position({ scrollY: 37 }), savedAt: 500 };
-      const previous = { version: 1, active: true, mode: "following", position: position({ scrollY: 999 }) };
-      // Seed set (set #1) succeeds; rollback set (set #2) fails.
-      const { messageHandler, localStore, sessionStore, tabsCreate } = loadWorker(
-        {},
-        { [urlA]: previous },
-        {
-          onTabsCreate: (_props, callback) => callback(null),
-          sessionSetError: (_obj, n) => n === 2
-        }
-      );
-      localStore.data[savedKeyFor(urlA)] = storedRecord;
-
-      const done = vi.fn();
-      expect(messageHandler({ type: "continueSavedResumePoint", url: urlA }, {}, done)).toBe(true);
-      expect(done).toHaveBeenCalledWith({ ok: false, error: "rollback-storage-error" });
-      expect(tabsCreate).toHaveBeenCalledWith({ url: urlA }, expect.any(Function));
-      expect(sessionStore.set).toHaveBeenCalledTimes(2);
+      expect(sessionSet).not.toHaveBeenCalled();
     });
   });
 });

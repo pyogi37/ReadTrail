@@ -1,0 +1,110 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { loadShared } from "./helpers/chrome-mock.js";
+
+let S;
+
+function position(overrides = {}) {
+  return {
+    anchor: { version: 1, path: [0, 1], offset: 2 },
+    viewportOffset: 40,
+    scrollY: 300,
+    scrollRatio: 0.25,
+    savedAt: 123,
+    ...overrides
+  };
+}
+
+describe("shared constants and validators", () => {
+  beforeEach(() => {
+    delete globalThis.ReadTrailShared;
+    S = loadShared();
+  });
+
+  it("exposes frozen defaults, keys, and error codes on one namespace", () => {
+    expect(Object.isFrozen(S.DEFAULTS)).toBe(true);
+    expect(S.DEFAULTS).toEqual({
+      style: "ruler",
+      color: "#FF6B6B",
+      size: 30,
+      opacity: 0.3,
+      dotCount: 20,
+      fadeSpeed: 0.9,
+      highlightLine: false,
+      highlightColor: "#FFEB3B"
+    });
+    expect(S.KEYS.TAB_PREFIX).toBe("readtrail.tab.v1:");
+    expect(S.KEYS.SAVED_PREFIX).toBe("readtrail.saved.v1:");
+    expect(S.ERRORS.PAGE_INACTIVE).toBe("page-inactive");
+  });
+
+  it("validates page URLs strictly", () => {
+    expect(S.isValidPageUrl("https://example.com/a?b=1#c")).toBe(true);
+    expect(S.isValidPageUrl("http://example.com/")).toBe(true);
+    expect(S.isValidPageUrl("chrome://extensions")).toBe(false);
+    expect(S.isValidPageUrl("https://example.com")).toBe(false); // not normalized
+    expect(S.isValidPageUrl("")).toBe(false);
+    expect(S.isValidPageUrl("x".repeat(9000))).toBe(false);
+    expect(S.isValidPageUrl(42)).toBe(false);
+  });
+
+  it("validates and clones positions without leaking unknown fields", () => {
+    const p = position({ extra: "no" });
+    p.anchor.extra = "no";
+    expect(S.isValidPosition(p)).toBe(true);
+    expect(S.clonePosition(p)).toEqual(position());
+    expect(S.isValidPosition(position({ scrollRatio: 2 }))).toBe(false);
+    expect(S.isValidPosition(position({ anchor: { version: 1, path: [], offset: 0 } }))).toBe(false);
+    expect(S.isValidPosition(position({ anchor: { version: 2, path: [0], offset: 0 } }))).toBe(false);
+  });
+
+  it("bounds durable positions and titles", () => {
+    expect(S.isValidSavedPosition(position())).toBe(true);
+    expect(S.isValidSavedPosition(position({ anchor: { version: 1, path: new Array(65).fill(0), offset: 0 } }))).toBe(false);
+    expect(S.isValidSavedPosition(position({ anchor: { version: 1, path: [100001], offset: 0 } }))).toBe(false);
+    expect(S.isValidSavedRecord({ version: 1, title: "A", position: position(), savedAt: 1 })).toBe(true);
+    expect(S.isValidSavedRecord({ version: 1, title: " A", position: position(), savedAt: 1 })).toBe(false);
+    expect(S.isValidSavedRecord({ version: 1, title: "A".repeat(513), position: position(), savedAt: 1 })).toBe(false);
+    expect(S.isValidSavedRecord({ version: 2, title: "A", position: position(), savedAt: 1 })).toBe(false);
+  });
+
+  it("validates and clones tab records", () => {
+    const record = {
+      version: 1,
+      url: "https://example.com/a",
+      title: "A",
+      active: true,
+      mode: "frozen",
+      position: position(),
+      incognito: false,
+      origin: "continue",
+      updatedAt: 5,
+      extra: true
+    };
+    expect(S.isValidTabRecord(record)).toBe(true);
+    const clone = S.cloneTabRecord(record);
+    expect(clone).not.toHaveProperty("extra");
+    expect(clone.position).not.toBe(record.position);
+    expect(S.isValidTabRecord({ ...record, origin: "magic" })).toBe(false);
+    expect(S.isValidTabRecord({ ...record, url: "about:blank" })).toBe(false);
+    expect(S.isValidTabRecord({ ...record, incognito: "no" })).toBe(false);
+    expect(S.clonePageState(record)).toEqual({ version: 1, active: true, mode: "frozen", position: position() });
+  });
+
+  it("validates settings patches and rejects unknown keys", () => {
+    expect(S.isValidSettings({})).toBe(true);
+    expect(S.isValidSettings({ style: "dots", size: 10, opacity: 1, dotCount: 50, fadeSpeed: 0.99 })).toBe(true);
+    expect(S.isValidSettings({ size: "30" })).toBe(false);
+    expect(S.isValidSettings({ color: "red" })).toBe(false);
+    expect(S.isValidSettings({ style: "laser" })).toBe(false);
+    expect(S.isValidSettings({ enabled: true })).toBe(false);
+    expect(S.isValidSettings({ size: 101 })).toBe(false);
+    expect(S.isValidSettings(null)).toBe(false);
+    expect(S.isValidSettings([])).toBe(false);
+  });
+
+  it("merges settings over defaults, dropping invalid stored values and legacy flags", () => {
+    const merged = S.mergeSettings({ style: "dots", size: "bad", enabled: true }, { color: "#000000" });
+    expect(merged).toEqual({ ...S.DEFAULTS, style: "dots", color: "#000000" });
+    expect(S.mergeSettings(undefined, null)).toEqual(S.DEFAULTS);
+  });
+});

@@ -53,7 +53,7 @@ It explores a simple product question:
 - 📄 Continue reading opens the page, activates reading lock, and restores the saved position
 - 🔒 Local-only settings and saved-page data—no account, analytics, or page-text collection
 - 🧩 Manifest V3 Chrome extension architecture
-- 🧪 128 automated behavioral tests with Vitest
+- 🧪 150+ automated behavioral tests with Vitest
 
 </td>
 </tr>
@@ -95,16 +95,17 @@ It explores a simple product question:
 ## 🏗️ How It's Structured
 
 ```text
-popup/       Quick controls
-options/     Extension settings
-content/     On-page reading experience
-background/  Extension lifecycle and page state
+shared/        Constants and validators used by every surface
+popup/         Quick controls
+options/       Extension settings
+content/       On-page reading experience
+background/    Extension lifecycle, validation, and per-tab page state
 reading-space/ Saved pages and resume actions
-tests/       Behavioral tests
-docs/        Product vision and engineering notes
+tests/         Behavioral tests
+docs/          Product vision, architecture, decisions, sprints
 ```
 
-The extension uses standard HTML, CSS, and JavaScript with Chrome Manifest V3 APIs. A canvas overlay renders the reading trail, while extension storage and background logic coordinate preferences and page state.
+The extension uses standard HTML, CSS, and JavaScript with Chrome Manifest V3 APIs. A canvas overlay renders the reading trail. The service worker is the single trust boundary: it validates every message, keeps temporary reading state per tab in session storage, and owns every durable write. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 <br/>
 
@@ -136,6 +137,7 @@ npm test
 - [x] Explicit Save for later with one durable resume point per exact URL
 - [x] Private Reading Space for continuing and managing saved pages
 - [x] Anchored paused markers that remain attached to their text while scrolling
+- [x] Per-tab reading state so two tabs on the same page never interfere
 - [ ] More resilient restoration when a page's structure changes significantly
 - [ ] Optional save prompt when closing a tab with unsaved reading progress
 - [ ] Reflection and knowledge connections built on top of reliable reading memory

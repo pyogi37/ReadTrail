@@ -1,13 +1,21 @@
-const DEFAULTS = {
-  style: "ruler",
-  color: "#FF6B6B",
-  size: 30,
-  opacity: 0.3,
-  dotCount: 20,
-  fadeSpeed: 0.9,
-  highlightLine: false,
-  highlightColor: "#FFEB3B"
-};
+// Defaults come from shared/constants.js (loaded by options.html). Settings are
+// read and written only through the service worker so validation stays in one
+// place.
+const DEFAULTS = (globalThis.ReadTrailShared && globalThis.ReadTrailShared.DEFAULTS) || {};
+
+function sendMessage(message, callback) {
+  try {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) {
+        callback(null);
+        return;
+      }
+      callback(response);
+    });
+  } catch (_) {
+    callback(null);
+  }
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -57,7 +65,9 @@ function save() {
     highlightLine: els.highlightLine.checked,
     highlightColor: els.highlightColor.value
   };
-  chrome.storage.local.set({ settings }, () => announce("Settings saved"));
+  sendMessage({ type: "setSettings", settings }, (res) => {
+    announce(res && res.ok ? "Settings saved" : "Settings could not be saved");
+  });
   updateVisibility();
 }
 
@@ -72,8 +82,8 @@ function updateVisibility() {
 }
 
 function loadSettings() {
-  chrome.storage.local.get("settings", (result) => {
-    const s = { ...DEFAULTS, ...(result.settings || {}) };
+  sendMessage({ type: "getSettings" }, (result) => {
+    const s = { ...DEFAULTS, ...(result && typeof result === "object" ? result : {}) };
 
     els.color.value = s.color;
     setRangeValue(els.size, els.sizeValue, s.size, " pixels");
@@ -129,9 +139,9 @@ els.color.addEventListener("input", save);
 els.highlightLine.addEventListener("change", () => { updateVisibility(); save(); });
 els.highlightColor.addEventListener("input", save);
 els.resetBtn.addEventListener("click", () => {
-  chrome.storage.local.set({ settings: { ...DEFAULTS } }, () => {
+  sendMessage({ type: "setSettings", settings: { ...DEFAULTS } }, (res) => {
     loadSettings();
-    announce("Defaults restored");
+    announce(res && res.ok ? "Defaults restored" : "Defaults could not be restored");
   });
 });
 

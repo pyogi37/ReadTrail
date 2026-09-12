@@ -10,9 +10,9 @@ const saveButton = document.getElementById("saveButton");
 const saveStatus = document.getElementById("saveStatus");
 const readingSpaceButton = document.getElementById("readingSpaceButton");
 
-// State is scoped to the exact page currently in the active tab. The popup
-// never touches settings.enabled or chrome.storage.local; activation belongs to
-// the service worker's session-only page records.
+// State is scoped to the exact page in the active tab. Every page-state
+// message names the tab so the service worker keys the session record by tab
+// id; the popup never touches chrome.storage directly.
 let tabId = null;
 let tabUrl = null;
 let pageState = null; // Last valid page state observed from the service worker.
@@ -177,7 +177,7 @@ function loadState() {
     justSaved = false;
     hasSavedRecord = false;
 
-    sendRuntimeMessage({ type: "getPageState", url: tabUrl }, (res) => {
+    sendRuntimeMessage({ type: "getPageState", tabId, url: tabUrl }, (res) => {
       if (!res || !res.ok || !isPageState(res.state, Boolean(res.state && res.state.active))) {
         state = "error";
         render();
@@ -210,7 +210,7 @@ function enablePage() {
 
   // 1. Ask the service worker to mark the exact URL active and require the
   //    returned state, which is what the content script must be told.
-  sendRuntimeMessage({ type: "setPageActive", url: url, active: true }, (res) => {
+  sendRuntimeMessage({ type: "setPageActive", tabId, url: url, active: true }, (res) => {
     if (!res || !res.ok || !isPageState(res.state, true)) {
       state = "error";
       changing = false;
@@ -225,7 +225,7 @@ function enablePage() {
       // A null delivery means the content script is unavailable; anything other
       // than {ok:true} is a delivery failure that must roll the service back.
       if (!delivery || !delivery.ok) {
-        sendRuntimeMessage({ type: "setPageActive", url: url, active: false }, (rollback) => {
+        sendRuntimeMessage({ type: "setPageActive", tabId, url: url, active: false }, (rollback) => {
           if (!rollback || !rollback.ok || !isPageState(rollback.state, false)) {
             state = "error";
             changing = false;
@@ -273,7 +273,7 @@ function disablePage() {
     // contentRes.ok === true (save acknowledged).
 
     // 2. Update the service-worker record and reflect the new state.
-    sendRuntimeMessage({ type: "setPageActive", url: tabUrl, active: false }, (res) => {
+    sendRuntimeMessage({ type: "setPageActive", tabId, url: tabUrl, active: false }, (res) => {
       if (!res || !res.ok || !isPageState(res.state, false)) {
         // Keep the page active if we can; otherwise fall back to inactive.
         reactivateAfterFailedDisable(previousState);

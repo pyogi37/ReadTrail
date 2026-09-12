@@ -11,14 +11,20 @@ describe("ReadTrail manifest integration", () => {
     expect(manifest).not.toHaveProperty("host_permissions");
   });
 
-  it("loads position capture before the lifecycle content script", () => {
+  it("loads shared constants and position capture before the lifecycle content script", () => {
     const scripts = manifest.content_scripts[0].js;
 
     expect(scripts).toEqual([
+      "shared/constants.js",
       "content/renderer.js",
       "content/position.js",
       "content/content.js"
     ]);
+  });
+
+  it("keeps the service worker a classic script so importScripts can load shared modules", () => {
+    expect(manifest.background.service_worker).toBe("background/service-worker.js");
+    expect(manifest.background).not.toHaveProperty("type");
   });
 
   it("describes the reading-position product instead of a cursor effect", () => {

@@ -1,16 +1,11 @@
 (() => {
   "use strict";
 
-  const DEFAULTS = {
-    style: "ruler",
-    color: "#FF6B6B",
-    size: 30,
-    opacity: 0.3,
-    dotCount: 20,
-    fadeSpeed: 0.9,
-    highlightLine: false,
-    highlightColor: "#FFEB3B"
-  };
+  // Defaults come from shared/constants.js, which the manifest loads first.
+  // An empty fallback keeps the script inert rather than throwing if the
+  // shared module is ever missing.
+  const SHARED = (typeof globalThis !== "undefined" && globalThis.ReadTrailShared) || null;
+  const DEFAULTS = SHARED && SHARED.DEFAULTS ? SHARED.DEFAULTS : {};
   const THROTTLE_MS = 1000; // Maximum frequency for session checkpoint writes.
   const CLICK_DEFER_MS = 400; // Supported double-click window before a single click commits.
 
@@ -130,7 +125,13 @@
     };
     try {
       chrome.runtime.sendMessage(
-        { type: "savePagePosition", url: initialUrl, mode: saveMode, position: position },
+        {
+          type: "savePagePosition",
+          url: initialUrl,
+          mode: saveMode,
+          position: position,
+          title: typeof document !== "undefined" && typeof document.title === "string" ? document.title : ""
+        },
         (response) => {
           if (chrome.runtime.lastError || !response || !response.ok) {
             finish(false);
@@ -193,7 +194,9 @@
         priority: el.style.getPropertyPriority("background-color")
       };
       el.classList.add("readtrail-highlight");
-      const color = /^#[0-9a-f]{6}$/i.test(settings.highlightColor) ? settings.highlightColor : DEFAULTS.highlightColor;
+      const color = /^#[0-9a-f]{6}$/i.test(settings.highlightColor)
+        ? settings.highlightColor
+        : (DEFAULTS.highlightColor || "#FFEB3B");
       const r = parseInt(color.slice(1, 3), 16);
       const g = parseInt(color.slice(3, 5), 16);
       const b = parseInt(color.slice(5, 7), 16);
@@ -662,6 +665,18 @@
     }
     if (msg.type === "saveForLater") {
       return handleSaveForLater(sendResponse);
+    }
+    if (msg.type === "pageInfo") {
+      // Lets extension pages learn the exact URL and title of a tab whose URL
+      // Chrome does not expose to them. Works on dormant pages and reads no
+      // page content beyond the document title.
+      if (sendResponse) {
+        sendResponse({
+          url: (typeof location !== "undefined" && location.href) || "",
+          title: (typeof document !== "undefined" && typeof document.title === "string") ? document.title : ""
+        });
+      }
+      return false;
     }
   }
 

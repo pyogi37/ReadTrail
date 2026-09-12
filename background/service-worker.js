@@ -1,210 +1,376 @@
-const DEFAULTS = {
-  style: "ruler",
-  color: "#FF6B6B",
-  size: 30,
-  opacity: 0.3,
-  dotCount: 20,
-  fadeSpeed: 0.9,
-  highlightLine: false,
-  highlightColor: "#FFEB3B"
-};
+// ReadTrail service worker: the single trust boundary. Every runtime message
+// and stored record is validated here. The worker keeps no in-memory state so
+// Chrome may suspend it at any time; every handler reads, acts, and writes.
+importScripts("../shared/constants.js", "../shared/validators.js");
 
-const PAGE_STATE_VERSION = 1;
+const S = globalThis.ReadTrailShared;
+const { DEFAULTS, KEYS, VERSIONS, LIMITS, ERRORS } = S;
+
 const DEFAULT_PAGE_STATE = Object.freeze({
-  version: PAGE_STATE_VERSION,
+  version: VERSIONS.PAGE_STATE,
   active: false,
   mode: "following",
   position: null
 });
 
-const SAVED_PREFIX = "readtrail.saved.v1:";
-const SAVED_VERSION = 1;
-const SAVED_TITLE_MAX = 512;
-// Bound durable anchor geometry so malformed records cannot carry enormous
-// integers into persistent storage. Session-state anchors stay unconstrained.
-const SAVED_ANCHOR_MAX_DEPTH = 64;
-const SAVED_ANCHOR_MAX_INDEX = 100000;
-const SAVED_ANCHOR_MAX_OFFSET = 1000000;
-
-function isRecord(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function isFiniteNumber(value) {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function isValidPageUrl(value) {
-  if (typeof value !== "string" || value.length === 0 || value.length > 8192) return false;
-  try {
-    const parsed = new URL(value);
-    return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.href === value;
-  } catch (_) {
-    return false;
-  }
-}
-
-function isValidAnchor(anchor) {
-  return isRecord(anchor)
-    && anchor.version === 1
-    && Array.isArray(anchor.path)
-    && anchor.path.length > 0
-    && anchor.path.every((index) => Number.isInteger(index) && index >= 0)
-    && Number.isInteger(anchor.offset)
-    && anchor.offset >= 0;
-}
-
-function isValidPosition(position) {
-  return isRecord(position)
-    && isValidAnchor(position.anchor)
-    && isFiniteNumber(position.viewportOffset)
-    && isFiniteNumber(position.scrollY)
-    && position.scrollY >= 0
-    && isFiniteNumber(position.scrollRatio)
-    && position.scrollRatio >= 0
-    && position.scrollRatio <= 1
-    && isFiniteNumber(position.savedAt)
-    && position.savedAt >= 0;
-}
-
-function clonePosition(position) {
-  return {
-    anchor: {
-      version: position.anchor.version,
-      path: [...position.anchor.path],
-      offset: position.anchor.offset
-    },
-    viewportOffset: position.viewportOffset,
-    scrollY: position.scrollY,
-    scrollRatio: position.scrollRatio,
-    savedAt: position.savedAt
-  };
-}
-
-function isValidPageState(state) {
-  return isRecord(state)
-    && state.version === PAGE_STATE_VERSION
-    && typeof state.active === "boolean"
-    && (state.mode === "following" || state.mode === "frozen")
-    && (state.position === null || isValidPosition(state.position));
-}
-
-function clonePageState(state = DEFAULT_PAGE_STATE) {
-  return {
-    version: PAGE_STATE_VERSION,
-    active: state.active,
-    mode: state.mode,
-    position: state.position ? clonePosition(state.position) : null
-  };
-}
+// --- Storage accessors ---
 
 function getSessionStore() {
   return chrome.storage && chrome.storage.session ? chrome.storage.session : null;
-}
-
-function readPages(callback) {
-  const store = getSessionStore();
-  if (!store) {
-    callback(null);
-    return;
-  }
-  store.get("readingPages", (result) => {
-    callback(isRecord(result && result.readingPages) ? result.readingPages : {});
-  });
-}
-
-function writePages(pages, state, sendResponse) {
-  const store = getSessionStore();
-  if (!store) {
-    sendResponse({ ok: false, error: "session-storage-unavailable" });
-    return;
-  }
-  store.set({ readingPages: pages }, () => {
-    if (chrome.runtime.lastError) {
-      sendResponse({ ok: false, error: "session-storage-error" });
-      return;
-    }
-    sendResponse({ ok: true, state: clonePageState(state) });
-  });
-}
-
-function isValidSavedPosition(position) {
-  return isValidPosition(position)
-    && position.anchor.path.length <= SAVED_ANCHOR_MAX_DEPTH
-    && position.anchor.path.every((index) => index <= SAVED_ANCHOR_MAX_INDEX)
-    && position.anchor.offset <= SAVED_ANCHOR_MAX_OFFSET;
-}
-
-function isValidSavedRecord(record) {
-  return isRecord(record)
-    && record.version === SAVED_VERSION
-    && typeof record.title === "string"
-    && record.title.length > 0
-    && record.title.length <= SAVED_TITLE_MAX
-    && record.title === record.title.trim()
-    && isValidSavedPosition(record.position)
-    && isFiniteNumber(record.savedAt)
-    && record.savedAt >= 0;
-}
-
-function cloneSavedRecord(record) {
-  return {
-    version: record.version,
-    title: record.title,
-    position: clonePosition(record.position),
-    savedAt: record.savedAt
-  };
-}
-
-function savedKey(url) {
-  return SAVED_PREFIX + url;
-}
-
-function urlFromSavedKey(key) {
-  if (typeof key !== "string" || !key.startsWith(SAVED_PREFIX)) return null;
-  const url = key.slice(SAVED_PREFIX.length);
-  return isValidPageUrl(url) ? url : null;
 }
 
 function getLocalStore() {
   return chrome.storage && chrome.storage.local ? chrome.storage.local : null;
 }
 
+function tabKey(tabId) {
+  return KEYS.TAB_PREFIX + String(tabId);
+}
+
+function savedKey(url) {
+  return KEYS.SAVED_PREFIX + url;
+}
+
+function urlFromSavedKey(key) {
+  if (typeof key !== "string" || !key.startsWith(KEYS.SAVED_PREFIX)) return null;
+  const url = key.slice(KEYS.SAVED_PREFIX.length);
+  return S.isValidPageUrl(url) ? url : null;
+}
+
+function extensionOrigin() {
+  try {
+    return chrome.runtime && typeof chrome.runtime.getURL === "function"
+      ? chrome.runtime.getURL("")
+      : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// --- Tab identity trust rule ---
+//
+// A content script is identified only by sender.tab.id; any tabId it claims is
+// ignored. An extension page (side panel, popup, options) has no sender.tab and
+// must name the tab it is acting on; it is trusted only when its sender URL is
+// inside this extension. Anything else is refused.
+function resolveTabId(msg, sender) {
+  if (sender && sender.tab) {
+    return S.isValidTabId(sender.tab.id)
+      ? { tabId: sender.tab.id, fromContent: true }
+      : { error: ERRORS.INVALID_SENDER };
+  }
+  const origin = extensionOrigin();
+  if (sender && typeof sender.url === "string" && origin && sender.url.startsWith(origin)) {
+    return S.isValidTabId(msg.tabId)
+      ? { tabId: msg.tabId, fromContent: false }
+      : { error: ERRORS.INVALID_INPUT };
+  }
+  return { error: ERRORS.INVALID_SENDER };
+}
+
+// --- Tab records ---
+
+function readTabRecord(tabId, callback) {
+  const store = getSessionStore();
+  if (!store) {
+    callback(undefined, ERRORS.SESSION_UNAVAILABLE);
+    return;
+  }
+  const key = tabKey(tabId);
+  store.get(key, (result) => {
+    if (chrome.runtime.lastError) {
+      callback(undefined, ERRORS.SESSION_READ);
+      return;
+    }
+    const stored = result && result[key];
+    callback(S.isValidTabRecord(stored) ? stored : null, null);
+  });
+}
+
+function writeTabRecord(tabId, record, callback) {
+  const store = getSessionStore();
+  if (!store) {
+    callback(ERRORS.SESSION_UNAVAILABLE);
+    return;
+  }
+  store.set({ [tabKey(tabId)]: record }, () => {
+    callback(chrome.runtime.lastError ? ERRORS.SESSION_WRITE : null);
+  });
+}
+
+function removeTabRecord(tabId) {
+  const store = getSessionStore();
+  if (!store || !S.isValidTabId(tabId)) return;
+  try {
+    store.remove(tabKey(tabId), () => {
+      // A failed cleanup is not recoverable here; the record is inert once the
+      // tab is gone because no sender can present that tab id again.
+      void chrome.runtime.lastError;
+    });
+  } catch (_) { /* fail safely */ }
+}
+
+function pageStateOf(record, url) {
+  if (record && record.url === url) return S.clonePageState(record);
+  return S.clonePageState(DEFAULT_PAGE_STATE);
+}
+
+function newTabRecord(url, overrides) {
+  return {
+    version: VERSIONS.TAB_RECORD,
+    url,
+    title: "",
+    active: false,
+    mode: "following",
+    position: null,
+    incognito: false,
+    origin: "user",
+    updatedAt: Date.now(),
+    ...overrides
+  };
+}
+
+function cleanTitle(value) {
+  if (typeof value !== "string") return null;
+  const title = value.trim();
+  return title.length <= LIMITS.TITLE_MAX ? title : title.slice(0, LIMITS.TITLE_MAX);
+}
+
+// --- Settings ---
+
+function handleGetSettings(sendResponse) {
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ...DEFAULTS });
+    return;
+  }
+  store.get(KEYS.SETTINGS, (result) => {
+    const stored = result && result[KEYS.SETTINGS];
+    sendResponse(S.mergeSettings(stored, null));
+  });
+}
+
+function handleSetSettings(msg, sendResponse) {
+  if (!S.isValidSettings(msg.settings)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
+    return;
+  }
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ok: false, error: ERRORS.STORAGE_UNAVAILABLE });
+    return;
+  }
+  store.get(KEYS.SETTINGS, (result) => {
+    if (chrome.runtime.lastError) {
+      sendResponse({ ok: false, error: ERRORS.GET_STORAGE });
+      return;
+    }
+    const settings = S.mergeSettings(result && result[KEYS.SETTINGS], msg.settings);
+    store.set({ [KEYS.SETTINGS]: settings }, () => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, error: ERRORS.SAVE_STORAGE });
+        return;
+      }
+      sendResponse({ ok: true, settings });
+    });
+  });
+}
+
+// --- Page state (per tab) ---
+
+function handleGetPageState(msg, sender, sendResponse) {
+  if (!S.isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
+    return;
+  }
+  const resolved = resolveTabId(msg, sender);
+  if (resolved.error) {
+    sendResponse({ ok: false, error: resolved.error });
+    return;
+  }
+  readTabRecord(resolved.tabId, (record, error) => {
+    if (error) {
+      sendResponse({ ok: false, error });
+      return;
+    }
+    sendResponse({ ok: true, state: pageStateOf(record, msg.url) });
+  });
+}
+
+function handleSetPageActive(msg, sender, sendResponse) {
+  if (!S.isValidPageUrl(msg.url) || typeof msg.active !== "boolean") {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
+    return;
+  }
+  const resolved = resolveTabId(msg, sender);
+  if (resolved.error) {
+    sendResponse({ ok: false, error: resolved.error });
+    return;
+  }
+  readTabRecord(resolved.tabId, (record, error) => {
+    if (error) {
+      sendResponse({ ok: false, error });
+      return;
+    }
+    const current = record && record.url === msg.url ? record : null;
+    if (!current && !msg.active) {
+      // Nothing to deactivate for this URL in this tab; report the inactive
+      // default without touching storage.
+      sendResponse({ ok: true, state: S.clonePageState(DEFAULT_PAGE_STATE) });
+      return;
+    }
+    const next = current
+      ? { ...S.cloneTabRecord(current), active: msg.active, updatedAt: Date.now() }
+      : newTabRecord(msg.url, { active: true });
+    if (sender && sender.tab && typeof sender.tab.incognito === "boolean") {
+      next.incognito = sender.tab.incognito;
+    }
+    writeTabRecord(resolved.tabId, next, (writeError) => {
+      if (writeError) {
+        sendResponse({ ok: false, error: writeError });
+        return;
+      }
+      sendResponse({ ok: true, state: S.clonePageState(next) });
+    });
+  });
+}
+
+function handleSavePagePosition(msg, sender, sendResponse) {
+  if (
+    !S.isValidPageUrl(msg.url)
+    || (msg.mode !== "following" && msg.mode !== "frozen")
+    || !S.isValidPosition(msg.position)
+  ) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
+    return;
+  }
+  const resolved = resolveTabId(msg, sender);
+  if (resolved.error) {
+    sendResponse({ ok: false, error: resolved.error });
+    return;
+  }
+  readTabRecord(resolved.tabId, (record, error) => {
+    if (error) {
+      sendResponse({ ok: false, error });
+      return;
+    }
+    if (!record || record.url !== msg.url || !record.active) {
+      sendResponse({ ok: false, error: ERRORS.PAGE_INACTIVE });
+      return;
+    }
+    const next = {
+      ...S.cloneTabRecord(record),
+      mode: msg.mode,
+      position: S.clonePosition(msg.position),
+      updatedAt: Date.now()
+    };
+    const title = cleanTitle(msg.title);
+    if (title !== null) next.title = title;
+    if (sender && sender.tab && typeof sender.tab.incognito === "boolean") {
+      next.incognito = sender.tab.incognito;
+    }
+    writeTabRecord(resolved.tabId, next, (writeError) => {
+      if (writeError) {
+        sendResponse({ ok: false, error: writeError });
+        return;
+      }
+      sendResponse({ ok: true, state: S.clonePageState(next) });
+    });
+  });
+}
+
+// --- Tab info for extension pages ---
+
+function handleGetTabInfo(msg, sender, sendResponse) {
+  const resolved = resolveTabId(msg, sender);
+  if (resolved.error || resolved.fromContent) {
+    sendResponse({ ok: false, error: resolved.error || ERRORS.INVALID_SENDER });
+    return;
+  }
+  const tabs = chrome.tabs;
+  if (!tabs || typeof tabs.get !== "function") {
+    sendResponse({ ok: false, error: ERRORS.TABS_UNAVAILABLE });
+    return;
+  }
+  const tabId = resolved.tabId;
+  const reply = (url, title, incognito) => {
+    const supported = S.isValidPageUrl(url);
+    sendResponse({
+      ok: true,
+      url: supported ? url : null,
+      title: supported && typeof title === "string" ? title : "",
+      incognito: Boolean(incognito),
+      supported
+    });
+  };
+  try {
+    tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError || !tab) {
+        sendResponse({ ok: false, error: ERRORS.TAB_UNAVAILABLE });
+        return;
+      }
+      if (typeof tab.url === "string" && tab.url.length > 0) {
+        reply(tab.url, tab.title, tab.incognito);
+        return;
+      }
+      // Without host visibility for this tab, ask the content script itself.
+      if (typeof tabs.sendMessage !== "function") {
+        reply(null, "", tab.incognito);
+        return;
+      }
+      try {
+        tabs.sendMessage(tabId, { type: "pageInfo" }, (info) => {
+          if (chrome.runtime.lastError || !info) {
+            reply(null, "", tab.incognito);
+            return;
+          }
+          reply(info.url, info.title, tab.incognito);
+        });
+      } catch (_) {
+        reply(null, "", tab.incognito);
+      }
+    });
+  } catch (_) {
+    sendResponse({ ok: false, error: ERRORS.TAB_UNAVAILABLE });
+  }
+}
+
+// --- Durable saved pages ---
+
 function handlePersistResumePoint(msg, sender, sendResponse) {
   if (
     !sender
     || !sender.tab
     || sender.tab.incognito === true
-    || !Number.isInteger(sender.tab.id)
-    || sender.tab.id < 0
+    || !S.isValidTabId(sender.tab.id)
   ) {
-    sendResponse({ ok: false, error: "invalid-sender" });
+    sendResponse({ ok: false, error: ERRORS.INVALID_SENDER });
     return;
   }
   const url = msg.url;
-  if (!isValidPageUrl(url) || sender.tab.url !== url || typeof msg.title !== "string") {
-    sendResponse({ ok: false, error: "invalid-input" });
+  if (!S.isValidPageUrl(url) || sender.tab.url !== url || typeof msg.title !== "string") {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
     return;
   }
   const title = msg.title.trim();
-  if (title.length === 0 || title.length > SAVED_TITLE_MAX || !isValidSavedPosition(msg.position)) {
-    sendResponse({ ok: false, error: "invalid-input" });
+  if (!S.isValidTitle(title) || !S.isValidSavedPosition(msg.position)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
     return;
   }
   const store = getLocalStore();
   if (!store) {
-    sendResponse({ ok: false, error: "storage-unavailable" });
+    sendResponse({ ok: false, error: ERRORS.STORAGE_UNAVAILABLE });
     return;
   }
   const record = {
-    version: SAVED_VERSION,
+    version: VERSIONS.SAVED_RECORD,
     title,
-    position: clonePosition(msg.position),
+    position: S.clonePosition(msg.position),
     savedAt: Date.now()
   };
   store.set({ [savedKey(url)]: record }, () => {
     if (chrome.runtime.lastError) {
-      sendResponse({ ok: false, error: "save-storage-error" });
+      sendResponse({ ok: false, error: ERRORS.SAVE_STORAGE });
       return;
     }
     sendResponse({ ok: true });
@@ -212,42 +378,42 @@ function handlePersistResumePoint(msg, sender, sendResponse) {
 }
 
 function handleGetSavedResumePoint(msg, sendResponse) {
-  if (!isValidPageUrl(msg.url)) {
-    sendResponse({ ok: false, error: "invalid-input" });
+  if (!S.isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
     return;
   }
   const store = getLocalStore();
   if (!store) {
-    sendResponse({ ok: false, error: "storage-unavailable" });
+    sendResponse({ ok: false, error: ERRORS.STORAGE_UNAVAILABLE });
     return;
   }
   const key = savedKey(msg.url);
   store.get([key], (result) => {
     if (chrome.runtime.lastError) {
-      sendResponse({ ok: false, error: "get-storage-error" });
+      sendResponse({ ok: false, error: ERRORS.GET_STORAGE });
       return;
     }
     const record = result && result[key];
-    sendResponse({ ok: true, record: isValidSavedRecord(record) ? cloneSavedRecord(record) : null });
+    sendResponse({ ok: true, record: S.isValidSavedRecord(record) ? S.cloneSavedRecord(record) : null });
   });
 }
 
 function handleListSavedResumePoints(sendResponse) {
   const store = getLocalStore();
   if (!store) {
-    sendResponse({ ok: false, error: "storage-unavailable" });
+    sendResponse({ ok: false, error: ERRORS.STORAGE_UNAVAILABLE });
     return;
   }
   store.get(null, (result) => {
     if (chrome.runtime.lastError) {
-      sendResponse({ ok: false, error: "get-storage-error" });
+      sendResponse({ ok: false, error: ERRORS.GET_STORAGE });
       return;
     }
     const items = [];
     for (const [key, record] of Object.entries(result || {})) {
       const url = urlFromSavedKey(key);
-      if (url && isValidSavedRecord(record)) {
-        items.push({ url, ...cloneSavedRecord(record) });
+      if (url && S.isValidSavedRecord(record)) {
+        items.push({ url, ...S.cloneSavedRecord(record) });
       }
     }
     items.sort((a, b) => b.savedAt - a.savedAt);
@@ -256,18 +422,18 @@ function handleListSavedResumePoints(sendResponse) {
 }
 
 function handleRemoveSavedResumePoint(msg, sendResponse) {
-  if (!isValidPageUrl(msg.url)) {
-    sendResponse({ ok: false, error: "invalid-input" });
+  if (!S.isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
     return;
   }
   const store = getLocalStore();
   if (!store) {
-    sendResponse({ ok: false, error: "storage-unavailable" });
+    sendResponse({ ok: false, error: ERRORS.STORAGE_UNAVAILABLE });
     return;
   }
   store.remove([savedKey(msg.url)], () => {
     if (chrome.runtime.lastError) {
-      sendResponse({ ok: false, error: "remove-storage-error" });
+      sendResponse({ ok: false, error: ERRORS.REMOVE_STORAGE });
       return;
     }
     sendResponse({ ok: true });
@@ -277,22 +443,22 @@ function handleRemoveSavedResumePoint(msg, sendResponse) {
 function handleClearSavedResumePoints(sendResponse) {
   const store = getLocalStore();
   if (!store) {
-    sendResponse({ ok: false, error: "storage-unavailable" });
+    sendResponse({ ok: false, error: ERRORS.STORAGE_UNAVAILABLE });
     return;
   }
   store.get(null, (result) => {
     if (chrome.runtime.lastError) {
-      sendResponse({ ok: false, error: "get-storage-error" });
+      sendResponse({ ok: false, error: ERRORS.GET_STORAGE });
       return;
     }
-    const keys = Object.keys(result || {}).filter((key) => key.startsWith(SAVED_PREFIX));
+    const keys = Object.keys(result || {}).filter((key) => key.startsWith(KEYS.SAVED_PREFIX));
     if (keys.length === 0) {
       sendResponse({ ok: true });
       return;
     }
     store.remove(keys, () => {
       if (chrome.runtime.lastError) {
-        sendResponse({ ok: false, error: "clear-storage-error" });
+        sendResponse({ ok: false, error: ERRORS.CLEAR_STORAGE });
         return;
       }
       sendResponse({ ok: true });
@@ -300,192 +466,131 @@ function handleClearSavedResumePoints(sendResponse) {
   });
 }
 
-function restoreSeededSession(sessionStore, pages, previous, msgUrl, onDone) {
-  const rollbackPages = { ...pages };
-  if (previous === undefined) {
-    delete rollbackPages[msgUrl];
-  } else {
-    rollbackPages[msgUrl] = previous;
-  }
-  sessionStore.set({ readingPages: rollbackPages }, () => {
-    const failed = Boolean(chrome.runtime.lastError);
-    onDone(failed);
-  });
-}
-
+// Continue reading opens a fresh tab and seeds that tab's record, so an
+// already-open tab on the same URL is never affected. The tab is created first
+// because the record is keyed by its id; if seeding then fails the tab stays
+// open and dormant and the caller is told which tab it was.
 function handleContinueSavedResumePoint(msg, sendResponse) {
-  if (!isValidPageUrl(msg.url)) {
-    sendResponse({ ok: false, error: "invalid-input" });
+  if (!S.isValidPageUrl(msg.url)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
     return;
   }
   const store = getLocalStore();
   if (!store) {
-    sendResponse({ ok: false, error: "storage-unavailable" });
+    sendResponse({ ok: false, error: ERRORS.STORAGE_UNAVAILABLE });
     return;
   }
   const key = savedKey(msg.url);
   store.get([key], (result) => {
     if (chrome.runtime.lastError) {
-      sendResponse({ ok: false, error: "get-storage-error" });
+      sendResponse({ ok: false, error: ERRORS.GET_STORAGE });
       return;
     }
     const record = result && result[key];
-    if (!isValidSavedRecord(record)) {
-      sendResponse({ ok: false, error: "no-saved-record" });
+    if (!S.isValidSavedRecord(record)) {
+      sendResponse({ ok: false, error: ERRORS.NO_SAVED_RECORD });
       return;
     }
-    const sessionStore = getSessionStore();
-    if (!sessionStore) {
-      sendResponse({ ok: false, error: "session-storage-unavailable" });
+    if (!getSessionStore()) {
+      sendResponse({ ok: false, error: ERRORS.SESSION_UNAVAILABLE });
       return;
     }
-    sessionStore.get("readingPages", (sessionResult) => {
-      if (chrome.runtime.lastError) {
-        sendResponse({ ok: false, error: "session-read-error" });
+    const tabs = chrome.tabs;
+    if (!tabs || typeof tabs.create !== "function") {
+      sendResponse({ ok: false, error: ERRORS.TABS_UNAVAILABLE });
+      return;
+    }
+    tabs.create({ url: msg.url }, (tab) => {
+      if (chrome.runtime.lastError || !tab || !S.isValidTabId(tab.id)) {
+        sendResponse({ ok: false, error: ERRORS.TAB_CREATE_FAILED });
         return;
       }
-      const pages = isRecord(sessionResult && sessionResult.readingPages) ? sessionResult.readingPages : {};
-      const previous = pages[msg.url];
-      const seededState = {
-        version: PAGE_STATE_VERSION,
+      const seeded = newTabRecord(msg.url, {
+        title: record.title,
         active: true,
         mode: "frozen",
-        position: clonePosition(record.position)
-      };
-      sessionStore.set({ readingPages: { ...pages, [msg.url]: seededState } }, () => {
-        if (chrome.runtime.lastError) {
-          sendResponse({ ok: false, error: "session-storage-error" });
+        position: S.clonePosition(record.position),
+        incognito: Boolean(tab.incognito),
+        origin: "continue"
+      });
+      writeTabRecord(tab.id, seeded, (writeError) => {
+        if (writeError) {
+          sendResponse({ ok: false, error: writeError, tabId: tab.id });
           return;
         }
-        const tabs = chrome.tabs;
-        if (!tabs || typeof tabs.create !== "function") {
-          restoreSeededSession(sessionStore, pages, previous, msg.url, (rollbackFailed) => {
-            sendResponse(rollbackFailed
-              ? { ok: false, error: "rollback-storage-error" }
-              : { ok: false, error: "tabs-unavailable" });
-          });
-          return;
-        }
-        tabs.create({ url: msg.url }, (tab) => {
-          if (chrome.runtime.lastError || !tab || !Number.isInteger(tab.id) || tab.id < 0) {
-            restoreSeededSession(sessionStore, pages, previous, msg.url, (rollbackFailed) => {
-              sendResponse(rollbackFailed
-                ? { ok: false, error: "rollback-storage-error" }
-                : { ok: false, error: "tab-create-failed" });
-            });
-            return;
-          }
-          sendResponse({ ok: true, tabId: tab.id });
-        });
+        sendResponse({ ok: true, tabId: tab.id });
       });
     });
   });
 }
 
+// --- Lifecycle ---
+
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get("settings", (result) => {
-    if (!result.settings) {
-      chrome.storage.local.set({ settings: { ...DEFAULTS } });
-      return;
-    }
-    if (Object.prototype.hasOwnProperty.call(result.settings, "enabled")) {
-      const { enabled: _legacyEnabled, ...appearance } = result.settings;
-      chrome.storage.local.set({ settings: { ...DEFAULTS, ...appearance } });
+  chrome.storage.local.get(KEYS.SETTINGS, (result) => {
+    const stored = result && result[KEYS.SETTINGS];
+    if (!stored) {
+      chrome.storage.local.set({ [KEYS.SETTINGS]: { ...DEFAULTS } });
+    } else if (Object.prototype.hasOwnProperty.call(stored, "enabled")) {
+      chrome.storage.local.set({ [KEYS.SETTINGS]: S.mergeSettings(stored, null) });
     }
   });
+  const session = getSessionStore();
+  if (session && typeof session.remove === "function") {
+    try {
+      session.remove(KEYS.LEGACY_PAGES, () => { void chrome.runtime.lastError; });
+    } catch (_) { /* legacy key absent or storage unavailable */ }
+  }
 });
+
+if (chrome.tabs && chrome.tabs.onRemoved && typeof chrome.tabs.onRemoved.addListener === "function") {
+  chrome.tabs.onRemoved.addListener((tabId) => removeTabRecord(tabId));
+}
+if (chrome.tabs && chrome.tabs.onReplaced && typeof chrome.tabs.onReplaced.addListener === "function") {
+  chrome.tabs.onReplaced.addListener((_addedTabId, removedTabId) => removeTabRecord(removedTabId));
+}
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || typeof msg.type !== "string") return false;
 
-  if (msg.type === "getSettings") {
-    chrome.storage.local.get("settings", (result) => {
-      const { enabled: _legacyEnabled, ...appearance } = result.settings || {};
-      sendResponse({ ...DEFAULTS, ...appearance });
-    });
-    return true;
+  switch (msg.type) {
+    case "getSettings":
+      handleGetSettings(sendResponse);
+      return true;
+    case "setSettings":
+      handleSetSettings(msg, sendResponse);
+      return true;
+    case "getPageState":
+      handleGetPageState(msg, sender, sendResponse);
+      return true;
+    case "setPageActive":
+      handleSetPageActive(msg, sender, sendResponse);
+      return true;
+    case "savePagePosition":
+      handleSavePagePosition(msg, sender, sendResponse);
+      return true;
+    case "getTabInfo":
+      handleGetTabInfo(msg, sender, sendResponse);
+      return true;
+    case "persistResumePoint":
+      handlePersistResumePoint(msg, sender, sendResponse);
+      return true;
+    case "getSavedResumePoint":
+      handleGetSavedResumePoint(msg, sendResponse);
+      return true;
+    case "listSavedResumePoints":
+      handleListSavedResumePoints(sendResponse);
+      return true;
+    case "removeSavedResumePoint":
+      handleRemoveSavedResumePoint(msg, sendResponse);
+      return true;
+    case "clearSavedResumePoints":
+      handleClearSavedResumePoints(sendResponse);
+      return true;
+    case "continueSavedResumePoint":
+      handleContinueSavedResumePoint(msg, sendResponse);
+      return true;
+    default:
+      return false;
   }
-
-  if (msg.type === "getPageState" && isValidPageUrl(msg.url)) {
-    readPages((pages) => {
-      if (!pages) {
-        sendResponse({ ok: false, error: "session-storage-unavailable" });
-        return;
-      }
-      const stored = pages[msg.url];
-      const state = isValidPageState(stored) ? stored : DEFAULT_PAGE_STATE;
-      sendResponse({ ok: true, state: clonePageState(state) });
-    });
-    return true;
-  }
-
-  if (msg.type === "setPageActive" && isValidPageUrl(msg.url) && typeof msg.active === "boolean") {
-    readPages((pages) => {
-      if (!pages) {
-        sendResponse({ ok: false, error: "session-storage-unavailable" });
-        return;
-      }
-      const stored = isValidPageState(pages[msg.url]) ? pages[msg.url] : DEFAULT_PAGE_STATE;
-      const state = { ...clonePageState(stored), active: msg.active };
-      writePages({ ...pages, [msg.url]: state }, state, sendResponse);
-    });
-    return true;
-  }
-
-  if (
-    msg.type === "savePagePosition"
-    && isValidPageUrl(msg.url)
-    && (msg.mode === "following" || msg.mode === "frozen")
-    && isValidPosition(msg.position)
-  ) {
-    readPages((pages) => {
-      if (!pages) {
-        sendResponse({ ok: false, error: "session-storage-unavailable" });
-        return;
-      }
-      const stored = isValidPageState(pages[msg.url]) ? pages[msg.url] : DEFAULT_PAGE_STATE;
-      if (!stored.active) {
-        sendResponse({ ok: false, error: "page-inactive" });
-        return;
-      }
-      const state = {
-        ...clonePageState(stored),
-        mode: msg.mode,
-        position: clonePosition(msg.position)
-      };
-      writePages({ ...pages, [msg.url]: state }, state, sendResponse);
-    });
-    return true;
-  }
-
-  if (msg.type === "persistResumePoint") {
-    handlePersistResumePoint(msg, sender, sendResponse);
-    return true;
-  }
-
-  if (msg.type === "getSavedResumePoint") {
-    handleGetSavedResumePoint(msg, sendResponse);
-    return true;
-  }
-
-  if (msg.type === "listSavedResumePoints") {
-    handleListSavedResumePoints(sendResponse);
-    return true;
-  }
-
-  if (msg.type === "removeSavedResumePoint") {
-    handleRemoveSavedResumePoint(msg, sendResponse);
-    return true;
-  }
-
-  if (msg.type === "clearSavedResumePoints") {
-    handleClearSavedResumePoints(sendResponse);
-    return true;
-  }
-
-  if (msg.type === "continueSavedResumePoint") {
-    handleContinueSavedResumePoint(msg, sendResponse);
-    return true;
-  }
-  return false;
 });

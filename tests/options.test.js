@@ -22,16 +22,26 @@ function renderOptions(settings = storedSettings) {
   document.write(html.replace('<script src="options.js"></script>', ""));
   document.close();
 
-  const set = vi.fn((value, callback) => callback?.());
+  // Options never touch chrome.storage: reads and writes go through the
+  // service worker. `set` records every setSettings message for assertions.
+  const set = vi.fn();
   globalThis.chrome = {
-    storage: {
-      local: {
-        get: vi.fn((_key, callback) => callback({ settings })),
-        set
-      }
+    runtime: {
+      lastError: null,
+      sendMessage: vi.fn((message, callback) => {
+        if (message.type === "getSettings") {
+          callback({ ...settings });
+        } else if (message.type === "setSettings") {
+          set({ settings: message.settings }, callback);
+          callback({ ok: true, settings: message.settings });
+        } else {
+          callback(undefined);
+        }
+      })
     }
   };
 
+  window.eval(fs.readFileSync(path.join(root, "shared/constants.js"), "utf8"));
   window.eval(script);
   return { set };
 }
