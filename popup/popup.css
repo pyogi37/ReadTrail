@@ -300,3 +300,10 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+.restore-note {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #92400e;
+}

@@ -904,6 +904,39 @@ describe("ReadTrail content per-tab protocol (RT-304)", () => {
     }));
   });
 
+  it("reports the restoration quality on the next checkpoint and forgets it on deactivation", async () => {
+    vi.useFakeTimers();
+    const { runtimeMessageHandler, getSaves, resolvePosition } = loadContent({
+      storedState: { version: 1, active: true, mode: "following", position: makePosition() }
+    });
+    resolvePosition.mockImplementation((position) => ({
+      range: null, scrollY: position.scrollY, anchorResolved: false, restoreQuality: "approximate"
+    }));
+    await flush();
+    await flush();
+    expect(resolvePosition).toHaveBeenCalled();
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    const saves = getSaves();
+    expect(saves.length).toBeGreaterThan(0);
+    expect(saves[saves.length - 1].restoreQuality).toBe("approximate");
+
+    // Turning off clears the memory; a fresh activation without a stored
+    // position restores nothing, so the next checkpoint carries no quality.
+    runtimeMessageHandler({ type: "setPageActive", active: false });
+    runtimeMessageHandler({
+      type: "setPageActive",
+      active: true,
+      state: { version: 1, active: true, mode: "following", position: null }
+    });
+    await flush();
+    vi.advanceTimersByTime(1100); // past the checkpoint throttle
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    const after = getSaves();
+    expect(after.length).toBeGreaterThan(saves.length);
+    expect(after[after.length - 1].restoreQuality).toBeUndefined();
+  });
+
   it("answers pageInfo on a dormant page without activating anything", async () => {
     document.title = "Dormant page";
     const { runtimeMessageHandler, addedDoc, renderer, getSaves } = loadContent();

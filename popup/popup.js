@@ -6,6 +6,8 @@ const error = document.getElementById("error");
 const openOptions = document.getElementById("openOptions");
 const saveSection = document.getElementById("saveSection");
 const saveHint = document.getElementById("saveHint");
+const restoreNote = document.getElementById("restoreNote");
+const pageControls = (globalThis.ReadTrailShared && globalThis.ReadTrailShared.pageControls) || null;
 const saveButton = document.getElementById("saveButton");
 const saveStatus = document.getElementById("saveStatus");
 const readingSpaceButton = document.getElementById("readingSpaceButton");
@@ -19,11 +21,10 @@ let pageState = null; // Last valid page state observed from the service worker.
 let state = "loading"; // "loading" | "unsupported" | "inactive" | "active" | "error"
 let changing = false; // True while an enable/disable transition is in flight.
 
-// Save lifecycle is a local mirror of the durable record for this exact URL.
-// `hasSavedRecord` reflects whether a readtrail.saved.v1 record exists; the
-// popup never compares temporary progress timestamps against it (that is an
-// out-of-scope integration gap) and only uses "was this exact URL saved before".
-let hasSavedRecord = false;
+// Save lifecycle mirrors the durable record for this exact URL. The shared
+// page-controls state machine compares the tab's temporary position against
+// the durable record to distinguish "saved" from "update saved position".
+let savedRecord = null;
 let justSaved = false; // True right after a successful save so the UI confirms.
 let saving = false; // True while a saveForLater round-trip is in flight.
 
@@ -139,24 +140,18 @@ function renderSave() {
   const activePage = state === "active";
   saveSection.hidden = !activePage;
 
-  if (activePage) {
-    if (justSaved) {
-      saveButton.textContent = "Saved";
-      saveHint.textContent = "Your place on this page is saved on this device.";
-    } else if (hasSavedRecord) {
-      saveButton.textContent = "Update saved position";
-      saveHint.textContent = "A place is already saved for this page. Update it to your current spot.";
-    } else {
-      saveButton.textContent = "Save for later";
-      saveHint.textContent = "Save exactly where you stopped, then continue later.";
-    }
-    saveStatus.textContent = "Saved on this device.";
-  } else {
-    saveHint.textContent = "";
-    saveStatus.textContent = "";
+  let controls = { kind: "none", label: "Save for later", hint: "", disabled: true };
+  if (activePage && pageControls) {
+    controls = pageControls.saveButtonState(pageState, savedRecord, { justSaved });
   }
+  saveButton.textContent = controls.label;
+  saveHint.textContent = controls.hint;
+  saveStatus.textContent = activePage ? "Saved on this device." : "";
+  const note = activePage && pageControls ? pageControls.restoreNote(pageState) : "";
+  restoreNote.textContent = note;
+  restoreNote.hidden = note.length === 0;
 
-  saveButton.disabled = !activePage || saving || changing;
+  saveButton.disabled = !activePage || saving || changing || controls.disabled;
   saveButton.setAttribute("aria-disabled", String(saveButton.disabled));
   saveButton.classList.toggle("is-saved", justSaved);
   saveStatus.hidden = !justSaved;
@@ -175,7 +170,7 @@ function loadState() {
     tabUrl = tab.url;
 
     justSaved = false;
-    hasSavedRecord = false;
+    savedRecord = null;
 
     sendRuntimeMessage({ type: "getPageState", tabId, url: tabUrl }, (res) => {
       if (!res || !res.ok || !isPageState(res.state, Boolean(res.state && res.state.active))) {
@@ -193,7 +188,7 @@ function loadState() {
       // read fails, default to "no record" rather than guessing; saving will
       // still create or update the record safely.
       sendRuntimeMessage({ type: "getSavedResumePoint", url: tabUrl }, (savedRes) => {
-        hasSavedRecord = !!(savedRes && savedRes.ok && savedRes.record);
+        savedRecord = savedRes && savedRes.ok && savedRes.record ? savedRes.record : null;
         render();
       });
     });
@@ -332,10 +327,13 @@ function saveForLater() {
   // must never be shown as a successful save.
   sendTabMessage({ type: "saveForLater" }, (res) => {
     if (res && res.ok) {
-      hasSavedRecord = true;
       justSaved = true;
       saving = false;
       render();
+      // Refresh the durable record so later renders compare real timestamps.
+      sendRuntimeMessage({ type: "getSavedResumePoint", url: tabUrl }, (savedRes) => {
+        if (savedRes && savedRes.ok && savedRes.record) savedRecord = savedRes.record;
+      });
       return;
     }
     saving = false;

@@ -37,7 +37,8 @@
     // integers into persistent storage. Session anchors stay unconstrained.
     SAVED_ANCHOR_MAX_DEPTH: 64,
     SAVED_ANCHOR_MAX_INDEX: 100000,
-    SAVED_ANCHOR_MAX_OFFSET: 1000000
+    SAVED_ANCHOR_MAX_OFFSET: 1000000,
+    LANDMARK_ID_MAX: 256
   });
 
   const ERRORS = Object.freeze({

@@ -33,22 +33,51 @@
     }
   }
 
+  function isIndexPath(value) {
+    return Array.isArray(value)
+      && value.length > 0
+      && value.every((index) => Number.isInteger(index) && index >= 0);
+  }
+
+  function isValidLandmark(landmark) {
+    if (landmark === null) return true;
+    return isRecord(landmark)
+      && typeof landmark.id === "string"
+      && landmark.id.length > 0
+      && landmark.id.length <= LIMITS.LANDMARK_ID_MAX
+      && isIndexPath(landmark.path);
+  }
+
+  function isValidCheck(check) {
+    return isRecord(check)
+      && typeof check.tag === "string"
+      && check.tag.length <= 64
+      && Number.isInteger(check.textLength)
+      && check.textLength >= 0;
+  }
+
+  // v1: child-index path from body plus a character offset.
+  // v2: adds an optional landmark (nearest ancestor id plus path from it) and
+  // a structural check (parent tag, text length). No version stores text.
   function isValidAnchor(anchor) {
-    return isRecord(anchor)
-      && anchor.version === 1
-      && Array.isArray(anchor.path)
-      && anchor.path.length > 0
-      && anchor.path.every((index) => Number.isInteger(index) && index >= 0)
-      && Number.isInteger(anchor.offset)
-      && anchor.offset >= 0;
+    if (!isRecord(anchor) || !isIndexPath(anchor.path)) return false;
+    if (!Number.isInteger(anchor.offset) || anchor.offset < 0) return false;
+    if (anchor.version === 1) return true;
+    if (anchor.version !== 2) return false;
+    return isValidLandmark(anchor.landmark) && isValidCheck(anchor.check);
   }
 
   function cloneAnchor(anchor) {
-    return {
+    const clone = {
       version: anchor.version,
       path: [...anchor.path],
       offset: anchor.offset
     };
+    if (anchor.version === 2) {
+      clone.landmark = anchor.landmark ? { id: anchor.landmark.id, path: [...anchor.landmark.path] } : null;
+      clone.check = { tag: anchor.check.tag, textLength: anchor.check.textLength };
+    }
+    return clone;
   }
 
   function isValidPosition(position) {
@@ -74,11 +103,17 @@
     };
   }
 
+  function isBoundedPath(path) {
+    return path.length <= LIMITS.SAVED_ANCHOR_MAX_DEPTH
+      && path.every((index) => index <= LIMITS.SAVED_ANCHOR_MAX_INDEX);
+  }
+
   function isValidSavedPosition(position) {
-    return isValidPosition(position)
-      && position.anchor.path.length <= LIMITS.SAVED_ANCHOR_MAX_DEPTH
-      && position.anchor.path.every((index) => index <= LIMITS.SAVED_ANCHOR_MAX_INDEX)
-      && position.anchor.offset <= LIMITS.SAVED_ANCHOR_MAX_OFFSET;
+    if (!isValidPosition(position)) return false;
+    const anchor = position.anchor;
+    if (!isBoundedPath(anchor.path) || anchor.offset > LIMITS.SAVED_ANCHOR_MAX_OFFSET) return false;
+    if (anchor.version === 2 && anchor.landmark && !isBoundedPath(anchor.landmark.path)) return false;
+    return true;
   }
 
   function isValidTitle(value) {
@@ -116,13 +151,21 @@
       && (state.position === null || isValidPosition(state.position));
   }
 
+  const RESTORE_QUALITIES = ["exact", "approximate", "fallback"];
+
+  function isRestoreQuality(value) {
+    return RESTORE_QUALITIES.includes(value);
+  }
+
   function clonePageState(state) {
-    return {
+    const clone = {
       version: VERSIONS.PAGE_STATE,
       active: state.active,
       mode: state.mode,
       position: state.position ? clonePosition(state.position) : null
     };
+    if (isRestoreQuality(state.restoreQuality)) clone.restoreQuality = state.restoreQuality;
+    return clone;
   }
 
   function isValidTabRecord(record) {
@@ -136,12 +179,13 @@
       && (record.position === null || isValidPosition(record.position))
       && typeof record.incognito === "boolean"
       && (record.origin === "user" || record.origin === "continue")
+      && (record.restoreQuality === undefined || isRestoreQuality(record.restoreQuality))
       && isFiniteNumber(record.updatedAt)
       && record.updatedAt >= 0;
   }
 
   function cloneTabRecord(record) {
-    return {
+    const clone = {
       version: VERSIONS.TAB_RECORD,
       url: record.url,
       title: record.title,
@@ -152,6 +196,8 @@
       origin: record.origin,
       updatedAt: record.updatedAt
     };
+    if (isRestoreQuality(record.restoreQuality)) clone.restoreQuality = record.restoreQuality;
+    return clone;
   }
 
   const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -205,6 +251,7 @@
     clonePageState,
     isValidTabRecord,
     cloneTabRecord,
+    isRestoreQuality,
     isValidSettings,
     mergeSettings
   });

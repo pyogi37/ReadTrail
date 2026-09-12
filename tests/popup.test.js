@@ -5,6 +5,8 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const html = fs.readFileSync(path.join(root, "popup/popup.html"), "utf8");
 const script = fs.readFileSync(path.join(root, "popup/popup.js"), "utf8");
+const sharedConstants = fs.readFileSync(path.join(root, "shared/constants.js"), "utf8");
+const pageControls = fs.readFileSync(path.join(root, "shared/page-controls.js"), "utf8");
 
 const makeState = (active) => ({ version: 1, active, mode: "following", position: null });
 const HTTP_TAB = { id: 7, url: "https://example.com/article" };
@@ -14,7 +16,12 @@ const HTTP_TAB = { id: 7, url: "https://example.com/article" };
 // into `pending` so tests can drive and order the conversations exactly.
 function loadPopup() {
   document.open();
-  document.write(html.replace('<script src="popup.js"></script>', ""));
+  document.write(
+    html
+      .replace('<script src="../shared/constants.js"></script>', "")
+      .replace('<script src="../shared/page-controls.js"></script>', "")
+      .replace('<script src="popup.js"></script>', "")
+  );
   document.close();
 
   const pending = { query: [], runtime: [], tab: [] };
@@ -43,6 +50,8 @@ function loadPopup() {
     }
   };
 
+  window.eval(sharedConstants);
+  window.eval(pageControls);
   window.eval(script);
   return { pending, runtimeMsgs, tabMsgs, openOptions: globalThis.chrome.runtime.openOptionsPage };
 }
@@ -357,6 +366,45 @@ describe("ReadTrail popup save lifecycle (RT-203)", () => {
       record: { version: 1, title: "Article", position: {}, savedAt: 10 }
     });
     expect(saveButtonEl().textContent).toBe("Update saved position");
+  });
+
+  it("shows Saved (disabled) when the durable record is at least as new as the tab position", () => {
+    const h = loadPopup();
+    const position = { anchor: { version: 1, path: [0], offset: 0 }, viewportOffset: 1, scrollY: 0, scrollRatio: 0, savedAt: 100 };
+    initPopup(h, HTTP_TAB, { ok: true, state: { ...makeState(true), mode: "frozen", position } }, {
+      ok: true,
+      record: { version: 1, title: "Article", position: { ...position, savedAt: 100 }, savedAt: 10 }
+    });
+    expect(saveButtonEl().textContent).toBe("Saved");
+    expect(saveButtonEl().disabled).toBe(true);
+    expect(saveHintEl().textContent).toContain("matches where you are now");
+  });
+
+  it("offers Update saved position when the tab position is newer than the durable record", () => {
+    const h = loadPopup();
+    const position = { anchor: { version: 1, path: [0], offset: 0 }, viewportOffset: 1, scrollY: 0, scrollRatio: 0, savedAt: 200 };
+    initPopup(h, HTTP_TAB, { ok: true, state: { ...makeState(true), mode: "frozen", position } }, {
+      ok: true,
+      record: { version: 1, title: "Article", position: { ...position, savedAt: 100 }, savedAt: 10 }
+    });
+    expect(saveButtonEl().textContent).toBe("Update saved position");
+    expect(saveButtonEl().disabled).toBe(false);
+  });
+
+  it("explains an approximate or fallback restoration and stays quiet when exact", () => {
+    const note = () => document.querySelector("#restoreNote");
+    const h = loadPopup();
+    initPopup(h, HTTP_TAB, { ok: true, state: { ...makeState(true), restoreQuality: "approximate" } });
+    expect(note().hidden).toBe(false);
+    expect(note().textContent).toContain("Restored approximately");
+
+    const h2 = loadPopup();
+    initPopup(h2, HTTP_TAB, { ok: true, state: { ...makeState(true), restoreQuality: "fallback" } });
+    expect(note().textContent).toContain("could not be found");
+
+    const h3 = loadPopup();
+    initPopup(h3, HTTP_TAB, { ok: true, state: { ...makeState(true), restoreQuality: "exact" } });
+    expect(note().hidden).toBe(true);
   });
 
   it("saves through the active tab, guards the in-flight request, and confirms success", () => {

@@ -31,6 +31,7 @@
   let cursor = { x: 0, y: 0 };
 
   let lastPosition = null; // Most recently captured position record.
+  let restoreQuality = null; // "exact" | "approximate" | "fallback" after a restore.
   let pendingSave = null; // Position awaiting a throttled write.
   let lastSavedAt = 0;
   let saveTimer = null;
@@ -130,7 +131,8 @@
           url: initialUrl,
           mode: saveMode,
           position: position,
-          title: typeof document !== "undefined" && typeof document.title === "string" ? document.title : ""
+          title: typeof document !== "undefined" && typeof document.title === "string" ? document.title : "",
+          restoreQuality: restoreQuality || undefined
         },
         (response) => {
           if (chrome.runtime.lastError || !response || !response.ok) {
@@ -504,6 +506,9 @@
       return;
     }
     if (!resolved || !Number.isFinite(resolved.scrollY)) return;
+    restoreQuality = typeof resolved.restoreQuality === "string"
+      ? resolved.restoreQuality
+      : (resolved.anchorResolved ? "exact" : "fallback");
     try {
       window.scrollTo(0, resolved.scrollY);
     } catch (_) { /* fail safely when scrolling is unsupported */ }
@@ -547,6 +552,7 @@
     removeListeners();
     clearVisual();
     lastPosition = null;
+    restoreQuality = null;
   }
 
   // --- Save for later bridge ---
@@ -559,12 +565,21 @@
       !position.anchor || typeof position.anchor !== "object"
       || !Array.isArray(position.anchor.path)
     ) return null;
+    const anchor = {
+      version: position.anchor.version,
+      path: [...position.anchor.path],
+      offset: position.anchor.offset
+    };
+    if (position.anchor.version === 2) {
+      anchor.landmark = position.anchor.landmark
+        ? { id: position.anchor.landmark.id, path: [...position.anchor.landmark.path] }
+        : null;
+      anchor.check = position.anchor.check
+        ? { tag: position.anchor.check.tag, textLength: position.anchor.check.textLength }
+        : { tag: "", textLength: 0 };
+    }
     return {
-      anchor: {
-        version: position.anchor.version,
-        path: [...position.anchor.path],
-        offset: position.anchor.offset
-      },
+      anchor: anchor,
       viewportOffset: position.viewportOffset,
       scrollY: position.scrollY,
       scrollRatio: position.scrollRatio,

@@ -266,6 +266,7 @@ function handleSavePagePosition(msg, sender, sendResponse) {
     };
     const title = cleanTitle(msg.title);
     if (title !== null) next.title = title;
+    if (S.isRestoreQuality(msg.restoreQuality)) next.restoreQuality = msg.restoreQuality;
     if (sender && sender.tab && typeof sender.tab.incognito === "boolean") {
       next.incognito = sender.tab.incognito;
     }

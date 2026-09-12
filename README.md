@@ -138,7 +138,7 @@ npm test
 - [x] Private Reading Space for continuing and managing saved pages
 - [x] Anchored paused markers that remain attached to their text while scrolling
 - [x] Per-tab reading state so two tabs on the same page never interfere
-- [ ] More resilient restoration when a page's structure changes significantly
+- [x] More resilient restoration when a page's structure changes (landmark anchors, structural checks, proportional fallback)
 - [ ] Optional save prompt when closing a tab with unsaved reading progress
 - [ ] Reflection and knowledge connections built on top of reliable reading memory
 

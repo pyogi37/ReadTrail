@@ -47,8 +47,15 @@ describe("ReadTrail position anchor module", () => {
 
     expect(record).not.toBeNull();
     expect(position.validatePosition(record)).toBe(true);
-    // Anchor is versioned and contains only child-node indices plus an offset.
-    expect(record.anchor).toEqual({ version: 1, path: [0, 0, 0], offset: 5 });
+    // Anchor is versioned and contains child-node indices, an offset, a
+    // landmark (nearest ancestor id), and a structural check. Never text.
+    expect(record.anchor).toEqual({
+      version: 2,
+      path: [0, 0, 0],
+      offset: 5,
+      landmark: { id: "first", path: [0] },
+      check: { tag: "p", textLength: 11 }
+    });
     // Serialized record never contains passage text.
     expect(JSON.stringify(record)).not.toContain("Hello");
     expect(record.viewportOffset).toBe(40);
@@ -131,6 +138,15 @@ describe("ReadTrail position anchor module", () => {
     expect(position.validatePosition({})).toBe(false);
     expect(position.validatePosition({ ...good, anchor: null })).toBe(false);
     expect(position.validatePosition({ ...good, anchor: { version: 2, path: [0], offset: 1 } })).toBe(false);
+    expect(position.validatePosition({ ...good, anchor: { version: 3, path: [0], offset: 1 } })).toBe(false);
+    expect(position.validatePosition({
+      ...good,
+      anchor: { version: 2, path: [0], offset: 1, landmark: null, check: { tag: "p", textLength: 3 } }
+    })).toBe(true);
+    expect(position.validatePosition({
+      ...good,
+      anchor: { version: 2, path: [0], offset: 1, landmark: { id: "", path: [0] }, check: { tag: "p", textLength: 3 } }
+    })).toBe(false);
     expect(position.validatePosition({ ...good, anchor: { version: 1, path: [], offset: 1 } })).toBe(false);
     expect(position.validatePosition({ ...good, anchor: { version: 1, path: [-1], offset: 1 } })).toBe(false);
     expect(position.validatePosition({ ...good, anchor: { version: 1, path: [0], offset: -2 } })).toBe(false);
@@ -143,6 +159,42 @@ describe("ReadTrail position anchor module", () => {
     expect(position.validatePosition({ ...good, scrollRatio: 1.1 })).toBe(false);
     expect(position.validatePosition({ ...good, savedAt: undefined })).toBe(false);
     expect(position.validatePosition({ ...good, savedAt: -1 })).toBe(false);
+  });
+
+  it("still resolves legacy v1 anchors by body path", () => {
+    const text = document.querySelector("#second").lastChild;
+    const range = position.resolveAnchor({ version: 1, path: [0, 1, 1], offset: 2 });
+    expect(range).not.toBeNull();
+    expect(range.startContainer).toBe(text);
+    expect(range.startOffset).toBe(2);
+  });
+
+  it("resolves through the landmark after nodes are inserted before it", () => {
+    const text = document.querySelector("#second").lastChild;
+    const anchor = position.serializeNode(text, 3);
+    expect(anchor.landmark).toEqual({ id: "second", path: [1] });
+
+    // A cookie banner and a script are injected ahead of the article.
+    document.body.insertAdjacentHTML("afterbegin", '<div class="banner">Accept cookies</div><script></script>');
+    expect(document.body.childNodes[0].className).toBe("banner");
+
+    const range = position.resolveAnchor(anchor);
+    expect(range).not.toBeNull();
+    expect(range.startContainer).toBe(text);
+    expect(range.startOffset).toBe(3);
+  });
+
+  it("rejects a candidate that fails the structural check instead of returning the wrong node", () => {
+    const text = document.querySelector("#first").firstChild;
+    const anchor = position.serializeNode(text, 2);
+
+    // Same paths, different text length: the paragraph was rewritten.
+    text.nodeValue = "Completely different paragraph";
+    expect(position.resolveAnchor(anchor)).toBeNull();
+
+    // Landmark removed and body path now lands on a different element type.
+    document.body.innerHTML = '<div><h1>Hello world</h1><p>x</p></div>';
+    expect(position.resolveAnchor(anchor)).toBeNull();
   });
 
   it("resolves a valid anchor back to a collapsed Range at the right node and offset", () => {
@@ -182,6 +234,34 @@ describe("ReadTrail position anchor module", () => {
     expect(result.anchorResolved).toBe(false);
     expect(result.range).toBeNull();
     expect(result.scrollY).toBe(0);
+  });
+
+  it("reports restore quality and prefers the scroll ratio when the page height drifted", () => {
+    document.body.innerHTML = "";
+    Object.defineProperty(document.documentElement, "scrollHeight", { configurable: true, value: 4000 });
+    const max = 4000 - window.innerHeight;
+    // Captured when the document allowed 1000px of scroll, at 25%.
+    const drifted = {
+      anchor: { version: 1, path: [0, 1, 0], offset: 2 },
+      viewportOffset: 40,
+      scrollY: 250,
+      scrollRatio: 0.25,
+      savedAt: Date.now()
+    };
+    const approx = position.resolvePosition(drifted, document.body);
+    expect(approx.anchorResolved).toBe(false);
+    expect(approx.restoreQuality).toBe("approximate");
+    expect(approx.scrollY).toBe(0.25 * max);
+
+    // Captured when the document allowed roughly the same scroll range.
+    const stable = { ...drifted, scrollY: Math.round(max * 0.25), scrollRatio: 0.25 };
+    const fallback = position.resolvePosition(stable, document.body);
+    expect(fallback.restoreQuality).toBe("fallback");
+    expect(fallback.scrollY).toBe(Math.round(max * 0.25));
+
+    // A ratio of zero carries no information: plain fallback.
+    const zero = { ...drifted, scrollY: 0, scrollRatio: 0 };
+    expect(position.resolvePosition(zero, document.body).restoreQuality).toBe("fallback");
   });
 
   it("clamps the fallback scroll position to the document's valid range", () => {
@@ -242,6 +322,7 @@ describe("ReadTrail position anchor module", () => {
     const result = position.resolvePosition(record, document.body);
     expect(result).not.toBeNull();
     expect(result.anchorResolved).toBe(true);
+    expect(result.restoreQuality).toBe("exact");
     expect(result.range).not.toBeNull();
     // target = anchor line center (110) - viewportOffset (60) = 50, within range.
     expect(result.scrollY).toBe(50);

@@ -276,6 +276,28 @@ describe("ReadTrail service worker", () => {
       expect(sessionSet).not.toHaveBeenCalled();
     });
 
+    it("stores a valid restoreQuality from checkpoints and ignores invalid ones", () => {
+      const { messageHandler, sessionData } = loadWorker({});
+      messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, PAGE, vi.fn());
+      messageHandler(
+        { type: "savePagePosition", url: urlA, mode: "following", position: makePosition(), restoreQuality: "approximate" },
+        senders.content(1, urlA),
+        vi.fn()
+      );
+      expect(sessionData[TAB_KEY(1)].restoreQuality).toBe("approximate");
+
+      const state = vi.fn();
+      messageHandler({ type: "getPageState", url: urlA }, senders.content(1, urlA), state);
+      expect(state.mock.calls[0][0].state.restoreQuality).toBe("approximate");
+
+      messageHandler(
+        { type: "savePagePosition", url: urlA, mode: "following", position: makePosition(), restoreQuality: "perfect" },
+        senders.content(1, urlA),
+        vi.fn()
+      );
+      expect(sessionData[TAB_KEY(1)].restoreQuality).toBe("approximate");
+    });
+
     it("records incognito from the content-script sender on checkpoints", () => {
       const { messageHandler, sessionData } = loadWorker({});
       messageHandler({ type: "setPageActive", tabId: 1, url: urlA, active: true }, PAGE, vi.fn());

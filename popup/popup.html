@@ -36,6 +36,7 @@
     </div>
 
     <section class="save-section" id="saveSection" aria-label="Save reading position" hidden>
+      <p class="restore-note" id="restoreNote" role="note" hidden></p>
       <p class="save-description" id="saveHint"></p>
       <button type="button" id="saveButton" class="save-button" disabled>Save for later</button>
       <p class="saved-status" id="saveStatus" role="status" hidden></p>
@@ -55,6 +56,8 @@
       <button type="button" id="openOptions" class="settings-button">Open settings</button>
     </footer>
   </main>
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/page-controls.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

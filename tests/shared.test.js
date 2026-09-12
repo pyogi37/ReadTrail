@@ -57,6 +57,48 @@ describe("shared constants and validators", () => {
     expect(S.isValidPosition(position({ anchor: { version: 2, path: [0], offset: 0 } }))).toBe(false);
   });
 
+  it("accepts anchor v2, clones every v2 field, and bounds landmark paths", () => {
+    const v2 = {
+      version: 2,
+      path: [0, 3, 1],
+      offset: 4,
+      landmark: { id: "main", path: [2, 1] },
+      check: { tag: "p", textLength: 120 }
+    };
+    expect(S.isValidAnchor(v2)).toBe(true);
+    expect(S.isValidAnchor({ ...v2, landmark: null })).toBe(true);
+    expect(S.isValidAnchor({ ...v2, check: undefined })).toBe(false);
+    expect(S.isValidAnchor({ ...v2, landmark: { id: "x".repeat(257), path: [0] } })).toBe(false);
+    expect(S.isValidAnchor({ ...v2, landmark: { id: "main", path: [] } })).toBe(false);
+    expect(S.isValidAnchor({ ...v2, version: 3 })).toBe(false);
+
+    const cloned = S.clonePosition(position({ anchor: { ...v2, extra: 1 } }));
+    expect(cloned.anchor).toEqual(v2);
+    expect(cloned.anchor.landmark).not.toBe(v2.landmark);
+
+    expect(S.isValidSavedPosition(position({ anchor: v2 }))).toBe(true);
+    expect(S.isValidSavedPosition(position({
+      anchor: { ...v2, landmark: { id: "main", path: new Array(65).fill(0) } }
+    }))).toBe(false);
+    expect(S.cloneSavedRecord({ version: 1, title: "A", position: position({ anchor: v2 }), savedAt: 1 }).position.anchor)
+      .toEqual(v2);
+  });
+
+  it("carries restoreQuality through tab records and page states only when valid", () => {
+    const record = {
+      version: 1, url: "https://example.com/a", title: "", active: true, mode: "following",
+      position: null, incognito: false, origin: "user", updatedAt: 1, restoreQuality: "approximate"
+    };
+    expect(S.isValidTabRecord(record)).toBe(true);
+    expect(S.isValidTabRecord({ ...record, restoreQuality: "perfect" })).toBe(false);
+    expect(S.cloneTabRecord(record).restoreQuality).toBe("approximate");
+    expect(S.clonePageState(record)).toEqual({
+      version: 1, active: true, mode: "following", position: null, restoreQuality: "approximate"
+    });
+    const { restoreQuality: _drop, ...plain } = record;
+    expect(S.clonePageState(plain)).not.toHaveProperty("restoreQuality");
+  });
+
   it("bounds durable positions and titles", () => {
     expect(S.isValidSavedPosition(position())).toBe(true);
     expect(S.isValidSavedPosition(position({ anchor: { version: 1, path: new Array(65).fill(0), offset: 0 } }))).toBe(false);
