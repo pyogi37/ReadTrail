@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadServiceWorker, senders } from "./helpers/chrome-mock.js";
 
 const PAGE = senders.page("sidepanel/sidepanel.html");
+const MISSING_ID = "11111111-2222-4333-8444-555555555555";
 const URL_A = "https://example.com/article-a";
 const URL_B = "https://news.example.org/story";
 const ID = /^[0-9a-f-]{36}$/;
@@ -162,15 +163,15 @@ describe("knowledge layer: library, clear, export, import", () => {
     const h = load();
     seed(h);
     const lib = call(h, { type: "listLibrary" });
-    expect(lib.counts).toEqual({ passages: 1, notes: 1, saved: 1 });
+    expect(lib.counts).toEqual({ passages: 1, notes: 1, saved: 1, drafts: 0 });
     expect(lib.limit).toBe(1500);
     expect(lib.saved[0].url).toBe(URL_A);
     expect(lib.pagemeta).toEqual([{ url: URL_A, version: 1, tags: ["t"], updatedAt: expect.any(Number) }]);
 
     expect(call(h, { type: "clearLibrary", kinds: ["passages"] })).toEqual({ ok: true, removed: 1 });
-    expect(call(h, { type: "listLibrary" }).counts).toEqual({ passages: 0, notes: 1, saved: 1 });
+    expect(call(h, { type: "listLibrary" }).counts).toEqual({ passages: 0, notes: 1, saved: 1, drafts: 0 });
     expect(call(h, { type: "clearLibrary" })).toEqual({ ok: true, removed: 3 });
-    expect(call(h, { type: "listLibrary" }).counts).toEqual({ passages: 0, notes: 0, saved: 0 });
+    expect(call(h, { type: "listLibrary" }).counts).toEqual({ passages: 0, notes: 0, saved: 0, drafts: 0 });
     expect(h.localData.settings).toEqual({ style: "dots" });
     expect(call(h, { type: "clearLibrary", kinds: ["settings"] })).toEqual({ ok: false, error: "invalid-input" });
   });
@@ -232,5 +233,121 @@ describe("knowledge layer: context menu", () => {
     h.emit.contextMenus.onClicked({ menuItemId: "readtrail-save-selection" }, { id: 4, url: URL_A, incognito: true });
     h.emit.contextMenus.onClicked({ menuItemId: "other" }, { id: 4, url: URL_A });
     expect(call(h, { type: "listPassages" }).passages).toHaveLength(1);
+  });
+});
+
+describe("drafts", () => {
+  const draftOf = (h, overrides = {}) => {
+    const res = call(h, { type: "saveDraft", title: "Do passkeys work?", ...overrides });
+    expect(res.ok).toBe(true);
+    return res.draft;
+  };
+
+  it("creates a draft with a title, tags, and an empty text block", () => {
+    const h = load();
+    const draft = draftOf(h, { tags: ["Passkeys", "passkeys"], blocks: [{ type: "text", text: "hello" }] });
+    expect(draft).toEqual(expect.objectContaining({
+      version: 1,
+      title: "Do passkeys work?",
+      tags: ["passkeys"],
+      blocks: [{ type: "text", text: "hello" }]
+    }));
+    expect(call(h, { type: "listDrafts" }).drafts).toHaveLength(1);
+  });
+
+  it("refuses a draft with no title", () => {
+    const h = load();
+    expect(call(h, { type: "saveDraft", title: "   " })).toEqual({ ok: false, error: "invalid-input" });
+  });
+
+  it("copies the quote snapshot from the stored passage, never from the caller", () => {
+    const h = load();
+    const passage = call(h, { type: "savePassage", url: URL_A, title: "Real Title", text: "the real words" }, PAGE).passage;
+    const draft = draftOf(h);
+    const res = call(h, { type: "appendQuote", draftId: draft.id, passageId: passage.id });
+    expect(res.ok).toBe(true);
+    expect(res.draft.blocks[0]).toEqual({
+      type: "quote",
+      passageId: passage.id,
+      text: "the real words",
+      url: URL_A,
+      title: "Real Title"
+    });
+  });
+
+  it("refuses to quote a passage that does not exist", () => {
+    const h = load();
+    const draft = draftOf(h);
+    expect(call(h, { type: "appendQuote", draftId: draft.id, passageId: MISSING_ID }))
+      .toEqual({ ok: false, error: "not-found" });
+  });
+
+  it("rejects a quote block whose snapshot the caller invented", () => {
+    const h = load();
+    const draft = draftOf(h);
+    const res = call(h, {
+      type: "updateDraft",
+      id: draft.id,
+      blocks: [{ type: "quote", passageId: MISSING_ID, text: "made up", url: "not-a-url", title: "" }]
+    });
+    expect(res).toEqual({ ok: false, error: "invalid-input" });
+  });
+
+  it("updates title, tags, and blocks, and reports a missing draft", () => {
+    const h = load();
+    const draft = draftOf(h);
+    const res = call(h, { type: "updateDraft", id: draft.id, title: "Renamed", blocks: [{ type: "text", text: "a" }, { type: "text", text: "b" }] });
+    expect(res.draft.title).toBe("Renamed");
+    expect(res.draft.blocks).toHaveLength(2);
+    expect(call(h, { type: "updateDraft", id: MISSING_ID, title: "x" })).toEqual({ ok: false, error: "not-found" });
+  });
+
+  it("removes a draft and leaves its quoted passages alone", () => {
+    const h = load();
+    const passage = call(h, { type: "savePassage", url: URL_A, text: "kept" }, PAGE).passage;
+    const draft = draftOf(h);
+    call(h, { type: "appendQuote", draftId: draft.id, passageId: passage.id });
+    expect(call(h, { type: "removeDraft", id: draft.id })).toEqual({ ok: true });
+    expect(call(h, { type: "listDrafts" }).drafts).toEqual([]);
+    expect(call(h, { type: "listPassages" }).passages).toHaveLength(1);
+  });
+
+  it("round-trips drafts through export and import, and still imports a file without them", () => {
+    const h = load();
+    const passage = call(h, { type: "savePassage", url: URL_A, text: "quoted words" }, PAGE).passage;
+    const draft = draftOf(h);
+    call(h, { type: "appendQuote", draftId: draft.id, passageId: passage.id });
+
+    const payload = call(h, { type: "exportLibrary" }).payload;
+    expect(payload.drafts).toHaveLength(1);
+    expect(call(h, { type: "clearLibrary" }).ok).toBe(true);
+    expect(call(h, { type: "listDrafts" }).drafts).toEqual([]);
+
+    const imported = call(h, { type: "importLibrary", payload, mode: "replace" });
+    expect(imported).toEqual(expect.objectContaining({ ok: true, rejected: 0 }));
+    const back = call(h, { type: "listDrafts" }).drafts;
+    expect(back).toHaveLength(1);
+    expect(back[0].blocks[0].text).toBe("quoted words");
+
+    const legacy = { format: "readtrail-export", version: 1, exportedAt: 1, saved: [], passages: [], notes: [], pagemeta: [] };
+    expect(call(h, { type: "importLibrary", payload: legacy, mode: "replace" }).ok).toBe(true);
+  });
+
+  it("clears drafts only when asked", () => {
+    const h = load();
+    draftOf(h);
+    call(h, { type: "savePassage", url: URL_A, text: "a clip" }, PAGE);
+    expect(call(h, { type: "clearLibrary", kinds: ["passages"] }).ok).toBe(true);
+    expect(call(h, { type: "listDrafts" }).drafts).toHaveLength(1);
+    expect(call(h, { type: "clearLibrary", kinds: ["drafts"] })).toEqual({ ok: true, removed: 1 });
+    expect(call(h, { type: "listDrafts" }).drafts).toEqual([]);
+  });
+
+  it("counts drafts in listLibrary without counting them against the clip limit", () => {
+    const h = load();
+    draftOf(h);
+    const lib = call(h, { type: "listLibrary" });
+    expect(lib.counts).toEqual({ passages: 0, notes: 0, saved: 0, drafts: 1 });
+    expect(lib.drafts).toHaveLength(1);
   });
 });

@@ -171,6 +171,12 @@
     return clone;
   }
 
+  // A tab opened by Return carries the clip it should scroll to. The content
+  // script consumes it once at bootstrap, exactly as a seeded position is.
+  function isValidReveal(value) {
+    return value === null || (isRecord(value) && isValidId(value.passageId));
+  }
+
   function isValidTabRecord(record) {
     return isRecord(record)
       && record.version === VERSIONS.TAB_RECORD
@@ -181,7 +187,8 @@
       && (record.mode === "following" || record.mode === "frozen")
       && (record.position === null || isValidPosition(record.position))
       && typeof record.incognito === "boolean"
-      && (record.origin === "user" || record.origin === "continue")
+      && (record.origin === "user" || record.origin === "continue" || record.origin === "reveal")
+      && (record.reveal === undefined || isValidReveal(record.reveal))
       && (record.restoreQuality === undefined || isRestoreQuality(record.restoreQuality))
       && isFiniteNumber(record.updatedAt)
       && record.updatedAt >= 0;
@@ -200,6 +207,9 @@
       updatedAt: record.updatedAt
     };
     if (isRestoreQuality(record.restoreQuality)) clone.restoreQuality = record.restoreQuality;
+    if (isRecord(record.reveal) && isValidId(record.reveal.passageId)) {
+      clone.reveal = { passageId: record.reveal.passageId };
+    }
     return clone;
   }
 
@@ -412,6 +422,74 @@
     return { version: 1, tags: [...record.tags], updatedAt: record.updatedAt };
   }
 
+  // --- Drafts ---
+
+  // A draft is the reader's own document: ordered blocks of their text and
+  // quotes of clips they saved. A quote carries a snapshot of the clip's text,
+  // url, and title so the draft stays readable and exportable even after the
+  // clip is removed; `passageId` remains the authority for Return.
+  const REVEAL_QUALITIES = ["exact", "approximate", "missing"];
+
+  function isRevealQuality(value) {
+    return REVEAL_QUALITIES.includes(value);
+  }
+
+  function isValidDraftBlock(block) {
+    if (!isRecord(block)) return false;
+    if (block.type === "text") return isValidText(block.text, true);
+    if (block.type !== "quote") return false;
+    return isValidId(block.passageId)
+      && isValidText(block.text, false)
+      && isValidPageUrl(block.url)
+      && typeof block.title === "string"
+      && block.title.length <= LIMITS.TITLE_MAX;
+  }
+
+  function cloneDraftBlock(block) {
+    if (block.type === "text") return { type: "text", text: block.text };
+    return {
+      type: "quote",
+      passageId: block.passageId,
+      text: block.text,
+      url: block.url,
+      title: block.title
+    };
+  }
+
+  function draftChars(blocks) {
+    return blocks.reduce((total, block) => total + block.text.length, 0);
+  }
+
+  function isValidDraftBlocks(value) {
+    return Array.isArray(value)
+      && value.length <= LIMITS.DRAFT_BLOCKS_MAX
+      && value.every(isValidDraftBlock)
+      && draftChars(value) <= LIMITS.DRAFT_CHARS_MAX;
+  }
+
+  function isValidDraft(record) {
+    return isRecord(record)
+      && record.version === 1
+      && isValidId(record.id)
+      && isValidTitle(record.title)
+      && isValidTags(record.tags)
+      && isValidDraftBlocks(record.blocks)
+      && isFiniteNumber(record.createdAt) && record.createdAt >= 0
+      && isFiniteNumber(record.updatedAt) && record.updatedAt >= 0;
+  }
+
+  function cloneDraft(record) {
+    return {
+      version: 1,
+      id: record.id,
+      title: record.title,
+      tags: [...record.tags],
+      blocks: record.blocks.map(cloneDraftBlock),
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt
+    };
+  }
+
   function isValidExport(payload) {
     return isRecord(payload)
       && payload.format === "readtrail-export"
@@ -419,7 +497,10 @@
       && Array.isArray(payload.saved)
       && Array.isArray(payload.passages)
       && Array.isArray(payload.notes)
-      && Array.isArray(payload.pagemeta);
+      && Array.isArray(payload.pagemeta)
+      // Optional so files written before drafts existed still import, and so
+      // an older build still accepts a file that carries them.
+      && (payload.drafts === undefined || Array.isArray(payload.drafts));
   }
 
   Object.assign(shared, {
@@ -434,6 +515,13 @@
     cloneNote,
     isValidPageMeta,
     clonePageMeta,
+    isValidDraftBlock,
+    cloneDraftBlock,
+    isValidDraftBlocks,
+    isValidDraft,
+    cloneDraft,
+    draftChars,
+    isRevealQuality,
     isValidExport,
     isValidRecentItem,
     cloneRecentItem,
@@ -453,6 +541,7 @@
     clonePageState,
     isValidTabRecord,
     cloneTabRecord,
+    isValidReveal,
     isRestoreQuality,
     isValidSettings,
     mergeSettings,

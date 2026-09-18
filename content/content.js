@@ -576,6 +576,10 @@
     removeListeners();
     clearVisual();
     clearHighlights();
+    const PS = getPassage();
+    if (PS && typeof PS.clearReveal === "function") {
+      try { PS.clearReveal(); } catch (_) { /* fail safely */ }
+    }
     lastPosition = null;
     restoreQuality = null;
   }
@@ -725,6 +729,26 @@
       }
       return false;
     }
+    if (msg.type === "revealPassage") {
+      // Explicit reader action, like capturePassage: it reads the page to find
+      // a clip the reader already saved, works on a dormant page, and writes
+      // nothing. See PRIVACY.md.
+      if (sendResponse) {
+        const PS = getPassage();
+        if (!PS || typeof PS.revealPassage !== "function") {
+          sendResponse({ ok: false, error: "reveal-unavailable" });
+        } else {
+          let result;
+          try {
+            result = PS.revealPassage(msg.start, msg.end, msg.text);
+          } catch (_) {
+            result = { quality: "missing" };
+          }
+          sendResponse({ ok: true, quality: result.quality });
+        }
+      }
+      return false;
+    }
     if (msg.type === "pageInfo") {
       // Lets extension pages learn the exact URL and title of a tab whose URL
       // Chrome does not expose to them. Works on dormant pages and reads no
@@ -780,10 +804,27 @@
     }
   }
 
+  // A tab that Return opened is told which clip to scroll to through its own
+  // session record, because a message would race this script's injection.
+  function consumeSeededReveal() {
+    if (!hasChrome()) return;
+    try {
+      chrome.runtime.sendMessage({ type: "takeSeededReveal", url: initialUrl }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.ok || !res.passage) return;
+        const PS = getPassage();
+        if (!PS || typeof PS.revealPassage !== "function") return;
+        try {
+          PS.revealPassage(res.passage.start, res.passage.end, res.passage.text);
+        } catch (_) { /* fail safely */ }
+      });
+    } catch (_) { /* runtime unavailable */ }
+  }
+
   const settingsReady = loadSettings();
   const bootstrapRevision = lifecycleRevision;
   settingsReady.then(() => {
     if (isExcludedHere()) return;
+    consumeSeededReveal();
     fetchPageState((state) => {
       if (lifecycleRevision !== bootstrapRevision) return;
       if (state && state.active) activate(state, bootstrapRevision);

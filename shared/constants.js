@@ -28,6 +28,10 @@
     PASSAGE_PREFIX: "readtrail.passage.v1:",
     NOTE_PREFIX: "readtrail.note.v1:",
     PAGEMETA_PREFIX: "readtrail.pagemeta.v1:",
+    DRAFT_PREFIX: "readtrail.draft.v1:",
+    // Session: the URL of a tab the reader clipped from, so Return can reuse
+    // that tab without asking every open tab where it is.
+    SEEN_PREFIX: "readtrail.seen.v1:",
     LIBRARY: "readtrail.library.v1",
     LEGACY_PAGES: "readingPages"
   });
@@ -55,6 +59,14 @@
     TAG_MAX: 40,
     TAGS_MAX: 20,
     LIBRARY_MAX: 1500,
+    // Drafts: the reader's own writing. Bounded so one runaway draft cannot
+    // consume the storage.local quota by itself.
+    DRAFTS_MAX: 100,
+    DRAFT_BLOCKS_MAX: 200,
+    DRAFT_CHARS_MAX: 24000,
+    // Refuse new durable writes past this, so the library can always be
+    // reduced. Removals, clearing, and settings are never refused.
+    STORAGE_SOFT_MAX: 9 * 1024 * 1024,
     IMPORT_MAX_BYTES: 8 * 1024 * 1024,
     HOST_MAX: 253,
     EXCLUDED_HOSTS_MAX: 200
@@ -77,6 +89,10 @@
     NOT_FOUND: "not-found",
     LIBRARY_FULL: "library-full",
     NO_SELECTION: "no-selection",
+    TOO_LONG: "too-long",
+    DRAFT_FULL: "draft-full",
+    STORAGE_FULL: "storage-full",
+    REVEAL_UNAVAILABLE: "reveal-unavailable",
     SITE_EXCLUDED: "site-excluded",
     TABS_UNAVAILABLE: "tabs-unavailable",
     TAB_CREATE_FAILED: "tab-create-failed",

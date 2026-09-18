@@ -9,7 +9,8 @@ Stable reference for surfaces, the message protocol, and storage schemas. Update
 | `background/service-worker.js` | Extension service worker | Single trust boundary. Validates every message and record. Owns all storage writes. |
 | `shared/` | Every surface (classic scripts) | `constants.js` (DEFAULTS, ERRORS, LIMITS, KEYS), `validators.js`, `page-controls.js` (pure UI state machine). |
 | `content/` | Every http(s) page at `document_idle` | Dormant until activated for this tab. `position.js` anchors, `renderer.js` canvas, `content.js` lifecycle, `passage.js` explicit selection capture. |
-| `sidepanel/` | Chrome side panel, or a full tab with `?mode=page` | Current-tab controls, recently closed, and a page-first library with Pages, Tags, and page-grouped search. Replaces `popup/` and `reading-space/` from Phase 3. |
+| `sidepanel/` | Chrome side panel | The margin of the current page: controls, recently closed, and the page-first library. Replaces `popup/` and `reading-space/` from Phase 3. |
+| `sidepanel/desk.html` | A full tab (Phase A, in progress) | The Desk: sources beside drafts. Its own document, not a mode of the panel (DECISIONS 25). |
 | `options/` | Options page | Appearance and behavior preferences via `setSettings`. |
 
 The worker holds no in-memory state; every handler reads its key, acts, writes its key. All listeners are registered at top level so they wake the worker.
@@ -51,6 +52,12 @@ All messages are `{ type, ... }` sent with `chrome.runtime.sendMessage`. Handler
 | `listLibrary` | page | none | `{ok,saved,passages,notes,pagemeta,counts,limit}` |
 | `clearLibrary` | page | `{kinds?:["saved","passages","notes","pagemeta"]}` | `{ok,removed}` (never touches settings) |
 | `removePageData` | page | `{url}` | `{ok,removed}` passages, notes, tags of one page |
+| `saveDraft` | page | `{title,tags?,blocks?}` | `{ok,draft}` or `draft-full` |
+| `updateDraft` | page | `{id,title?,tags?,blocks?}` | `{ok,draft}` |
+| `removeDraft` / `listDrafts` | page | `{id}` / none | `{ok}` / `{ok,drafts}` newest first |
+| `appendQuote` | page | `{draftId,passageId}` | `{ok,draft}` (snapshot copied from the passage) |
+| `revealPassage` | page | `{id}` | `{ok,tabId,opened,quality}` or `not-found` |
+| `takeSeededReveal` | content | `{url}` | `{ok,passage}` (`passage` is null unless this tab was opened by Return) |
 | `exportLibrary` | page | none | `{ok,payload}` |
 | `importLibrary` | page | `{payload,mode:"merge"|"replace"}` | `{ok,imported,skipped,rejected,mode}` |
 
@@ -62,6 +69,11 @@ Messages delivered to a content script with `chrome.tabs.sendMessage(tabId, ...)
 | `saveForLater` | none | `{ok}` or error code |
 | `pageInfo` | none | `{url,title}` |
 | `capturePassage` | none | `{ok,text,start,end,url,title}` or `{ok:false,error:"no-selection"|"too-long"}` |
+| `revealPassage` | `{start,end,text}` | `{ok,quality:"exact"|"approximate"|"missing"}` |
+
+### Return
+
+`revealPassage` reads the clip, looks for a tab already known to be showing its URL (`readtrail.seen.v1:<tabId>`, written only when the reader saved a clip from that tab), focuses it, and asks its content script to find the passage. With no such tab it opens one and seeds `reveal` in the new tab's record. The content script resolves both anchors and **compares the resolved text with the stored clip text** before reporting `exact`; otherwise it searches the page's text with the same whitespace normalisation capture uses and reports `approximate`, or `missing`. The flash is a second named highlight removed on a timer, because CSS transitions do not apply to `::highlight`.
 
 The worker's `background/library.js` owns the knowledge-layer handlers and the "Save selection to ReadTrail" context menu. `content/passage.js` captures the selection on request and draws saved passages with the CSS Custom Highlight API (no DOM mutation).
 
@@ -78,7 +90,10 @@ Error codes live in `shared/constants.js` (`ERRORS`). Do not invent new strings 
   incognito:boolean, origin:"user"|"continue", restoreQuality?, updatedAt
 }
 "readtrail.recent.v1" = { version:1, items:[{tabId,url,title,position,closedAt}] }   // Phase 3, max 10, 30 min
+"readtrail.seen.v1:<tabId>" = { version:1, url, updatedAt }   // written when a clip is saved from that tab, so Return can reuse it
 ```
+
+A tab record may carry `reveal: {passageId}` when the tab was opened by Return, and `origin` may then be `"reveal"`. The content script consumes it once at bootstrap through `takeSeededReveal`, and the worker clears it so a reload never repeats the jump.
 
 ### `chrome.storage.local` (durable, this device only)
 
@@ -89,6 +104,11 @@ settings = { style, color, size, opacity, dotCount, fadeSpeed, highlightLine, hi
 "readtrail.passage.v1:<uuid>"   = { version:1, id, url, title, text(<=4000), start, end, note, tags, createdAt, updatedAt }
 "readtrail.note.v1:<uuid>"      = { version:1, id, url, title, text, tags, source?:"ai", createdAt, updatedAt }
 "readtrail.pagemeta.v1:<url>"   = { version:1, tags, updatedAt }
+"readtrail.draft.v1:<uuid>"     = { version:1, id, title, tags, blocks:[
+                                      {type:"text", text} | {type:"quote", passageId, text, url, title}
+                                    ], createdAt, updatedAt }
+Draft bounds: 100 drafts, 200 blocks, 24,000 characters in total. Drafts do not count against the 1,500 clip limit.
+A new durable write is refused past 9 MB of storage.local ("storage-full"); removals, clearing, and settings are never refused.
 Bounds: 1,500 passages plus notes in total (refused with "library-full"), 20 tags of 40 characters, counts computed by listing keys.
 "readtrail.ai.v1"               = { version:1, apiKey, model, updatedAt }                                            // 1.1 only
 ```

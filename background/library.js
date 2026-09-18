@@ -36,6 +36,7 @@
   function passageKey(id) { return KEYS.PASSAGE_PREFIX + id; }
   function noteKey(id) { return KEYS.NOTE_PREFIX + id; }
   function pageMetaKey(url) { return KEYS.PAGEMETA_PREFIX + url; }
+  function draftKey(id) { return KEYS.DRAFT_PREFIX + id; }
   function savedKey(url) { return KEYS.SAVED_PREFIX + url; }
 
   function urlFromKey(key, prefix) {
@@ -82,7 +83,7 @@
         callback(null, ERRORS.GET_STORAGE);
         return;
       }
-      const library = { saved: [], passages: [], notes: [], pagemeta: [], keys: [] };
+      const library = { saved: [], passages: [], notes: [], pagemeta: [], drafts: [], keys: [] };
       for (const [key, value] of Object.entries(result || {})) {
         if (key.startsWith(KEYS.SAVED_PREFIX)) {
           const url = urlFromKey(key, KEYS.SAVED_PREFIX);
@@ -100,6 +101,11 @@
             library.notes.push(S.cloneNote(value));
             library.keys.push(key);
           }
+        } else if (key.startsWith(KEYS.DRAFT_PREFIX)) {
+          if (S.isValidDraft(value) && key === draftKey(value.id)) {
+            library.drafts.push(S.cloneDraft(value));
+            library.keys.push(key);
+          }
         } else if (key.startsWith(KEYS.PAGEMETA_PREFIX)) {
           const url = urlFromKey(key, KEYS.PAGEMETA_PREFIX);
           if (url && S.isValidPageMeta(value)) {
@@ -111,6 +117,7 @@
       library.saved.sort((a, b) => b.savedAt - a.savedAt);
       library.passages.sort((a, b) => b.updatedAt - a.updatedAt);
       library.notes.sort((a, b) => b.updatedAt - a.updatedAt);
+      library.drafts.sort((a, b) => b.updatedAt - a.updatedAt);
       callback(library, null);
     });
   }
@@ -123,6 +130,29 @@
       }
       callback(library.passages.length + library.notes.length, null);
     });
+  }
+
+  // Refuses a new durable write once storage.local is nearly full, so the
+  // reader can always delete their way back out. Removals, clearing, and
+  // settings never pass through here. A browser without getBytesInUse (or the
+  // test mock) is treated as having room.
+  function guardStorage(callback) {
+    const store = getLocalStore();
+    if (!store || typeof store.getBytesInUse !== "function") {
+      callback(null);
+      return;
+    }
+    try {
+      store.getBytesInUse(null, (bytes) => {
+        if (chrome.runtime.lastError) {
+          callback(null);
+          return;
+        }
+        callback(typeof bytes === "number" && bytes >= LIMITS.STORAGE_SOFT_MAX ? ERRORS.STORAGE_FULL : null);
+      });
+    } catch (_) {
+      callback(null);
+    }
   }
 
   function writeRecord(key, record, callback) {
@@ -409,6 +439,185 @@
     });
   }
 
+  // --- Drafts ---
+
+  // Accepts only blocks that are already well formed. A quote's snapshot is
+  // never taken from the caller's word: handleAppendQuote copies it from the
+  // stored passage, and an edit may only keep or drop a quote, never invent one.
+  function cleanBlocks(value) {
+    if (!Array.isArray(value)) return null;
+    const out = [];
+    for (const raw of value) {
+      if (!S.isRecord(raw)) return null;
+      if (raw.type === "text") {
+        const text = typeof raw.text === "string" ? raw.text : "";
+        if (text.length > LIMITS.TEXT_MAX) return null;
+        out.push({ type: "text", text });
+        continue;
+      }
+      if (raw.type !== "quote" || !S.isValidDraftBlock(raw)) return null;
+      out.push(S.cloneDraftBlock(raw));
+    }
+    return S.isValidDraftBlocks(out) ? out : null;
+  }
+
+  function handleSaveDraft(msg, sendResponse) {
+    const title = cleanTitle(msg.title);
+    const tags = S.normalizeTags(msg.tags === undefined ? [] : msg.tags);
+    const blocks = cleanBlocks(msg.blocks === undefined ? [] : msg.blocks);
+    if (!S.isValidTitle(title) || tags === null || blocks === null) {
+      reply(sendResponse, ERRORS.INVALID_INPUT);
+      return;
+    }
+    readLibrary((library, readError) => {
+      if (readError) {
+        reply(sendResponse, readError);
+        return;
+      }
+      if (library.drafts.length >= LIMITS.DRAFTS_MAX) {
+        reply(sendResponse, ERRORS.DRAFT_FULL);
+        return;
+      }
+      guardStorage((fullError) => {
+        if (fullError) {
+          reply(sendResponse, fullError);
+          return;
+        }
+        const now = Date.now();
+        const record = { version: 1, id: newId(), title, tags, blocks, createdAt: now, updatedAt: now };
+        if (!S.isValidDraft(record)) {
+          reply(sendResponse, ERRORS.INVALID_INPUT);
+          return;
+        }
+        writeRecord(draftKey(record.id), S.cloneDraft(record), (error) => {
+          reply(sendResponse, error, { draft: S.cloneDraft(record) });
+        });
+      });
+    });
+  }
+
+  function handleUpdateDraft(msg, sendResponse) {
+    if (!S.isValidId(msg.id)) {
+      reply(sendResponse, ERRORS.INVALID_INPUT);
+      return;
+    }
+    readOne(draftKey(msg.id), S.isValidDraft, (record, readError) => {
+      if (readError) {
+        reply(sendResponse, readError);
+        return;
+      }
+      if (!record) {
+        reply(sendResponse, ERRORS.NOT_FOUND);
+        return;
+      }
+      const next = S.cloneDraft(record);
+      if (msg.title !== undefined) {
+        const title = cleanTitle(msg.title);
+        if (!S.isValidTitle(title)) {
+          reply(sendResponse, ERRORS.INVALID_INPUT);
+          return;
+        }
+        next.title = title;
+      }
+      if (msg.tags !== undefined) {
+        const tags = S.normalizeTags(msg.tags);
+        if (tags === null) {
+          reply(sendResponse, ERRORS.INVALID_INPUT);
+          return;
+        }
+        next.tags = tags;
+      }
+      if (msg.blocks !== undefined) {
+        const blocks = cleanBlocks(msg.blocks);
+        if (blocks === null) {
+          reply(sendResponse, ERRORS.INVALID_INPUT);
+          return;
+        }
+        next.blocks = blocks;
+      }
+      next.updatedAt = Date.now();
+      guardStorage((fullError) => {
+        // An edit that only shortens the draft must still be allowed through.
+        if (fullError && S.draftChars(next.blocks) > S.draftChars(record.blocks)) {
+          reply(sendResponse, fullError);
+          return;
+        }
+        writeRecord(draftKey(next.id), next, (error) => {
+          reply(sendResponse, error, { draft: S.cloneDraft(next) });
+        });
+      });
+    });
+  }
+
+  function handleRemoveDraft(msg, sendResponse) {
+    if (!S.isValidId(msg.id)) {
+      reply(sendResponse, ERRORS.INVALID_INPUT);
+      return;
+    }
+    removeKeys([draftKey(msg.id)], (error) => reply(sendResponse, error));
+  }
+
+  function handleListDrafts(sendResponse) {
+    readLibrary((library, error) => {
+      if (error) {
+        reply(sendResponse, error);
+        return;
+      }
+      reply(sendResponse, null, { drafts: library.drafts });
+    });
+  }
+
+  // The snapshot in a quote block is copied here, from the stored passage, so
+  // no surface can author provenance it never read.
+  function handleAppendQuote(msg, sendResponse) {
+    if (!S.isValidId(msg.draftId) || !S.isValidId(msg.passageId)) {
+      reply(sendResponse, ERRORS.INVALID_INPUT);
+      return;
+    }
+    readOne(passageKey(msg.passageId), S.isValidPassage, (passage, passageError) => {
+      if (passageError) {
+        reply(sendResponse, passageError);
+        return;
+      }
+      if (!passage) {
+        reply(sendResponse, ERRORS.NOT_FOUND);
+        return;
+      }
+      readOne(draftKey(msg.draftId), S.isValidDraft, (draft, draftError) => {
+        if (draftError) {
+          reply(sendResponse, draftError);
+          return;
+        }
+        if (!draft) {
+          reply(sendResponse, ERRORS.NOT_FOUND);
+          return;
+        }
+        const next = S.cloneDraft(draft);
+        next.blocks.push({
+          type: "quote",
+          passageId: passage.id,
+          text: passage.text,
+          url: passage.url,
+          title: passage.title
+        });
+        if (!S.isValidDraftBlocks(next.blocks)) {
+          reply(sendResponse, ERRORS.DRAFT_FULL);
+          return;
+        }
+        next.updatedAt = Date.now();
+        guardStorage((fullError) => {
+          if (fullError) {
+            reply(sendResponse, fullError);
+            return;
+          }
+          writeRecord(draftKey(next.id), next, (error) => {
+            reply(sendResponse, error, { draft: S.cloneDraft(next) });
+          });
+        });
+      });
+    });
+  }
+
   // --- Whole library ---
 
   function handleListLibrary(sendResponse) {
@@ -418,7 +627,12 @@
         return;
       }
       const { keys: _keys, ...rest } = library;
-      const counts = { passages: library.passages.length, notes: library.notes.length, saved: library.saved.length };
+      const counts = {
+        passages: library.passages.length,
+        notes: library.notes.length,
+        saved: library.saved.length,
+        drafts: library.drafts.length
+      };
       reply(sendResponse, null, { ...rest, counts, limit: LIMITS.LIBRARY_MAX });
     });
   }
@@ -427,7 +641,8 @@
     saved: KEYS.SAVED_PREFIX,
     passages: KEYS.PASSAGE_PREFIX,
     notes: KEYS.NOTE_PREFIX,
-    pagemeta: KEYS.PAGEMETA_PREFIX
+    pagemeta: KEYS.PAGEMETA_PREFIX,
+    drafts: KEYS.DRAFT_PREFIX
   };
 
   // Removes only the chosen kinds. Settings and everything outside the
@@ -488,7 +703,8 @@
           saved: library.saved,
           passages: library.passages,
           notes: library.notes,
-          pagemeta: library.pagemeta
+          pagemeta: library.pagemeta,
+          drafts: library.drafts
         }
       });
     });
@@ -520,6 +736,8 @@
       const existingPassages = new Set(library.passages.map((p) => p.id));
       const existingNotes = new Set(library.notes.map((n) => n.id));
       const existingMeta = new Set(library.pagemeta.map((m) => m.url));
+      const existingDrafts = new Set(library.drafts.map((d) => d.id));
+      let draftCount = library.drafts.length;
       const writes = {};
       let imported = 0;
       let skipped = 0;
@@ -560,6 +778,15 @@
         existingMeta.add(url);
         imported += 1;
       }
+      for (const item of (Array.isArray(payload.drafts) ? payload.drafts : [])) {
+        if (!S.isValidDraft(item)) { rejected += 1; continue; }
+        if (existingDrafts.has(item.id)) { skipped += 1; continue; }
+        if (draftCount >= LIMITS.DRAFTS_MAX) { rejected += 1; continue; }
+        writes[draftKey(item.id)] = S.cloneDraft(item);
+        existingDrafts.add(item.id);
+        draftCount += 1;
+        imported += 1;
+      }
       const store = getLocalStore();
       if (!store) {
         reply(sendResponse, ERRORS.STORAGE_UNAVAILABLE);
@@ -585,7 +812,7 @@
           sendResponse(cleared);
           return;
         }
-        proceed({ saved: [], passages: [], notes: [], pagemeta: [] });
+        proceed({ saved: [], passages: [], notes: [], pagemeta: [], drafts: [] });
       });
       return;
     }
@@ -601,6 +828,13 @@
   // --- Context menu: save the current selection from any page ---
 
   const MENU_ID = "readtrail-save-selection";
+
+  // Set by the worker so a context-menu clip also teaches Return which tab is
+  // showing which URL.
+  let onPassageSaved = null;
+  function setPassageSavedHook(hook) {
+    onPassageSaved = typeof hook === "function" ? hook : null;
+  }
 
   function registerContextMenu() {
     const menus = chrome.contextMenus;
@@ -626,6 +860,9 @@
     try {
       tabs.sendMessage(tab.id, { type: "capturePassage" }, (captured) => {
         if (chrome.runtime.lastError || !captured || !captured.ok) return;
+        if (typeof onPassageSaved === "function" && tab.incognito !== true) {
+          onPassageSaved(tab.id, captured.url);
+        }
         handleSavePassage(
           { title: captured.title, text: captured.text, start: captured.start, end: captured.end },
           { tab: { id: tab.id, url: captured.url, incognito: Boolean(tab.incognito) } },
@@ -641,7 +878,10 @@
     isContentSender,
     registerContextMenu,
     onContextMenuClick,
+    setPassageSavedHook,
     readLibrary,
+    draftKey,
+    passageKey,
     handlers: {
       savePassage: handleSavePassage,
       updatePassage: handleUpdatePassage,
@@ -655,6 +895,11 @@
       listLibrary: handleListLibrary,
       clearLibrary: handleClearLibrary,
       removePageData: handleRemovePageData,
+      saveDraft: handleSaveDraft,
+      updateDraft: handleUpdateDraft,
+      removeDraft: handleRemoveDraft,
+      listDrafts: handleListDrafts,
+      appendQuote: handleAppendQuote,
       exportLibrary: handleExportLibrary,
       importLibrary: handleImportLibrary
     }

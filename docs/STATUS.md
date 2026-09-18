@@ -2,37 +2,30 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** Phases 1 to 5 and handoff fixes 1 to 5 are implemented. The owner-approved page-first library redesign is implemented and awaiting review before manual Chrome QA.
-- **Active sprint doc:** `docs/sprints/SPRINT-007.md`
-- **Last commit:** see `git log -1`
-- **Release plan:** 1.0 = Phases 1 to 5 (done in code). 1.1 = BYO-key AI (Sprint 008, not started).
+- **Current phase:** 2.0 Phase A ("Draft and Return"). The data layer and Return are built, tested, and committed. The Desk user interface is the unfinished half.
+- **Read first:** `docs/PRODUCT-DIRECTION.md` (the 2.0 recommendation), then `docs/DECISIONS.md` items 20 to 26.
+- **Last commit:** see `git log -1`. Nothing is pushed.
+- **Checks:** `npm test` 278 passing in 14 files, `npm run test:e2e` 4 passing, `npm run package:check` 28 files, `git diff --check` clean.
 
-## Done
+## Done in this phase
 
-- Phase 0: agent reference set.
-- Phase 1: per-tab session state, shared modules, chrome mock helper.
-- Phase 2: anchor v2, ratio fallback, restoreQuality, page-controls.
-- Phase 3: side panel, recently closed, closeSave, badge, Chrome 114 minimum.
-- Phase 4: library worker module, context menu, passage capture + highlights, knowledge view (search, connections, export/import), page actions.
-- Phase 5: excluded sites, packaging script, LICENSE, CHANGELOG, PRIVACY + Pages copy, store docs, release checklist, manual QA checklist, Playwright e2e harness.
-- Review fixes 1–5: serialized Recently closed updates; replacement tabs use save-on-close; durable passage anchors are bounded; current-page tags UI; confirmed bulk clear for passages, notes, and page tags.
-- Page-first library: one expandable card per page containing its saved place, passages, notes, and page tags; separate Pages and Tags views; search results grouped by page. Item tags and automatic connections deferred (DECISIONS 17–19).
-- Test counts: 262 Vitest tests in 14 files; 4 Playwright scenarios. Full release checks green on 2026-09-13.
+- Draft records: `readtrail.draft.v1:<uuid>`, validators and cloners, bounds (100 drafts, 200 blocks, 24,000 characters), a 9 MB storage guard that never blocks a removal.
+- Worker handlers `saveDraft`, `updateDraft`, `removeDraft`, `listDrafts`, `appendQuote`. The quote snapshot is copied from the stored passage inside the worker, so no surface can author provenance.
+- Drafts flow through `listLibrary`, `clearLibrary`, export, and import. A file written before drafts existed still imports.
+- Return: `revealPassage` in the worker (tab reuse through `readtrail.seen.v1:<tabId>`, otherwise a new tab seeded with `reveal`), and in the content script (anchor resolve, **text-equality gate**, text-search fallback, flash, three-way quality reply).
+- 16 new tests covering drafts and all three Return outcomes.
 
 ## In progress
 
-- Page-first library changes are uncommitted and stopped for owner/lead review.
+- `sidepanel/draft-view.js` is written but **not yet wired to any page**: `sidepanel/desk.html`, `desk.js`, and `desk.css` do not exist yet, so nothing in the interface can create a draft or press Return. This is the next task.
 
 ## Blocked / needs owner
 
-- Enable GitHub Pages from `/docs` on `main` so the privacy policy URL resolves.
-- Approve `docs/store/LISTING.md`; take five 1280x800 screenshots per `docs/store/SCREENSHOTS.md`.
-- Push the branch to GitHub (agents do not push).
-- Optional: install `impeccable` and run `/audit` + `/polish` on `sidepanel/` and `options/`.
+- **DECISIONS 26:** Return reads a dormant page's DOM when the reader asks it to. Same class of action as the existing "Save selection", but the vision's wording says no DOM inspection happens before activation. `PRIVACY.md` and the store justification need the owner's confirmed wording before 2.0 ships.
+- Push `main`; enable GitHub Pages from `/docs`; approve store copy and screenshots (all carried over from the 1.0 handoff).
 
 ## Next task
 
-1. Owner/lead: review the page-first library diff and its product decisions.
-2. Codex or owner: run `docs/qa/MANUAL-QA.md` in Chrome with the zip from `npm run package`; log in `docs/qa/runs/`.
-3. Owner: complete the submission actions in `docs/HANDOFF-2026-09-13.md`; tag `v1.0.0` after submission.
-4. Later: address handoff findings 6 to 10 for 1.0.1.
+1. Build `sidepanel/desk.html` + `desk.js` + `desk.css`: two panes, hash router, the existing knowledge view as the Sources pane with a Quote button per clip, `draft-view.js` as the Draft pane.
+2. Add a Playwright scenario that clips, quotes, mutates the paragraph, and asserts the approximate and missing states.
+3. Then stop for the Codex review named in `docs/HANDOFF-2026-09-18.md`.

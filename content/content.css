@@ -13,3 +13,11 @@
   background-color: rgba(255, 224, 138, 0.35);
   color: inherit;
 }
+
+/* The flash shown when the reader returns to a clip. It is the highlight's
+   presence for a moment, not an animation: CSS transitions do not apply to
+   ::highlight pseudo-elements. */
+::highlight(readtrail-reveal) {
+  background-color: rgba(255, 107, 107, 0.45);
+  color: inherit;
+}

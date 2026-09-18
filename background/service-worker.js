@@ -100,7 +100,16 @@ function writeTabRecord(tabId, record, callback) {
   });
 }
 
+function removeSeenRecord(tabId) {
+  const session = getSessionStore();
+  if (!session || typeof session.remove !== "function") return;
+  try {
+    session.remove(seenKey(tabId), () => { void chrome.runtime.lastError; });
+  } catch (_) { /* session storage unavailable */ }
+}
+
 function removeTabRecord(tabId, callback = () => {}) {
+  removeSeenRecord(tabId);
   const store = getSessionStore();
   if (!store || !S.isValidTabId(tabId)) {
     callback();
@@ -563,6 +572,218 @@ function handleContinueSavedResumePoint(msg, sendResponse) {
 
 // --- Recently closed: offer to save reading that was open in a closed tab ---
 
+// --- Return: take the reader back to a clip in its source page -----------
+
+// The reader clipped from a tab, so we remember which URL that tab is showing.
+// This is the only way Return can reuse an open tab: without the `tabs`
+// permission the worker never sees a tab's URL (DECISIONS 14), and asking
+// every open tab where it is would read tabs the reader never involved.
+function seenKey(tabId) {
+  return KEYS.SEEN_PREFIX + String(tabId);
+}
+
+function rememberSeenTab(tabId, url) {
+  const session = getSessionStore();
+  if (!session || !S.isValidTabId(tabId) || !S.isValidPageUrl(url)) return;
+  try {
+    session.set({ [seenKey(tabId)]: { version: 1, url, updatedAt: Date.now() } }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch (_) { /* session storage unavailable */ }
+}
+
+// Returns the id of an open tab known to be showing this URL, or null.
+function findSeenTab(url, callback) {
+  const session = getSessionStore();
+  if (!session) {
+    callback(null);
+    return;
+  }
+  session.get(null, (result) => {
+    if (chrome.runtime.lastError) {
+      callback(null);
+      return;
+    }
+    const candidates = [];
+    for (const [key, value] of Object.entries(result || {})) {
+      if (!key.startsWith(KEYS.SEEN_PREFIX)) continue;
+      if (!S.isRecord(value) || value.url !== url) continue;
+      const tabId = Number(key.slice(KEYS.SEEN_PREFIX.length));
+      if (S.isValidTabId(tabId)) candidates.push({ tabId, updatedAt: value.updatedAt || 0 });
+    }
+    if (candidates.length === 0) {
+      callback(null);
+      return;
+    }
+    candidates.sort((a, b) => b.updatedAt - a.updatedAt);
+    // The record may outlive the tab, so confirm the tab still exists.
+    const tabs = chrome.tabs;
+    if (!tabs || typeof tabs.get !== "function") {
+      callback(null);
+      return;
+    }
+    const tryNext = (index) => {
+      if (index >= candidates.length) {
+        callback(null);
+        return;
+      }
+      const { tabId } = candidates[index];
+      try {
+        tabs.get(tabId, (tab) => {
+          if (chrome.runtime.lastError || !tab) {
+            tryNext(index + 1);
+            return;
+          }
+          callback(tab);
+        });
+      } catch (_) {
+        tryNext(index + 1);
+      }
+    };
+    tryNext(0);
+  });
+}
+
+function focusTab(tab) {
+  const tabs = chrome.tabs;
+  try {
+    if (tabs && typeof tabs.update === "function") {
+      tabs.update(tab.id, { active: true }, () => { void chrome.runtime.lastError; });
+    }
+  } catch (_) { /* tab gone */ }
+  try {
+    if (chrome.windows && typeof chrome.windows.update === "function" && Number.isInteger(tab.windowId)) {
+      chrome.windows.update(tab.windowId, { focused: true }, () => { void chrome.runtime.lastError; });
+    }
+  } catch (_) { /* window gone */ }
+}
+
+// Opens a new tab for the clip's page and leaves the passage id in the tab's
+// session record. The content script consumes it at bootstrap, so no message
+// races the script's injection at document_idle.
+function openTabForReveal(passage, sendResponse) {
+  const tabs = chrome.tabs;
+  if (!tabs || typeof tabs.create !== "function") {
+    sendResponse({ ok: false, error: ERRORS.TABS_UNAVAILABLE });
+    return;
+  }
+  tabs.create({ url: passage.url }, (tab) => {
+    if (chrome.runtime.lastError || !tab || !S.isValidTabId(tab.id)) {
+      sendResponse({ ok: false, error: ERRORS.TAB_CREATE_FAILED });
+      return;
+    }
+    const seeded = newTabRecord(passage.url, {
+      title: passage.title,
+      active: false,
+      incognito: Boolean(tab.incognito),
+      origin: "reveal",
+      reveal: { passageId: passage.id }
+    });
+    writeTabRecord(tab.id, seeded, (writeError) => {
+      if (writeError) {
+        sendResponse({ ok: false, error: writeError, tabId: tab.id });
+        return;
+      }
+      sendResponse({ ok: true, tabId: tab.id, opened: true, quality: null });
+    });
+  });
+}
+
+function handleRevealPassage(msg, sendResponse) {
+  if (!S.isValidId(msg.id)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_INPUT });
+    return;
+  }
+  const store = getLocalStore();
+  if (!store) {
+    sendResponse({ ok: false, error: ERRORS.STORAGE_UNAVAILABLE });
+    return;
+  }
+  const key = LIBRARY.passageKey(msg.id);
+  store.get([key], (result) => {
+    if (chrome.runtime.lastError) {
+      sendResponse({ ok: false, error: ERRORS.GET_STORAGE });
+      return;
+    }
+    const passage = result && result[key];
+    if (!S.isValidPassage(passage)) {
+      sendResponse({ ok: false, error: ERRORS.NOT_FOUND });
+      return;
+    }
+    findSeenTab(passage.url, (tab) => {
+      if (!tab) {
+        openTabForReveal(passage, sendResponse);
+        return;
+      }
+      const tabs = chrome.tabs;
+      if (!tabs || typeof tabs.sendMessage !== "function") {
+        openTabForReveal(passage, sendResponse);
+        return;
+      }
+      focusTab(tab);
+      try {
+        tabs.sendMessage(
+          tab.id,
+          { type: "revealPassage", start: passage.start, end: passage.end, text: passage.text },
+          (res) => {
+            if (chrome.runtime.lastError || !res || !res.ok) {
+              // The tab is open but unreachable (navigated away, or no content
+              // script). Opening a fresh tab is the honest fallback.
+              openTabForReveal(passage, sendResponse);
+              return;
+            }
+            sendResponse({ ok: true, tabId: tab.id, opened: false, quality: res.quality });
+          }
+        );
+      } catch (_) {
+        openTabForReveal(passage, sendResponse);
+      }
+    });
+  });
+}
+
+// A tab opened by Return asks, once, what it was opened to show. The reveal is
+// cleared from the tab record so a reload never repeats it, and the reply is
+// refused unless the content script's own URL matches the record.
+function handleTakeSeededReveal(msg, sender, sendResponse) {
+  if (!LIBRARY.isContentSender(sender) || !S.isValidTabId(sender.tab.id)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_SENDER });
+    return;
+  }
+  const tabId = sender.tab.id;
+  readTabRecord(tabId, (record, readError) => {
+    if (readError || !record || !S.isRecord(record.reveal) || record.url !== msg.url) {
+      sendResponse({ ok: true, passage: null });
+      return;
+    }
+    const passageId = record.reveal.passageId;
+    const next = S.cloneTabRecord(record);
+    delete next.reveal;
+    next.updatedAt = Date.now();
+    writeTabRecord(tabId, next, () => {
+      const store = getLocalStore();
+      if (!store) {
+        sendResponse({ ok: true, passage: null });
+        return;
+      }
+      const key = LIBRARY.passageKey(passageId);
+      store.get([key], (result) => {
+        const passage = result && result[key];
+        if (chrome.runtime.lastError || !S.isValidPassage(passage) || passage.url !== msg.url) {
+          sendResponse({ ok: true, passage: null });
+          return;
+        }
+        // Remember this tab so a later Return comes back here.
+        rememberSeenTab(tabId, passage.url);
+        sendResponse({
+          ok: true,
+          passage: { start: passage.start, end: passage.end, text: passage.text }
+        });
+      });
+    });
+  });
+}
+
 function updateBadge(count) {
   const action = chrome.action;
   if (!action || typeof action.setBadgeText !== "function") return;
@@ -820,6 +1041,8 @@ if (chrome.tabs && chrome.tabs.onReplaced && typeof chrome.tabs.onReplaced.addLi
   chrome.tabs.onReplaced.addListener((_addedTabId, removedTabId) => handleTabRemoved(removedTabId));
 }
 
+LIBRARY.setPassageSavedHook(rememberSeenTab);
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || typeof msg.type !== "string") return false;
 
@@ -860,6 +1083,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "continueSavedResumePoint":
       handleContinueSavedResumePoint(msg, sendResponse);
       return true;
+    case "revealPassage":
+      handleRevealPassage(msg, sendResponse);
+      return true;
+    case "takeSeededReveal":
+      handleTakeSeededReveal(msg, sender, sendResponse);
+      return true;
     case "listRecentlyClosed":
       handleListRecentlyClosed(sendResponse);
       return true;
@@ -870,6 +1099,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       handleDismissRecentlyClosed(msg, sendResponse);
       return true;
     case "savePassage":
+      // A clip proves which URL this tab is showing; remember it so Return can
+      // come back to this tab instead of opening a duplicate.
+      if (LIBRARY.isContentSender(sender) && sender.tab.incognito !== true) {
+        rememberSeenTab(sender.tab.id, sender.tab.url);
+      }
       LIBRARY.handlers.savePassage(msg, sender, sendResponse);
       return true;
     case "updatePassage":
@@ -904,6 +1138,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     case "removePageData":
       LIBRARY.handlers.removePageData(msg, sendResponse);
+      return true;
+    case "saveDraft":
+      LIBRARY.handlers.saveDraft(msg, sendResponse);
+      return true;
+    case "updateDraft":
+      LIBRARY.handlers.updateDraft(msg, sendResponse);
+      return true;
+    case "removeDraft":
+      LIBRARY.handlers.removeDraft(msg, sendResponse);
+      return true;
+    case "listDrafts":
+      LIBRARY.handlers.listDrafts(sendResponse);
+      return true;
+    case "appendQuote":
+      LIBRARY.handlers.appendQuote(msg, sendResponse);
       return true;
     case "exportLibrary":
       LIBRARY.handlers.exportLibrary(sendResponse);

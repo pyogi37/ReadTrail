@@ -89,4 +89,75 @@ describe("passage capture and highlights", () => {
     expect(PS.applyHighlights([{ start: { version: 1, path: [0], offset: 0 }, end: { version: 1, path: [0], offset: 1 } }])).toBe(0);
     expect(() => PS.clearHighlights()).not.toThrow();
   });
+
+  describe("returning to a saved clip", () => {
+    const highlightSpies = () => {
+      const set = vi.fn();
+      const del = vi.fn();
+      class FakeHighlight { constructor(...ranges) { this.ranges = ranges; } }
+      vi.stubGlobal("Highlight", FakeHighlight);
+      vi.stubGlobal("CSS", { highlights: { set, delete: del } });
+      return { set, del };
+    };
+
+    beforeEach(() => {
+      window.scrollTo = vi.fn();
+      // JSDOM does not implement Range.getBoundingClientRect; without it the
+      // scroll step fails safely and the test could not see it happen.
+      Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ top: 500, height: 20, bottom: 520, left: 0, right: 0, width: 0 })
+      });
+    });
+
+    it("reports exact only when the anchored text still matches what was saved", () => {
+      const { set } = highlightSpies();
+      const node = document.querySelector("#p1").firstChild;
+      const start = window.ReadTrailPosition.serializeNode(node, 0);
+      const end = window.ReadTrailPosition.serializeNode(node, 5);
+
+      expect(PS.revealPassage(start, end, "First")).toEqual({ quality: "exact" });
+      expect(set).toHaveBeenCalledWith("readtrail-reveal", expect.anything());
+      expect(window.scrollTo).toHaveBeenCalled();
+    });
+
+    it("falls back to searching the page text when the anchors resolve to different words", () => {
+      highlightSpies();
+      const node = document.querySelector("#p1").firstChild;
+      const start = window.ReadTrailPosition.serializeNode(node, 0);
+      const end = window.ReadTrailPosition.serializeNode(node, 5);
+      // The anchors still resolve, but they now point at other text: an equal
+      // length rewrite must never be reported as an exact match.
+      expect(PS.revealPassage(start, end, "Second sentence")).toEqual({ quality: "approximate" });
+    });
+
+    it("finds the clip by its words when the anchors no longer resolve", () => {
+      highlightSpies();
+      const broken = { version: 1, path: [99, 99], offset: 0 };
+      expect(PS.revealPassage(broken, broken, "Second sentence there.")).toEqual({ quality: "approximate" });
+    });
+
+    it("says the passage is missing rather than scrolling somewhere arbitrary", () => {
+      highlightSpies();
+      const broken = { version: 1, path: [99, 99], offset: 0 };
+      expect(PS.revealPassage(broken, broken, "words that are not on this page")).toEqual({ quality: "missing" });
+      expect(window.scrollTo).not.toHaveBeenCalled();
+    });
+
+    it("matches text the page wraps differently, because capture collapsed whitespace", () => {
+      highlightSpies();
+      document.body.innerHTML = '<p id="w">Wrapped\n   across   lines</p>';
+      const broken = { version: 1, path: [99], offset: 0 };
+      expect(PS.revealPassage(broken, broken, "Wrapped across lines")).toEqual({ quality: "approximate" });
+    });
+
+    it("clears the flash and works without the highlight API", () => {
+      const { del } = highlightSpies();
+      PS.clearReveal();
+      expect(del).toHaveBeenCalledWith("readtrail-reveal");
+      vi.unstubAllGlobals();
+      const broken = { version: 1, path: [99], offset: 0 };
+      expect(() => PS.revealPassage(broken, broken, "Second sentence there.")).not.toThrow();
+    });
+  });
 });
