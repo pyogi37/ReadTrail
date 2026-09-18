@@ -30,7 +30,7 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 
 ## QA-3 Save for later and Continue reading
 
-- **QA-3.1 Save.** Pause, choose Save for later. Expected: button reads Saved; the marker turns to the saved treatment; the page appears under Saved pages with title and domain.
+- **QA-3.1 Save.** Pause, choose Save for later. Expected: button reads Saved; the marker turns to the saved treatment; the page appears once under Library → Pages with title, domain, and “saved place.”
 - **QA-3.2 Update.** Read further, pause again, reopen the panel. Expected: "Update saved position" is offered; after choosing it, Saved.
 - **QA-3.3 Restart.** Quit Chrome completely, reopen, open the panel. Expected: the saved page is still listed; the tab itself is dormant.
 - **QA-3.4 Continue.** Choose Continue reading. Expected: a new tab opens at the exact URL, ReadTrail is active there, the saved line is restored and shown in the saved treatment.
@@ -43,8 +43,8 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 
 - **QA-4.1 Follows tabs.** Switch between an active and a dormant tab. Expected: the panel updates within a moment without reopening.
 - **QA-4.2 Unsupported tab.** Switch to `chrome://extensions` or the Web Store. Expected: "Not available on this page".
-- **QA-4.3 Ask.** With Settings on Ask, activate a page, pause, close the tab. Expected: badge shows 1; the panel lists it under Recently closed; Save place moves it to Saved pages; badge clears.
-- **QA-4.4 Always.** Set Always, repeat. Expected: the page appears directly under Saved pages; nothing under Recently closed.
+- **QA-4.3 Ask.** With Settings on Ask, activate a page, pause, close the tab. Expected: badge shows 1; the panel lists it under Recently closed; Save place moves it to Library → Pages; badge clears.
+- **QA-4.4 Always.** Set Always, repeat. Expected: the page appears directly under Library → Pages; nothing under Recently closed.
 - **QA-4.5 Never.** Set Never, repeat. Expected: nothing saved, nothing listed.
 - **QA-4.6 Incognito.** Allow the extension in incognito, activate a page there, close it. Expected: never listed, never saved.
 - **QA-4.7 Open in a tab.** Choose Open in a tab. Expected: the library opens as a full page without the This page section.
@@ -53,11 +53,11 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 
 ## QA-5 Knowledge layer
 
-- **QA-5.1 Save passage (context menu).** Select text on an active or dormant page, right-click, Save selection to ReadTrail. Expected: the passage appears in the library with the page title; the page shows a highlight if ReadTrail is active.
+- **QA-5.1 Save passage (context menu).** Select text on an active or dormant page, right-click, Save selection to ReadTrail. Expected: the page appears once in Library → Pages; expanding it reveals the passage. The page shows a highlight if ReadTrail is active.
 - **QA-5.2 Save passage (panel).** Select text, use the panel's Save selection. Expected: same result.
-- **QA-5.3 Note and tags.** Add a note and two tags to the passage. Expected: saved immediately; visible after closing and reopening the panel.
-- **QA-5.4 Search.** Search a word from the passage and from the note. Expected: ranked results; title matches rank above text matches.
-- **QA-5.5 Connections.** Save a second passage from another page with a shared tag. Expected: each shows the other under Connections.
+- **QA-5.3 Note and page tags.** Add a note and two tags to the current page. Expected: the note and tags appear under the same page after closing and reopening the panel; no item-level tag control appears.
+- **QA-5.4 Search.** Search a word from a page title, passage, note, and page tag. Expected: every result is a page card; multiple matches from one page never create duplicate result rows.
+- **QA-5.5 Tags view.** Add the same page tag to two pages. Expected: Library → Tags shows the tag with a count of 2; selecting it shows both matching pages.
 - **QA-5.6 Export and import.** Export, Clear all, Import in replace mode. Expected: identical library.
 - **QA-5.7 Full library.** Not practical manually; covered by tests.
 

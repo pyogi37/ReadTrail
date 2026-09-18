@@ -22,7 +22,7 @@ ReadTrail is a reading companion for long pages: articles, essays, documentation
 
 **Come back later.** Choose Save for later and ReadTrail keeps your exact place for that page, even after you close Chrome. Open the side panel, pick the page, and continue where you stopped. If a page changed since you saved, ReadTrail says so instead of pretending.
 
-**Keep what mattered.** Save a passage, add a note, tag it, and find it again with local search. Export your library as JSON whenever you want.
+**Keep what mattered.** Each page keeps its saved place, passages, notes, and tags together. Browse by page or tag, search everything locally, and export your library as JSON whenever you want.
 
 **Private by design.**
 - Nothing is tracked until you turn ReadTrail on for a page.
@@ -44,7 +44,7 @@ Dark background, the ReadTrail mark, a single line of text with a warm-gold paus
 
 ## Version notes for 1.0.0
 
-First release. Reading guide, reading lock, Save for later, side panel with saved pages and recently closed tabs, per-tab state, resilient restoration, passages, notes, tags, search, export and import.
+First release. Reading guide, reading lock, Save for later, page-first side-panel library, recently closed tabs, per-tab state, resilient restoration, passages, notes, page tags, grouped search, export and import.
 
 ## Support and policy links
 

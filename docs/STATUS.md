@@ -2,7 +2,7 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** Phases 1 to 5 implemented and reviewed. Handoff findings 1 to 5 are fixed; findings 6 to 10 remain optional 1.0.1 cleanup. Next: review, manual Chrome QA, and owner submission items.
+- **Current phase:** Phases 1 to 5 and handoff fixes 1 to 5 are implemented. The owner-approved page-first library redesign is implemented and awaiting review before manual Chrome QA.
 - **Active sprint doc:** `docs/sprints/SPRINT-007.md`
 - **Last commit:** see `git log -1`
 - **Release plan:** 1.0 = Phases 1 to 5 (done in code). 1.1 = BYO-key AI (Sprint 008, not started).
@@ -16,11 +16,12 @@ Rewritten at the end of every working session. Keep under 40 lines.
 - Phase 4: library worker module, context menu, passage capture + highlights, knowledge view (search, connections, export/import), page actions.
 - Phase 5: excluded sites, packaging script, LICENSE, CHANGELOG, PRIVACY + Pages copy, store docs, release checklist, manual QA checklist, Playwright e2e harness.
 - Review fixes 1–5: serialized Recently closed updates; replacement tabs use save-on-close; durable passage anchors are bounded; current-page tags UI; confirmed bulk clear for passages, notes, and page tags.
-- Test counts: 257 Vitest tests in 14 files; 4 Playwright scenarios. `npm test`, `npm run test:e2e`, `npm run package:check`, and `git diff --check` green on 2026-09-13.
+- Page-first library: one expandable card per page containing its saved place, passages, notes, and page tags; separate Pages and Tags views; search results grouped by page. Item tags and automatic connections deferred (DECISIONS 17–19).
+- Test counts: 262 Vitest tests in 14 files; 4 Playwright scenarios. Full release checks green on 2026-09-13.
 
 ## In progress
 
-- Nothing. Stopped for owner review after findings 1 to 5.
+- Page-first library changes are uncommitted and stopped for owner/lead review.
 
 ## Blocked / needs owner
 
@@ -31,7 +32,7 @@ Rewritten at the end of every working session. Keep under 40 lines.
 
 ## Next task
 
-1. Owner/lead: review commits `aeba78a` through `8335787`.
+1. Owner/lead: review the page-first library diff and its product decisions.
 2. Codex or owner: run `docs/qa/MANUAL-QA.md` in Chrome with the zip from `npm run package`; log in `docs/qa/runs/`.
 3. Owner: complete the submission actions in `docs/HANDOFF-2026-09-13.md`; tag `v1.0.0` after submission.
 4. Later: address handoff findings 6 to 10 for 1.0.1.

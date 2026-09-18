@@ -128,7 +128,8 @@ test("save for later, continue reading into a new tab, recently closed offer", a
   await expect(panel.locator("#recentSection")).toBeVisible();
   await panel.locator(".btn-save-place").first().click();
   await expect(panel.locator("#recentSection")).toBeHidden();
-  await expect(panel.locator("#savedList .saved-item")).toHaveCount(1);
+  await expect(panel.locator("#pageList .page-card")).toHaveCount(1);
+  await expect(panel.locator("#pageList .page-summary")).toContainText("saved place");
   await panel.close();
   await opened.close();
 });
@@ -150,15 +151,23 @@ test("passages: save a selection, see it in the panel, export and import round t
   const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
   expect(captured.ok).toBe(true);
   expect(captured.text).toBe("Paragraph 3.");
-  const saved = await sendMessage(ext, { type: "savePassage", url, title: captured.title, text: captured.text, start: captured.start, end: captured.end, tags: ["fixture"] });
+  const saved = await sendMessage(ext, { type: "savePassage", url, title: captured.title, text: captured.text, start: captured.start, end: captured.end });
   expect(saved.ok).toBe(true);
+  expect((await sendMessage(ext, { type: "setPageTags", url, tags: ["fixture"] })).ok).toBe(true);
 
   const panel = await ext.context.newPage();
   await panel.goto(panelUrl(ext.extensionId));
-  await expect(panel.locator("#passageList .passage-item")).toHaveCount(1);
-  await expect(panel.locator("#passageList .passage-text")).toHaveText("Paragraph 3.");
+  await expect(panel.locator("#pageList .page-card")).toHaveCount(1);
+  await panel.locator("#pageList .page-summary").click();
+  await expect(panel.locator("#pageList .passage-text")).toHaveText("Paragraph 3.");
   await panel.locator("#librarySearch").fill("paragraph");
+  await expect(panel.locator("#searchResults .page-card")).toHaveCount(1);
   await expect(panel.locator("#searchResults .passage-item")).toHaveCount(1);
+  await panel.locator("#librarySearch").fill("");
+  await panel.locator("#tagsViewButton").click();
+  await expect(panel.locator("#tagBrowser .tag-filter")).toContainText("fixture 1");
+  await panel.locator("#tagBrowser .tag-filter").click();
+  await expect(panel.locator("#tagBrowser .tag-page-list .page-card")).toHaveCount(1);
 
   const exported = await sendMessage(ext, { type: "exportLibrary" });
   expect(exported.payload.passages).toHaveLength(1);

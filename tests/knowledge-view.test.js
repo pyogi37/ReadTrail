@@ -204,10 +204,13 @@ const librarySearchWrapEl = () => document.querySelector("#librarySearchWrap");
 const librarySearchEl = () => document.querySelector("#librarySearch");
 const knowledgeStatusEl = () => document.querySelector("#knowledgeStatus");
 const searchResultsEl = () => document.querySelector("#searchResults");
-const passageListEl = () => document.querySelector("#passageList");
-const noteListEl = () => document.querySelector("#noteList");
+const pageListEl = () => document.querySelector("#pageList");
+const tagsViewButtonEl = () => document.querySelector("#tagsViewButton");
+const pagesViewButtonEl = () => document.querySelector("#pagesViewButton");
+const tagBrowserEl = () => document.querySelector("#tagBrowser");
 const exportButtonEl = () => document.querySelector("#exportButton");
 const clearKnowledgeButtonEl = () => document.querySelector("#clearKnowledgeButton");
+const clearSavedPlacesButtonEl = () => document.querySelector("#clearSavedPlacesButton");
 const importInputEl = () => document.querySelector("#importInput");
 const importReplaceEl = () => document.querySelector("#importReplace");
 const pageTagsInputEl = () => document.querySelector("#pageTagsInput");
@@ -237,11 +240,11 @@ if (typeof globalThis.URL.revokeObjectURL !== "function") {
 }
 
 describe("knowledge view rendering", () => {
-  it("shows the empty state and hides the search box when the library has nothing", () => {
+  it("shows the page-first empty state while keeping search available", () => {
     const h = loadSidePanel();
     setupLibrary(h, {});
     expect(knowledgeEmptyEl().hidden).toBe(false);
-    expect(librarySearchWrapEl().hidden).toBe(true);
+    expect(librarySearchWrapEl().hidden).toBe(false);
   });
 
   it("shows the search box once the library has any content", () => {
@@ -268,7 +271,7 @@ describe("knowledge view rendering", () => {
     expect(li.querySelector(".passage-text").textContent).toBe(evil);
   });
 
-  it("renders meta, note, own and page tag chips, and Open page/Remove buttons", () => {
+  it("groups a passage under its page and surfaces only page tags at page level", () => {
     const h = loadSidePanel();
     const url = "https://example.com/article-a";
     setupLibrary(h, {
@@ -276,13 +279,28 @@ describe("knowledge view rendering", () => {
       pagemeta: [{ url, tags: ["own-tag", "page-tag"], updatedAt: 1 }]
     });
     const li = findPassage("p1");
-    expect(li.querySelector(".item-meta").textContent).toBe("An Article · example.com");
     expect(li.querySelector(".passage-note").textContent).toBe("My note");
-    const chips = [...li.querySelectorAll(".tag-chip")];
-    expect(chips.some((c) => c.textContent === "own-tag" && !c.classList.contains("tag-chip-page"))).toBe(true);
-    expect(chips.some((c) => c.textContent === "page-tag" && c.classList.contains("tag-chip-page"))).toBe(true);
-    expect(li.querySelector(".btn-open-page").textContent).toBe("Open page");
+    expect(li.querySelector(".tag-chip")).toBeNull();
+    const pageChips = [...pageListEl().querySelectorAll(".page-tag-row .tag-chip")];
+    expect(pageChips.map((chip) => chip.textContent)).toEqual(["own-tag", "page-tag"]);
     expect(li.querySelector(".btn-remove-item").textContent).toBe("Remove");
+    expect(pageListEl().querySelectorAll(".page-card")).toHaveLength(1);
+  });
+
+  it("keeps a page's saved place, passages, and notes in one expandable page card", () => {
+    const h = loadSidePanel();
+    setupLibrary(h, {
+      saved: [{ url: HTTP_TAB.url, title: HTTP_TAB.title, savedAt: 900 }],
+      passages: [makePassage({ url: HTTP_TAB.url })],
+      notes: [makeNote({ url: HTTP_TAB.url })]
+    });
+    const page = pageListEl().querySelector(".page-card");
+    expect(pageListEl().querySelectorAll(".page-card")).toHaveLength(1);
+    expect(page.querySelector(".page-summary").textContent).toContain("1 passage");
+    expect(page.querySelector(".page-summary").textContent).toContain("1 note");
+    expect(page.querySelector(".btn-continue-page").textContent).toBe("Continue reading");
+    expect(page.querySelector(".passage-item")).toBeTruthy();
+    expect(page.querySelector(".note-item")).toBeTruthy();
   });
 
   it("notes render their text and mark AI-drafted notes", () => {
@@ -295,7 +313,7 @@ describe("knowledge view rendering", () => {
     });
     const n1 = findNote("n1");
     expect(n1.querySelector(".note-text").textContent).toBe("Human note");
-    expect(n1.querySelector(".item-meta").textContent).not.toContain("AI draft");
+    expect(n1.querySelector(".item-meta")).toBeNull();
     const n2 = findNote("n2");
     expect(n2.querySelector(".item-meta").textContent).toContain("AI draft");
   });
@@ -320,25 +338,37 @@ describe("knowledge view editing", () => {
     expect(h.pendingCount("listLibrary")).toBeGreaterThan(0);
   });
 
-  it("clicking Add tags reveals the editor for a passage; submitting sends updatePassage and closes after reload", () => {
+  it("edits page tags from an existing library page", () => {
+    const h = loadSidePanel();
+    setupLibrary(h, { passages: [makePassage()] });
+    pageListEl().querySelector(".btn-edit-page-tags").click();
+    const form = pageListEl().querySelector(".inline-page-tags-form");
+    expect(form.hidden).toBe(false);
+    form.querySelector(".page-card-tags-input").value = "reading, later";
+    form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+    expect(h.runtimeMsgs).toContainEqual({
+      type: "setPageTags", url: "https://example.com/article-a", tags: ["reading", "later"]
+    });
+  });
+
+  it("edits a passage note without exposing item-level tags", () => {
     const h = loadSidePanel();
     setupLibrary(h, { passages: [makePassage({ id: "p1", tags: [], note: "" })] });
     const before = findPassage("p1");
     const editBtn = before.querySelector(".btn-edit-tags");
-    expect(editBtn.textContent).toBe("Add tags");
+    expect(editBtn.textContent).toBe("Edit passage note");
     expect(before.querySelector(".item-editor").hidden).toBe(true);
     editBtn.click();
 
     const li = findPassage("p1");
     expect(li.querySelector(".item-editor").hidden).toBe(false);
-    li.querySelector(".tags-input").value = "alpha, beta ,gamma";
+    expect(li.querySelector(".tags-input")).toBeNull();
     li.querySelector(".note-input").value = "updated note";
     li.querySelector(".item-editor").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
 
     expect(h.runtimeMsgs).toContainEqual({
       type: "updatePassage",
       id: "p1",
-      tags: ["alpha", "beta", "gamma"],
       note: "updated note"
     });
 
@@ -348,21 +378,21 @@ describe("knowledge view editing", () => {
     expect(findPassage("p1").querySelector(".item-editor").hidden).toBe(true);
   });
 
-  it("clicking Edit tags reveals the editor for a note; submitting sends updateNote", () => {
+  it("edits note text without exposing item-level tags", () => {
     const h = loadSidePanel();
     setupLibrary(h, { notes: [makeNote({ id: "n1", tags: ["x"] })] });
     const before = findNote("n1");
     const editBtn = before.querySelector(".btn-edit-tags");
-    expect(editBtn.textContent).toBe("Edit tags");
+    expect(editBtn.textContent).toBe("Edit note");
     editBtn.click();
 
     const li = findNote("n1");
     expect(li.querySelector(".item-editor").hidden).toBe(false);
-    li.querySelector(".tags-input").value = "y, z";
+    expect(li.querySelector(".tags-input")).toBeNull();
     li.querySelector(".note-input").value = "Updated note text";
     li.querySelector(".item-editor").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
 
-    expect(h.runtimeMsgs).toContainEqual({ type: "updateNote", id: "n1", tags: ["y", "z"], text: "Updated note text" });
+    expect(h.runtimeMsgs).toContainEqual({ type: "updateNote", id: "n1", text: "Updated note text" });
   });
 
   it("Cancel closes the editor without sending a message", () => {
@@ -390,6 +420,23 @@ describe("knowledge view editing", () => {
 });
 
 describe("knowledge view remove", () => {
+  it("continues from a page card and clears saved places separately from page contents", () => {
+    const h = loadSidePanel();
+    setupLibrary(h, {
+      saved: [{ url: HTTP_TAB.url, title: HTTP_TAB.title, savedAt: 900 }],
+      passages: [makePassage({ url: HTTP_TAB.url })]
+    });
+    pageListEl().querySelector(".btn-continue-page").click();
+    expect(h.runtimeMsgs).toContainEqual({ type: "continueSavedResumePoint", url: HTTP_TAB.url });
+    h.shiftType("continueSavedResumePoint")({ ok: true, tabId: 10 });
+
+    vi.spyOn(globalThis, "confirm").mockReturnValue(true);
+    clearSavedPlacesButtonEl().click();
+    expect(h.runtimeMsgs).toContainEqual({ type: "clearSavedResumePoints" });
+    h.shiftType("clearSavedResumePoints")({ ok: true });
+    expect(h.pendingCount("listLibrary")).toBeGreaterThan(0);
+  });
+
   it("confirms and clears passages, notes, and page tags without clearing saved pages", () => {
     const h = loadSidePanel();
     setupLibrary(h, {
@@ -447,9 +494,9 @@ describe("knowledge view search", () => {
     librarySearchEl().value = "learning";
     librarySearchEl().dispatchEvent(new Event("input"));
     expect(searchResultsEl().hidden).toBe(false);
-    expect(passageListEl().hidden).toBe(true);
-    expect(noteListEl().hidden).toBe(true);
+    expect(pageListEl().hidden).toBe(true);
     expect(searchResultsEl().querySelector(".passage-item")).toBeTruthy();
+    expect(searchResultsEl().querySelectorAll(".page-card")).toHaveLength(1);
 
     librarySearchEl().value = "zzzznomatch";
     librarySearchEl().dispatchEvent(new Event("input"));
@@ -458,7 +505,7 @@ describe("knowledge view search", () => {
     librarySearchEl().value = "";
     librarySearchEl().dispatchEvent(new Event("input"));
     expect(searchResultsEl().hidden).toBe(true);
-    expect(passageListEl().hidden).toBe(false);
+    expect(pageListEl().hidden).toBe(false);
   });
 
   it("search also matches saved pages", () => {
@@ -467,30 +514,45 @@ describe("knowledge view search", () => {
 
     librarySearchEl().value = "zeta";
     librarySearchEl().dispatchEvent(new Event("input"));
-    const node = searchResultsEl().querySelector(".saved-result");
+    const node = searchResultsEl().querySelector(".page-card");
     expect(node).toBeTruthy();
     expect(node.textContent).toContain("Zeta Guide");
   });
 });
 
-describe("knowledge view connections", () => {
-  it("two passages sharing a tag each show Related (1)", () => {
+describe("knowledge view tags", () => {
+  it("supports keyboard navigation between Pages and Tags", () => {
+    const h = loadSidePanel();
+    setupLibrary(h, {});
+    pagesViewButtonEl().focus();
+    pagesViewButtonEl().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(tagsViewButtonEl().getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(tagsViewButtonEl());
+  });
+
+  it("browses page tags and filters to matching pages", () => {
     const h = loadSidePanel();
     setupLibrary(h, {
       passages: [
-        makePassage({ id: "p1", url: "https://a.example.com/1", tags: ["ai"] }),
-        makePassage({ id: "p2", url: "https://b.example.com/2", tags: ["ai"] })
+        makePassage({ id: "p1", url: "https://a.example.com/1" }),
+        makePassage({ id: "p2", url: "https://b.example.com/2" })
+      ],
+      pagemeta: [
+        { version: 1, url: "https://a.example.com/1", tags: ["ai", "research"], updatedAt: 1 },
+        { version: 1, url: "https://b.example.com/2", tags: ["ai"], updatedAt: 1 }
       ]
     });
-    const details1 = findPassage("p1").querySelector("details.connections");
-    expect(details1.querySelector("summary").textContent).toBe("Related (1)");
-    const details2 = findPassage("p2").querySelector("details.connections");
-    expect(details2.querySelector("summary").textContent).toBe("Related (1)");
+    tagsViewButtonEl().click();
+    expect(tagBrowserEl().hidden).toBe(false);
+    expect(tagBrowserEl().textContent).toContain("ai 2");
+    [...tagBrowserEl().querySelectorAll(".tag-filter")].find((button) => button.textContent === "research 1").click();
+    expect(tagBrowserEl().querySelectorAll(".tag-page-list .page-card")).toHaveLength(1);
+    expect(tagBrowserEl().querySelector(".tag-page-list").textContent).toContain("a.example.com");
   });
 
-  it("an item with no relations has no connections block", () => {
+  it("does not surface the deferred automatic-connections UI", () => {
     const h = loadSidePanel();
-    setupLibrary(h, { passages: [makePassage({ id: "p1", tags: ["solo"] })] });
+    setupLibrary(h, { passages: [makePassage({ id: "p1" })] });
     expect(findPassage("p1").querySelector("details.connections")).toBeNull();
   });
 });

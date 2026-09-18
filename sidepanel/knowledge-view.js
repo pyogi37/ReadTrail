@@ -1,7 +1,6 @@
-// Knowledge view: passages, notes, tags, search, connections, export and
-// import. Everything durable goes through worker messages; this module keeps
-// a local mirror, builds the search index in memory, and renders with
-// textContent only.
+// Page-first library: saved places, passages, notes, page tags, search, export,
+// and import. Everything durable goes through worker messages; this module
+// keeps a local mirror and renders with textContent only.
 (() => {
   "use strict";
 
@@ -14,7 +13,10 @@
   let records = [];
   let index = null;
   let query = "";
-  let expanded = new Set(); // ids with the editor or connections open
+  let viewMode = "pages";
+  let selectedTag = "";
+  let expandedPages = new Set();
+  let expanded = new Set(); // item ids and page-tag editor keys
   let busy = new Set();
   let statusText = "";
   let statusRole = "status";
@@ -35,7 +37,6 @@
   }
 
   function searchIndex() { return NS.searchIndex || null; }
-  function connections() { return NS.connections || null; }
   function exportImport() { return NS.exportImport || null; }
 
   function domainFromUrl(url) {
@@ -106,36 +107,79 @@
     return library.passages.length + library.notes.length;
   }
 
+  function pagesFromLibrary() {
+    const byUrl = new Map();
+    const ensure = (url, title = "") => {
+      let page = byUrl.get(url);
+      if (!page) {
+        page = { url, title: title || domainFromUrl(url), saved: null, passages: [], notes: [], tags: [], updatedAt: 0 };
+        byUrl.set(url, page);
+      } else if (title && (!page.title || page.title === domainFromUrl(url))) {
+        page.title = title;
+      }
+      return page;
+    };
+    for (const saved of library.saved) {
+      const page = ensure(saved.url, saved.title);
+      page.saved = saved;
+      page.updatedAt = Math.max(page.updatedAt, saved.savedAt || 0);
+    }
+    for (const passage of library.passages) {
+      const page = ensure(passage.url, passage.title);
+      page.passages.push(passage);
+      page.updatedAt = Math.max(page.updatedAt, passage.updatedAt || passage.createdAt || 0);
+    }
+    for (const note of library.notes) {
+      const page = ensure(note.url, note.title);
+      page.notes.push(note);
+      page.updatedAt = Math.max(page.updatedAt, note.updatedAt || note.createdAt || 0);
+    }
+    for (const meta of library.pagemeta) {
+      const page = ensure(meta.url);
+      page.tags = [...meta.tags];
+      page.updatedAt = Math.max(page.updatedAt, meta.updatedAt || 0);
+    }
+    return [...byUrl.values()].sort((a, b) => b.updatedAt - a.updatedAt || a.title.localeCompare(b.title));
+  }
+
   // --- Rendering ---
 
   function render() {
     if (!els) return;
     const used = usedEntries();
+    const pages = pagesFromLibrary();
     els.usage.textContent = `${used} of ${library.limit} passages and notes used`;
     els.usage.classList.toggle("is-full", used >= library.limit);
+    els.clearSavedButton.disabled = library.saved.length === 0;
     els.clearButton.disabled = used === 0 && library.pagemeta.length === 0;
 
-    const hasContent = library.passages.length > 0 || library.notes.length > 0;
-    els.empty.hidden = hasContent;
-    els.searchWrap.hidden = !hasContent && library.saved.length === 0;
+    const hasContent = pages.length > 0;
+    els.empty.hidden = hasContent || viewMode === "tags" || query.trim().length > 0;
+    els.pagesButton.classList.toggle("is-active", viewMode === "pages");
+    els.tagsButton.classList.toggle("is-active", viewMode === "tags");
+    els.pagesButton.setAttribute("aria-selected", String(viewMode === "pages"));
+    els.tagsButton.setAttribute("aria-selected", String(viewMode === "tags"));
+    els.pagesButton.tabIndex = viewMode === "pages" ? 0 : -1;
+    els.tagsButton.tabIndex = viewMode === "tags" ? 0 : -1;
 
     if (query.trim().length > 0 && index) {
-      renderSearch();
-      els.passageList.hidden = true;
-      els.noteList.hidden = true;
-      els.passageHeading.hidden = true;
-      els.noteHeading.hidden = true;
+      renderSearch(pages);
+      els.pageList.hidden = true;
+      els.tagBrowser.hidden = true;
       els.searchResults.hidden = false;
       return;
     }
     els.searchResults.hidden = true;
     els.searchResults.textContent = "";
-    els.passageHeading.hidden = library.passages.length === 0;
-    els.passageList.hidden = library.passages.length === 0;
-    els.noteHeading.hidden = library.notes.length === 0;
-    els.noteList.hidden = library.notes.length === 0;
-    renderList(els.passageList, library.passages.map((p) => buildPassageNode(p)));
-    renderList(els.noteList, library.notes.map((n) => buildNoteNode(n)));
+    if (viewMode === "tags") {
+      els.pageList.hidden = true;
+      els.tagBrowser.hidden = false;
+      renderTags(pages);
+      return;
+    }
+    els.tagBrowser.hidden = true;
+    els.pageList.hidden = !hasContent;
+    renderList(els.pageList, pages.map((page) => buildPageNode(page)));
   }
 
   function renderList(list, nodes) {
@@ -145,7 +189,7 @@
     list.appendChild(frag);
   }
 
-  function renderSearch() {
+  function renderSearch(pages) {
     const SI = searchIndex();
     const results = SI ? SI.search(index, query, 40) : [];
     els.searchResults.textContent = "";
@@ -156,20 +200,50 @@
       els.searchResults.appendChild(p);
       return;
     }
+    const matchingUrls = [...new Set(results.map((result) => result.record.url))];
+    const pagesByUrl = new Map(pages.map((page) => [page.url, page]));
     const frag = document.createDocumentFragment();
-    for (const result of results) {
-      const record = result.record;
-      if (record.kind === "passage") {
-        const passage = library.passages.find((p) => p.id === record.id);
-        if (passage) frag.appendChild(buildPassageNode(passage));
-      } else if (record.kind === "note") {
-        const note = library.notes.find((n) => n.id === record.id);
-        if (note) frag.appendChild(buildNoteNode(note));
-      } else if (record.kind === "saved") {
-        frag.appendChild(buildSavedResultNode(record));
-      }
+    for (const url of matchingUrls) {
+      const page = pagesByUrl.get(url);
+      if (page) frag.appendChild(buildPageNode(page, true));
     }
     els.searchResults.appendChild(frag);
+  }
+
+  function renderTags(pages) {
+    els.tagBrowser.textContent = "";
+    const counts = new Map();
+    for (const page of pages) for (const tag of page.tags) counts.set(tag, (counts.get(tag) || 0) + 1);
+    if (counts.size === 0) {
+      const empty = document.createElement("p");
+      empty.className = "empty-text";
+      empty.textContent = "No page tags yet. Add tags from the current-page controls.";
+      els.tagBrowser.appendChild(empty);
+      return;
+    }
+    const cloud = document.createElement("div");
+    cloud.className = "tag-cloud";
+    for (const [tag, count] of [...counts].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "tag-filter" + (selectedTag === tag ? " is-active" : "");
+      button.setAttribute("aria-pressed", String(selectedTag === tag));
+      button.setAttribute("aria-label", `${tag}, ${count} ${count === 1 ? "page" : "pages"}`);
+      button.textContent = `${tag} ${count}`;
+      button.addEventListener("click", () => {
+        selectedTag = selectedTag === tag ? "" : tag;
+        render();
+      });
+      cloud.appendChild(button);
+    }
+    els.tagBrowser.appendChild(cloud);
+    if (selectedTag) {
+      const list = document.createElement("ul");
+      list.className = "list page-list tag-page-list";
+      list.setAttribute("aria-label", `Pages tagged ${selectedTag}`);
+      renderList(list, pages.filter((page) => page.tags.includes(selectedTag)).map((page) => buildPageNode(page)));
+      els.tagBrowser.appendChild(list);
+    }
   }
 
   function chip(text) {
@@ -179,32 +253,15 @@
     return span;
   }
 
-  function metaLine(item) {
-    const meta = document.createElement("span");
-    meta.className = "item-meta";
-    meta.textContent = [item.title, domainFromUrl(item.url)].filter(Boolean).join(" · ") || domainFromUrl(item.url);
-    return meta;
-  }
-
   function tagRow(item, kind) {
     const row = document.createElement("div");
     row.className = "tag-row";
-    for (const tag of item.tags) row.appendChild(chip(tag));
-    for (const tag of pageTagsFor(item.url)) {
-      if (!item.tags.includes(tag)) {
-        const c = chip(tag);
-        c.classList.add("tag-chip-page");
-        c.title = "Page tag";
-        row.appendChild(c);
-      }
-    }
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "link-button btn-edit-tags";
-    edit.textContent = item.tags.length ? "Edit tags" : "Add tags";
+    edit.textContent = kind === "passage" ? "Edit passage note" : "Edit note";
     edit.addEventListener("click", () => toggleExpanded(item.id));
     row.appendChild(edit);
-    void kind;
     return row;
   }
 
@@ -212,15 +269,6 @@
     const form = document.createElement("form");
     form.className = "item-editor";
     form.hidden = !expanded.has(item.id);
-
-    const tagsLabel = document.createElement("label");
-    tagsLabel.textContent = "Tags (comma separated)";
-    const tagsInput = document.createElement("input");
-    tagsInput.type = "text";
-    tagsInput.className = "tags-input";
-    tagsInput.value = item.tags.join(", ");
-    tagsLabel.appendChild(tagsInput);
-    form.appendChild(tagsLabel);
 
     let noteInput = null;
     if (kind === "passage") {
@@ -266,10 +314,9 @@
 
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const tags = tagsInput.value.split(",").map((t) => t.trim()).filter(Boolean);
       const message = kind === "passage"
-        ? { type: "updatePassage", id: item.id, tags, note: noteInput.value }
-        : { type: "updateNote", id: item.id, tags, text: noteInput.value };
+        ? { type: "updatePassage", id: item.id, note: noteInput.value }
+        : { type: "updateNote", id: item.id, text: noteInput.value };
       submitUpdate(item.id, message);
     });
     return form;
@@ -288,71 +335,21 @@
         return;
       }
       setStatus(res && res.error === "invalid-input"
-        ? "That could not be saved. Notes are limited to 4,000 characters and 20 tags of 40 characters."
+        ? "That could not be saved. Notes are limited to 4,000 characters."
         : "That could not be saved. Please try again.", "alert");
       render();
     });
   }
 
-  function connectionsBlock(item) {
-    const C = connections();
-    if (!C) return null;
-    const related = C.connectionsFor(records, item.id, 5);
-    const total = related.sameTag.length + related.sameDomain.length + related.backlinks.length;
-    if (total === 0) return null;
-    const details = document.createElement("details");
-    details.className = "connections";
-    const summary = document.createElement("summary");
-    summary.textContent = `Related (${total})`;
-    details.appendChild(summary);
-    const groups = [
-      ["Shared tags", related.sameTag],
-      ["Same site", related.sameDomain],
-      ["Linked", related.backlinks]
-    ];
-    for (const [label, entries] of groups) {
-      if (entries.length === 0) continue;
-      const heading = document.createElement("p");
-      heading.className = "connections-heading";
-      heading.textContent = label;
-      details.appendChild(heading);
-      const ul = document.createElement("ul");
-      ul.className = "connections-list";
-      for (const entry of entries) {
-        const li = document.createElement("li");
-        const record = entry.record;
-        const text = record.kind === "saved" ? record.title : (record.text || record.title);
-        li.textContent = (text || domainFromUrl(record.url)).slice(0, 120);
-        if (Array.isArray(entry.via) && entry.via.length) {
-          const via = document.createElement("span");
-          via.className = "item-meta";
-          via.textContent = ` · ${entry.via.join(", ")}`;
-          li.appendChild(via);
-        }
-        ul.appendChild(li);
-      }
-      details.appendChild(ul);
-    }
-    return details;
-  }
-
   function actionRow(item, kind) {
     const actions = document.createElement("div");
     actions.className = "item-actions";
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "btn-ghost btn-small btn-open-page";
-    open.textContent = "Open page";
-    open.addEventListener("click", () => {
-      try { chrome.tabs.create({ url: item.url }); } catch (_) { setStatus("Could not open the page.", "alert"); }
-    });
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "btn-danger btn-small btn-remove-item";
     remove.textContent = busy.has(item.id) ? "Removing…" : "Remove";
     remove.disabled = busy.has(item.id);
     remove.addEventListener("click", () => removeItem(item.id, kind));
-    actions.appendChild(open);
     actions.appendChild(remove);
     return actions;
   }
@@ -381,7 +378,6 @@
     quote.className = "passage-text";
     quote.textContent = passage.text;
     li.appendChild(quote);
-    li.appendChild(metaLine(passage));
     if (passage.note) {
       const note = document.createElement("p");
       note.className = "passage-note";
@@ -390,8 +386,6 @@
     }
     li.appendChild(tagRow(passage, "passage"));
     li.appendChild(editor(passage, "passage"));
-    const related = connectionsBlock(passage);
-    if (related) li.appendChild(related);
     li.appendChild(actionRow(passage, "passage"));
     return li;
   }
@@ -404,28 +398,174 @@
     text.className = "note-text";
     text.textContent = note.text;
     li.appendChild(text);
-    const meta = metaLine(note);
-    if (note.source === "ai") meta.textContent += " · AI draft";
-    li.appendChild(meta);
+    if (note.source === "ai") {
+      const meta = document.createElement("span");
+      meta.className = "item-meta";
+      meta.textContent = "AI draft";
+      li.appendChild(meta);
+    }
     li.appendChild(tagRow(note, "note"));
     li.appendChild(editor(note, "note"));
-    const related = connectionsBlock(note);
-    if (related) li.appendChild(related);
     li.appendChild(actionRow(note, "note"));
     return li;
   }
 
-  function buildSavedResultNode(record) {
+  function pageActionRow(page) {
+    const actions = document.createElement("div");
+    actions.className = "item-actions page-actions-row";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = page.saved ? "btn-primary btn-small btn-continue-page" : "btn-ghost btn-small btn-open-page";
+    open.textContent = page.saved ? "Continue reading" : "Open page";
+    const busyKey = `page:${page.url}`;
+    open.disabled = busy.has(busyKey);
+    open.addEventListener("click", () => {
+      if (busy.has(busyKey)) return;
+      if (!page.saved) {
+        try { chrome.tabs.create({ url: page.url }); } catch (_) { setStatus("Could not open the page.", "alert"); }
+        return;
+      }
+      busy.add(busyKey);
+      render();
+      sendMessage({ type: "continueSavedResumePoint", url: page.url }, (res) => {
+        busy.delete(busyKey);
+        setStatus(res && res.ok ? "Opened your saved place in a new tab." : "Could not open that saved place.", res && res.ok ? "status" : "alert");
+        render();
+      });
+    });
+    actions.appendChild(open);
+
+    if (page.saved) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn-danger btn-small btn-remove-saved-position";
+      remove.textContent = "Remove saved place";
+      remove.addEventListener("click", () => {
+        if (!globalThis.confirm("Remove the saved reading position? Passages, notes, and page tags will stay.")) return;
+        sendMessage({ type: "removeSavedResumePoint", url: page.url }, (res) => {
+          if (res && res.ok) {
+            setStatus("Saved reading position removed.", "status");
+            load();
+          } else {
+            setStatus("Could not remove the saved reading position.", "alert");
+          }
+        });
+      });
+      actions.appendChild(remove);
+    }
+    return actions;
+  }
+
+  function pageTagsEditor(page) {
+    const wrap = document.createElement("div");
+    wrap.className = "page-tags-editor";
+    const key = `tags:${page.url}`;
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "link-button btn-edit-page-tags";
+    edit.textContent = page.tags.length ? "Edit page tags" : "Add page tags";
+    edit.setAttribute("aria-expanded", String(expanded.has(key)));
+    edit.addEventListener("click", () => toggleExpanded(key));
+    wrap.appendChild(edit);
+
+    const form = document.createElement("form");
+    form.className = "inline-page-tags-form";
+    form.hidden = !expanded.has(key);
+    const label = document.createElement("label");
+    label.textContent = "Page tags (comma separated)";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "page-card-tags-input";
+    input.value = page.tags.join(", ");
+    label.appendChild(input);
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "btn-primary btn-small";
+    save.textContent = "Save tags";
+    form.appendChild(label);
+    form.appendChild(save);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const tags = input.value.split(",").map((value) => value.trim()).filter(Boolean);
+      save.disabled = true;
+      sendMessage({ type: "setPageTags", url: page.url, tags }, (res) => {
+        if (res && res.ok) {
+          expanded.delete(key);
+          setStatus("Page tags saved.", "status");
+          load();
+        } else {
+          save.disabled = false;
+          setStatus(res && res.error === "invalid-input" ? "Use up to 20 tags of 40 characters each." : "Could not save page tags.", "alert");
+        }
+      });
+    });
+    wrap.appendChild(form);
+    return wrap;
+  }
+
+  function buildPageNode(page, forceOpen = false) {
     const li = document.createElement("li");
-    li.className = "knowledge-item saved-result";
+    li.className = "page-card";
+    li.dataset.url = page.url;
+    const details = document.createElement("details");
+    details.className = "page-details";
+    details.open = forceOpen || expandedPages.has(page.url);
+    details.addEventListener("toggle", () => {
+      if (details.open) expandedPages.add(page.url);
+      else expandedPages.delete(page.url);
+    });
+
+    const summary = document.createElement("summary");
+    summary.className = "page-summary";
+    const text = document.createElement("span");
+    text.className = "page-summary-text";
     const title = document.createElement("span");
     title.className = "item-title";
-    title.textContent = record.title;
+    title.textContent = page.title || domainFromUrl(page.url);
     const meta = document.createElement("span");
     meta.className = "item-meta";
-    meta.textContent = `Saved page · ${domainFromUrl(record.url)}`;
-    li.appendChild(title);
-    li.appendChild(meta);
+    const counts = [];
+    if (page.saved) counts.push("saved place");
+    if (page.passages.length) counts.push(`${page.passages.length} ${page.passages.length === 1 ? "passage" : "passages"}`);
+    if (page.notes.length) counts.push(`${page.notes.length} ${page.notes.length === 1 ? "note" : "notes"}`);
+    meta.textContent = [domainFromUrl(page.url), counts.join(" · ")].filter(Boolean).join(" · ");
+    text.appendChild(title);
+    text.appendChild(meta);
+    summary.appendChild(text);
+    details.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "page-body";
+    if (page.tags.length) {
+      const tags = document.createElement("div");
+      tags.className = "tag-row page-tag-row";
+      for (const tag of page.tags) tags.appendChild(chip(tag));
+      body.appendChild(tags);
+    }
+    body.appendChild(pageTagsEditor(page));
+    body.appendChild(pageActionRow(page));
+    if (page.passages.length) {
+      const heading = document.createElement("h3");
+      heading.className = "sub-heading";
+      heading.textContent = "Passages";
+      body.appendChild(heading);
+      const list = document.createElement("ul");
+      list.className = "list nested-list passage-group";
+      renderList(list, page.passages.map((passage) => buildPassageNode(passage)));
+      body.appendChild(list);
+    }
+    if (page.notes.length) {
+      const heading = document.createElement("h3");
+      heading.className = "sub-heading";
+      heading.textContent = "Notes";
+      body.appendChild(heading);
+      const list = document.createElement("ul");
+      list.className = "list nested-list note-group";
+      renderList(list, page.notes.map((note) => buildNoteNode(note)));
+      body.appendChild(list);
+    }
+    details.appendChild(body);
+    li.appendChild(details);
     return li;
   }
 
@@ -525,6 +665,22 @@
     });
   }
 
+  function onClearSavedPlaces() {
+    if (!library.saved.length) return;
+    const confirmed = globalThis.confirm("Clear every saved reading position? Passages, notes, and page tags will stay.");
+    if (!confirmed) return;
+    els.clearSavedButton.disabled = true;
+    sendMessage({ type: "clearSavedResumePoints" }, (res) => {
+      if (!res || !res.ok) {
+        setStatus("Could not clear saved reading positions. Please try again.", "alert");
+        render();
+        return;
+      }
+      setStatus("Saved reading positions cleared.", "status");
+      load();
+    });
+  }
+
   function onImportFile(file) {
     const EI = exportImport();
     if (!EI || !file) return;
@@ -554,17 +710,17 @@
   function init() {
     const $ = (id) => document.getElementById(id);
     els = {
-      searchWrap: $("librarySearchWrap"),
       search: $("librarySearch"),
       searchResults: $("searchResults"),
-      passageHeading: $("passageHeading"),
-      passageList: $("passageList"),
-      noteHeading: $("noteHeading"),
-      noteList: $("noteList"),
+      pagesButton: $("pagesViewButton"),
+      tagsButton: $("tagsViewButton"),
+      pageList: $("pageList"),
+      tagBrowser: $("tagBrowser"),
       empty: $("knowledgeEmpty"),
       usage: $("libraryUsage"),
       status: $("knowledgeStatus"),
       exportButton: $("exportButton"),
+      clearSavedButton: $("clearSavedPlacesButton"),
       clearButton: $("clearKnowledgeButton"),
       importInput: $("importInput"),
       importReplace: $("importReplace")
@@ -573,7 +729,23 @@
       query = els.search.value;
       render();
     });
+    const selectView = (mode, focus) => {
+      viewMode = mode;
+      if (mode === "pages") selectedTag = "";
+      render();
+      if (focus) (mode === "pages" ? els.pagesButton : els.tagsButton).focus();
+    };
+    els.pagesButton.addEventListener("click", () => selectView("pages", false));
+    els.tagsButton.addEventListener("click", () => selectView("tags", false));
+    for (const button of [els.pagesButton, els.tagsButton]) {
+      button.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        selectView(viewMode === "pages" ? "tags" : "pages", true);
+      });
+    }
     els.exportButton.addEventListener("click", onExport);
+    els.clearSavedButton.addEventListener("click", onClearSavedPlaces);
     els.clearButton.addEventListener("click", onClearKnowledge);
     els.importInput.addEventListener("change", () => {
       const file = els.importInput.files && els.importInput.files[0];

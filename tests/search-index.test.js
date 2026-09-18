@@ -47,6 +47,17 @@ describe("search index", () => {
     expect(SI.search(index, "")).toEqual([]);
   });
 
+  it("searches page URLs and keeps tag-only pages in the index", () => {
+    const records = SI.recordsFromLibrary({
+      saved: [], passages: [], notes: [],
+      pagemeta: [{ url: "https://research.example.com/topic", tags: ["later"], updatedAt: 4 }]
+    });
+    expect(records).toHaveLength(1);
+    const index = SI.buildIndex(records);
+    expect(SI.search(index, "research")[0].record.url).toBe("https://research.example.com/topic");
+    expect(SI.search(index, "later")[0].record.url).toBe("https://research.example.com/topic");
+  });
+
   it("breaks ties by recency and honors the limit", () => {
     const index = SI.buildIndex([
       record("old", { text: "focus", updatedAt: 1 }),
@@ -57,7 +68,7 @@ describe("search index", () => {
     expect(SI.search(index, "focus", 2)).toHaveLength(2);
   });
 
-  it("flattens a library reply and merges page tags into its items", () => {
+  it("flattens a library reply and indexes page tags instead of item tags", () => {
     const records = SI.recordsFromLibrary({
       saved: [{ url: "https://a.example/x", title: "Saved X", savedAt: 3 }],
       passages: [{ id: "p1", url: "https://a.example/x", title: "Saved X", text: "t", note: "n", tags: ["own"], updatedAt: 2 }],
@@ -65,7 +76,7 @@ describe("search index", () => {
       pagemeta: [{ url: "https://a.example/x", tags: ["page"] }]
     });
     expect(records.map((r) => r.id)).toEqual(["saved:https://a.example/x", "p1", "n1"]);
-    expect(records[1].tags).toEqual(["own", "page"]);
+    expect(records[1].tags).toEqual(["page"]);
     expect(records[0].tags).toEqual(["page"]);
     expect(records[2].tags).toEqual([]);
   });

@@ -38,6 +38,7 @@
       byId.set(record.id, record);
       addTerms(postings, record.id, record.title, 3);
       addTerms(postings, record.id, Array.isArray(record.tags) ? record.tags.join(" ") : "", 3);
+      addTerms(postings, record.id, record.url, 1);
       addTerms(postings, record.id, record.note, 2);
       addTerms(postings, record.id, record.text, 1);
     }
@@ -100,12 +101,18 @@
       out.push({ id: "saved:" + saved.url, kind: "saved", title: saved.title, text: "", note: "", tags: [], url: saved.url, updatedAt: saved.savedAt });
     }
     for (const passage of library.passages || []) {
-      out.push({ id: passage.id, kind: "passage", title: passage.title, text: passage.text, note: passage.note, tags: passage.tags, url: passage.url, updatedAt: passage.updatedAt });
+      out.push({ id: passage.id, kind: "passage", title: passage.title, text: passage.text, note: passage.note, tags: [], url: passage.url, updatedAt: passage.updatedAt });
     }
     for (const note of library.notes || []) {
-      out.push({ id: note.id, kind: "note", title: note.title, text: note.text, note: "", tags: note.tags, url: note.url, updatedAt: note.updatedAt });
+      out.push({ id: note.id, kind: "note", title: note.title, text: note.text, note: "", tags: [], url: note.url, updatedAt: note.updatedAt });
     }
     const metaByUrl = new Map((library.pagemeta || []).map((meta) => [meta.url, meta.tags]));
+    const representedUrls = new Set(out.map((record) => record.url));
+    for (const meta of library.pagemeta || []) {
+      if (!representedUrls.has(meta.url)) {
+        out.push({ id: "page:" + meta.url, kind: "page", title: "", text: "", note: "", tags: [], url: meta.url, updatedAt: meta.updatedAt });
+      }
+    }
     for (const record of out) {
       const pageTags = metaByUrl.get(record.url);
       if (pageTags && pageTags.length) record.tags = [...new Set([...record.tags, ...pageTags])];

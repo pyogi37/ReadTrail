@@ -55,7 +55,7 @@ It explores a simple product question:
 - 🔒 Local-only settings and saved-page data—no account, analytics, or page-text collection
 - 🧩 Manifest V3 Chrome extension architecture
 - 🧪 250+ automated tests with Vitest plus Playwright end-to-end scenarios
-- ✂️ Save passages, notes, and tags; search your library; export and import JSON
+- ✂️ Keep each page's saved place, passages, notes, and tags together; browse tags, search locally, and export or import JSON
 
 </td>
 </tr>
@@ -121,7 +121,7 @@ The extension uses standard HTML, CSS, and JavaScript with Chrome Manifest V3 AP
 5. Open a text-heavy page, click the ReadTrail toolbar icon to open the side panel, and turn it on for that page
 6. Move to a line and click once to pause the marker there
 7. Choose **Save for later** in the side panel when you want the place to survive a browser restart
-8. Use **Saved pages** in the side panel to continue or remove saved pages
+8. Use **Library → Pages** in the side panel to continue reading or expand a page's passages and notes
 
 After changing the source, you do not need to reinstall the extension: click **Reload** on the ReadTrail card in `chrome://extensions`, then refresh any page you want to test.
 
@@ -146,7 +146,7 @@ npm run package:check    # validates the store package
 - [x] Per-tab reading state so two tabs on the same page never interfere
 - [x] More resilient restoration when a page's structure changes (landmark anchors, structural checks, proportional fallback)
 - [x] Optional save offer when closing a tab with unsaved reading progress (side panel, no notifications)
-- [x] Passages, notes, tags, local search, and simple connections built on top of reliable reading memory
+- [x] Page-first library with passages, notes, page tags, grouped local search, and export/import
 - [ ] Chrome Web Store 1.0 submission (release checklist in `docs/RELEASE-CHECKLIST.md`)
 - [ ] 1.1: optional AI actions with your own Anthropic key
 

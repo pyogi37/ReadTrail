@@ -168,7 +168,9 @@ Exact measurements and any analytics approach remain undecided and must respect 
 - Save prompts and ongoing save preferences are optional and user-controlled.
 - Local-first privacy is required.
 - A separate reading space belongs in the product direction.
-- Imported passages, personal reactions, questions, and knowledge connections are later possibilities.
+- The reading space is page-first: saved position, passages, notes, and page tags are organized under each page.
+- Tags browse pages, and search groups matching content by page.
+- Item-level tags and automatic knowledge connections remain later possibilities.
 
 ## Open Product Questions
 

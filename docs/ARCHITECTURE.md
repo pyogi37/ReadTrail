@@ -9,7 +9,7 @@ Stable reference for surfaces, the message protocol, and storage schemas. Update
 | `background/service-worker.js` | Extension service worker | Single trust boundary. Validates every message and record. Owns all storage writes. |
 | `shared/` | Every surface (classic scripts) | `constants.js` (DEFAULTS, ERRORS, LIMITS, KEYS), `validators.js`, `page-controls.js` (pure UI state machine). |
 | `content/` | Every http(s) page at `document_idle` | Dormant until activated for this tab. `position.js` anchors, `renderer.js` canvas, `content.js` lifecycle, `passage.js` explicit selection capture. |
-| `sidepanel/` | Chrome side panel, or a full tab with `?mode=page` | Current-tab controls, library, recently closed, search. Replaces `popup/` and `reading-space/` from Phase 3. |
+| `sidepanel/` | Chrome side panel, or a full tab with `?mode=page` | Current-tab controls, recently closed, and a page-first library with Pages, Tags, and page-grouped search. Replaces `popup/` and `reading-space/` from Phase 3. |
 | `options/` | Options page | Appearance and behavior preferences via `setSettings`. |
 
 The worker holds no in-memory state; every handler reads its key, acts, writes its key. All listeners are registered at top level so they wake the worker.
@@ -92,6 +92,8 @@ settings = { style, color, size, opacity, dotCount, fadeSpeed, highlightLine, hi
 Bounds: 1,500 passages plus notes in total (refused with "library-full"), 20 tags of 40 characters, counts computed by listing keys.
 "readtrail.ai.v1"               = { version:1, apiKey, model, updatedAt }                                            // 1.1 only
 ```
+
+The 1.0 interface treats `pagemeta.tags` as the organizing tags. Passage and note `tags` remain in schema v1 for lossless import/export compatibility but are not exposed as controls. Library search can read page tags, titles, URLs, passage text, and note text; results are grouped by exact page URL.
 
 `storage.sync` is never used.
 

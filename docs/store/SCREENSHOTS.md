@@ -6,8 +6,8 @@ Five screenshots at 1280 x 800 (PNG, no transparency). Capture on a clean Chrome
 |---|---|---|---|
 | 1 | `01-reading-guide.png` | Article with the ruler following a line mid-page, side panel open showing "Active on this page" | "Follow the line you are reading" |
 | 2 | `02-paused.png` | Same article with the paused (frozen) marker anchored to a sentence, panel showing Save for later | "Pause exactly where you stopped" |
-| 3 | `03-saved-pages.png` | Side panel Saved pages list with three items, one hovered showing Continue reading and Remove | "Come back later, even after closing Chrome" |
-| 4 | `04-passages.png` | Side panel library with a saved passage, a note, and tags; search box with a query and results | "Keep the passages that mattered" |
+| 3 | `03-saved-pages.png` | Library → Pages with three page cards, one expanded to show Continue reading, passages, and notes | "Come back later, even after closing Chrome" |
+| 4 | `04-passages.png` | Library → Tags with a selected tag and its matching page cards; search query grouped by page in a second capture if space permits | "Keep the passages that mattered" |
 | 5 | `05-settings.png` | Options page: trail style, color, size, and the "Closing tabs" preference | "Your marker, your rules, your device" |
 
 Rules

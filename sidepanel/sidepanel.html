@@ -95,23 +95,25 @@
 
     <section class="knowledge-section" id="knowledgeSection" aria-labelledby="knowledgeHeading">
       <div class="section-row">
-        <h2 class="section-heading" id="knowledgeHeading">Passages and notes</h2>
+        <h2 class="section-heading" id="knowledgeHeading">Library</h2>
         <span class="usage" id="libraryUsage"></span>
       </div>
-      <div class="search-wrap" id="librarySearchWrap" hidden>
+      <div class="library-tabs" role="tablist" aria-label="Library views">
+        <button type="button" id="pagesViewButton" class="library-tab is-active" role="tab" aria-selected="true" aria-controls="pageList">Pages</button>
+        <button type="button" id="tagsViewButton" class="library-tab" role="tab" aria-selected="false" aria-controls="tagBrowser">Tags</button>
+      </div>
+      <div class="search-wrap" id="librarySearchWrap">
         <label class="visually-hidden" for="librarySearch">Search your library</label>
-        <input type="search" id="librarySearch" placeholder="Search saved pages, passages, notes" autocomplete="off">
+        <input type="search" id="librarySearch" placeholder="Search pages and what you saved" autocomplete="off">
       </div>
       <p class="status-message" id="knowledgeStatus" role="status" aria-live="polite" hidden></p>
       <div class="empty" id="knowledgeEmpty">
-        <p class="empty-title">No passages or notes yet</p>
-        <p class="empty-text">Select text on a page and choose <strong>Save selection</strong> here or in the right-click menu. Add notes to keep what a page gave you.</p>
+        <p class="empty-title">No saved pages yet</p>
+        <p class="empty-text">Save your place, a passage, a note, or page tags. ReadTrail will keep everything together under its page.</p>
       </div>
-      <ul class="list" id="searchResults" aria-label="Search results" hidden></ul>
-      <h3 class="sub-heading" id="passageHeading" hidden>Passages</h3>
-      <ul class="list" id="passageList" aria-label="Saved passages" hidden></ul>
-      <h3 class="sub-heading" id="noteHeading" hidden>Notes</h3>
-      <ul class="list" id="noteList" aria-label="Notes" hidden></ul>
+      <ul class="list page-list" id="searchResults" aria-label="Matching pages" hidden></ul>
+      <ul class="list page-list" id="pageList" role="tabpanel" aria-labelledby="pagesViewButton"></ul>
+      <div id="tagBrowser" class="tag-browser" role="tabpanel" aria-labelledby="tagsViewButton" hidden></div>
       <div class="transfer-row">
         <button type="button" id="exportButton" class="btn-ghost btn-small">Export library</button>
         <label class="btn-ghost btn-small file-label" for="importInput">Import</label>
@@ -119,11 +121,12 @@
         <label class="checkbox-inline" for="importReplace">
           <input type="checkbox" id="importReplace"> Replace instead of merge
         </label>
-        <button type="button" id="clearKnowledgeButton" class="btn-danger btn-small">Clear passages and notes</button>
+        <button type="button" id="clearSavedPlacesButton" class="btn-danger btn-small">Clear saved places</button>
+        <button type="button" id="clearKnowledgeButton" class="btn-danger btn-small">Clear page content</button>
       </div>
     </section>
 
-    <section class="library-section" id="librarySection" aria-labelledby="libraryHeading">
+    <section class="library-section" id="librarySection" aria-labelledby="libraryHeading" hidden aria-hidden="true">
       <div class="section-row">
         <h2 class="section-heading" id="libraryHeading">Saved pages</h2>
         <button type="button" id="clearAllButton" class="btn-danger btn-small" disabled>Clear all</button>
@@ -167,11 +170,9 @@
   <script src="../shared/validators.js"></script>
   <script src="../shared/page-controls.js"></script>
   <script src="search-index.js"></script>
-  <script src="connections.js"></script>
   <script src="export-import.js"></script>
   <script src="knowledge-view.js"></script>
   <script src="page-view.js"></script>
-  <script src="library-view.js"></script>
   <script src="recent-view.js"></script>
   <script src="sidepanel.js"></script>
 </body>

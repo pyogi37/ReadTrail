@@ -614,6 +614,127 @@ input[type="search"]:focus-visible {
   margin-bottom: 10px;
 }
 
+.library-tabs {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 10px;
+  border: 1px solid var(--rule);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.library-tab {
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+}
+
+.library-tab.is-active {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.page-card {
+  border: 1px solid var(--rule);
+  border-radius: 11px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.page-summary {
+  cursor: pointer;
+  padding: 11px 12px;
+  list-style: none;
+}
+
+.page-summary::-webkit-details-marker {
+  display: none;
+}
+
+.page-summary::after {
+  content: "+";
+  float: right;
+  margin-top: -28px;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.page-details[open] > .page-summary::after {
+  content: "−";
+}
+
+.page-summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 24px;
+}
+
+.page-body {
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--rule);
+}
+
+.page-actions-row {
+  margin: 10px 0 4px;
+}
+
+.page-tags-editor {
+  margin-top: 8px;
+}
+
+.inline-page-tags-form {
+  display: grid;
+  gap: 7px;
+  margin-top: 7px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.inline-page-tags-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nested-list .knowledge-item {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.tag-browser {
+  display: grid;
+  gap: 12px;
+}
+
+.tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.tag-filter {
+  padding: 5px 9px;
+  border: 1px solid var(--notice-border);
+  border-radius: 999px;
+  background: var(--notice-surface);
+  color: var(--notice-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.tag-filter.is-active {
+  border-color: var(--focus);
+  color: var(--text);
+}
+
 .sub-heading {
   font-size: 12px;
   font-weight: 600;
