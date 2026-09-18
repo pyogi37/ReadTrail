@@ -21,6 +21,8 @@
   let statusText = "";
   let statusRole = "status";
   let reloadTimer = null;
+  let quoteHandler = null;
+  let navigationHandler = null;
 
   function sendMessage(message, callback) {
     try {
@@ -233,6 +235,9 @@
       button.addEventListener("click", () => {
         selectedTag = selectedTag === tag ? "" : tag;
         render();
+        notifyNavigation(selectedTag
+          ? { view: "tags", tag: selectedTag, query: "" }
+          : { view: "tags", tag: "", query: "" });
       });
       cloud.appendChild(button);
     }
@@ -344,6 +349,21 @@
   function actionRow(item, kind) {
     const actions = document.createElement("div");
     actions.className = "item-actions";
+    if (kind === "passage" && quoteHandler) {
+      const quote = document.createElement("button");
+      quote.type = "button";
+      quote.className = "btn-primary btn-small btn-quote";
+      quote.textContent = "Quote";
+      quote.addEventListener("click", () => {
+        quote.disabled = true;
+        quote.textContent = "Quoting…";
+        quoteHandler(item, (ok) => {
+          quote.disabled = false;
+          quote.textContent = ok ? "Quoted" : "Quote";
+        });
+      });
+      actions.appendChild(quote);
+    }
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "btn-danger btn-small btn-remove-item";
@@ -707,6 +727,28 @@
 
   // --- Init ---
 
+  function notifyNavigation(state) {
+    if (typeof navigationHandler === "function") navigationHandler(state);
+  }
+
+  function navigate(state, options = {}) {
+    const next = state || {};
+    query = typeof next.query === "string" ? next.query : "";
+    viewMode = next.view === "tags" ? "tags" : "pages";
+    selectedTag = viewMode === "tags" && typeof next.tag === "string" ? next.tag : "";
+    if (els) els.search.value = query;
+    render();
+    if (!options.silent) notifyNavigation({ view: viewMode, tag: selectedTag, query });
+  }
+
+  function setQuoteHandler(handler) {
+    quoteHandler = typeof handler === "function" ? handler : null;
+  }
+
+  function setNavigationHandler(handler) {
+    navigationHandler = typeof handler === "function" ? handler : null;
+  }
+
   function init() {
     const $ = (id) => document.getElementById(id);
     els = {
@@ -728,11 +770,13 @@
     els.search.addEventListener("input", () => {
       query = els.search.value;
       render();
+      notifyNavigation({ view: viewMode, tag: selectedTag, query });
     });
     const selectView = (mode, focus) => {
       viewMode = mode;
       if (mode === "pages") selectedTag = "";
       render();
+      notifyNavigation({ view: viewMode, tag: selectedTag, query });
       if (focus) (mode === "pages" ? els.pagesButton : els.tagsButton).focus();
     };
     els.pagesButton.addEventListener("click", () => selectView("pages", false));
@@ -764,6 +808,9 @@
     savePassageFromTab,
     saveNoteForTab,
     setPageTagsForTab,
-    getLibrary: () => library
+    getLibrary: () => library,
+    navigate,
+    setQuoteHandler,
+    setNavigationHandler
   };
 })();

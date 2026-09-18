@@ -151,6 +151,13 @@ describe("passage capture and highlights", () => {
       expect(PS.revealPassage(broken, broken, "Wrapped across lines")).toEqual({ quality: "approximate" });
     });
 
+    it("finds unchanged text spanning adjacent block elements", () => {
+      highlightSpies();
+      const broken = { version: 1, path: [99], offset: 0 };
+      expect(PS.revealPassage(broken, broken, "sentence here. Second sentence"))
+        .toEqual({ quality: "approximate" });
+    });
+
     it("clears the flash and works without the highlight API", () => {
       const { del } = highlightSpies();
       PS.clearReveal();

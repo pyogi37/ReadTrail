@@ -155,6 +155,18 @@
     }
   }
 
+  function recordSize(value) {
+    try { return JSON.stringify(value).length; } catch (_) { return Number.MAX_SAFE_INTEGER; }
+  }
+
+  function guardGrowingWrite(previous, next, callback) {
+    if (previous && recordSize(next) <= recordSize(previous)) {
+      callback(null);
+      return;
+    }
+    guardStorage(callback);
+  }
+
   function writeRecord(key, record, callback) {
     const store = getLocalStore();
     if (!store) {
@@ -251,8 +263,11 @@
         reply(sendResponse, ERRORS.INVALID_INPUT);
         return;
       }
-      writeRecord(passageKey(record.id), S.clonePassage(record), (error) => {
-        reply(sendResponse, error, { passage: S.clonePassage(record) });
+      guardStorage((fullError) => {
+        if (fullError) { reply(sendResponse, fullError); return; }
+        writeRecord(passageKey(record.id), S.clonePassage(record), (error) => {
+          reply(sendResponse, error, { passage: S.clonePassage(record) });
+        });
       });
     });
   }
@@ -289,8 +304,11 @@
         next.tags = tags;
       }
       next.updatedAt = Date.now();
-      writeRecord(passageKey(next.id), next, (error) => {
-        reply(sendResponse, error, { passage: S.clonePassage(next) });
+      guardGrowingWrite(record, next, (fullError) => {
+        if (fullError) { reply(sendResponse, fullError); return; }
+        writeRecord(passageKey(next.id), next, (error) => {
+          reply(sendResponse, error, { passage: S.clonePassage(next) });
+        });
       });
     });
   }
@@ -357,8 +375,11 @@
         reply(sendResponse, ERRORS.INVALID_INPUT);
         return;
       }
-      writeRecord(noteKey(record.id), S.cloneNote(record), (error) => {
-        reply(sendResponse, error, { note: S.cloneNote(record) });
+      guardStorage((fullError) => {
+        if (fullError) { reply(sendResponse, fullError); return; }
+        writeRecord(noteKey(record.id), S.cloneNote(record), (error) => {
+          reply(sendResponse, error, { note: S.cloneNote(record) });
+        });
       });
     });
   }
@@ -395,8 +416,11 @@
         next.tags = tags;
       }
       next.updatedAt = Date.now();
-      writeRecord(noteKey(next.id), next, (error) => {
-        reply(sendResponse, error, { note: S.cloneNote(next) });
+      guardGrowingWrite(record, next, (fullError) => {
+        if (fullError) { reply(sendResponse, fullError); return; }
+        writeRecord(noteKey(next.id), next, (error) => {
+          reply(sendResponse, error, { note: S.cloneNote(next) });
+        });
       });
     });
   }
@@ -434,8 +458,13 @@
       removeKeys([key], (error) => reply(sendResponse, error, { tags: [] }));
       return;
     }
-    writeRecord(key, { version: 1, tags, updatedAt: Date.now() }, (error) => {
-      reply(sendResponse, error, { tags });
+    const next = { version: 1, tags, updatedAt: Date.now() };
+    readOne(key, S.isValidPageMeta, (previous, readError) => {
+      if (readError) { reply(sendResponse, readError); return; }
+      guardGrowingWrite(previous, next, (fullError) => {
+        if (fullError) { reply(sendResponse, fullError); return; }
+        writeRecord(key, next, (error) => reply(sendResponse, error, { tags }));
+      });
     });
   }
 
@@ -444,8 +473,14 @@
   // Accepts only blocks that are already well formed. A quote's snapshot is
   // never taken from the caller's word: handleAppendQuote copies it from the
   // stored passage, and an edit may only keep or drop a quote, never invent one.
-  function cleanBlocks(value) {
+  function cleanBlocks(value, existingBlocks = []) {
     if (!Array.isArray(value)) return null;
+    const allowedQuotes = new Map();
+    for (const block of existingBlocks) {
+      if (block.type !== "quote") continue;
+      const signature = JSON.stringify(S.cloneDraftBlock(block));
+      allowedQuotes.set(signature, (allowedQuotes.get(signature) || 0) + 1);
+    }
     const out = [];
     for (const raw of value) {
       if (!S.isRecord(raw)) return null;
@@ -456,7 +491,12 @@
         continue;
       }
       if (raw.type !== "quote" || !S.isValidDraftBlock(raw)) return null;
-      out.push(S.cloneDraftBlock(raw));
+      const quote = S.cloneDraftBlock(raw);
+      const signature = JSON.stringify(quote);
+      const remaining = allowedQuotes.get(signature) || 0;
+      if (remaining === 0) return null;
+      allowedQuotes.set(signature, remaining - 1);
+      out.push(quote);
     }
     return S.isValidDraftBlocks(out) ? out : null;
   }
@@ -528,7 +568,7 @@
         next.tags = tags;
       }
       if (msg.blocks !== undefined) {
-        const blocks = cleanBlocks(msg.blocks);
+        const blocks = cleanBlocks(msg.blocks, record.blocks);
         if (blocks === null) {
           reply(sendResponse, ERRORS.INVALID_INPUT);
           return;
@@ -536,12 +576,8 @@
         next.blocks = blocks;
       }
       next.updatedAt = Date.now();
-      guardStorage((fullError) => {
-        // An edit that only shortens the draft must still be allowed through.
-        if (fullError && S.draftChars(next.blocks) > S.draftChars(record.blocks)) {
-          reply(sendResponse, fullError);
-          return;
-        }
+      guardGrowingWrite(record, next, (fullError) => {
+        if (fullError) { reply(sendResponse, fullError); return; }
         writeRecord(draftKey(next.id), next, (error) => {
           reply(sendResponse, error, { draft: S.cloneDraft(next) });
         });
@@ -731,6 +767,20 @@
       reply(sendResponse, ERRORS.INVALID_INPUT);
       return;
     }
+    const invalidRecord = payload.saved.some((item) => {
+      const { url, ...record } = item || {};
+      return !S.isValidPageUrl(url) || !S.isValidSavedRecord(record);
+    }) || payload.passages.some((item) => !S.isValidPassage(item))
+      || payload.notes.some((item) => !S.isValidNote(item))
+      || payload.pagemeta.some((item) => {
+        const { url, ...record } = item || {};
+        return !S.isValidPageUrl(url) || !S.isValidPageMeta(record);
+      })
+      || (Array.isArray(payload.drafts) && payload.drafts.some((item) => !S.isValidDraft(item)));
+    if (mode === "replace" && invalidRecord) {
+      reply(sendResponse, ERRORS.INVALID_INPUT);
+      return;
+    }
     const proceed = (library) => {
       const existingSaved = new Set(library.saved.map((s) => s.url));
       const existingPassages = new Set(library.passages.map((p) => p.id));
@@ -797,12 +847,17 @@
         finish();
         return;
       }
-      store.set(writes, () => {
-        if (chrome.runtime.lastError) {
-          reply(sendResponse, ERRORS.SAVE_STORAGE);
-          return;
-        }
+      const writeAll = () => store.set(writes, () => {
+        if (chrome.runtime.lastError) { reply(sendResponse, ERRORS.SAVE_STORAGE); return; }
         finish();
+      });
+      if (mode === "replace") {
+        writeAll();
+        return;
+      }
+      guardStorage((fullError) => {
+        if (fullError) { reply(sendResponse, fullError); return; }
+        writeAll();
       });
     };
 

@@ -812,10 +812,18 @@
       chrome.runtime.sendMessage({ type: "takeSeededReveal", url: initialUrl }, (res) => {
         if (chrome.runtime.lastError || !res || !res.ok || !res.passage) return;
         const PS = getPassage();
-        if (!PS || typeof PS.revealPassage !== "function") return;
+        let quality = "missing";
         try {
-          PS.revealPassage(res.passage.start, res.passage.end, res.passage.text);
+          if (PS && typeof PS.revealPassage === "function") {
+            const result = PS.revealPassage(res.passage.start, res.passage.end, res.passage.text);
+            if (result && ["exact", "approximate", "missing"].includes(result.quality)) quality = result.quality;
+          }
         } catch (_) { /* fail safely */ }
+        try {
+          chrome.runtime.sendMessage({ type: "completeSeededReveal", quality }, () => {
+            void chrome.runtime.lastError;
+          });
+        } catch (_) { /* runtime unavailable */ }
       });
     } catch (_) { /* runtime unavailable */ }
   }

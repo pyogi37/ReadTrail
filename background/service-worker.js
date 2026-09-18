@@ -1,6 +1,6 @@
 // ReadTrail service worker: the single trust boundary. Every runtime message
-// and stored record is validated here. The worker keeps no in-memory state so
-// Chrome may suspend it at any time; every handler reads, acts, and writes.
+// and stored record is validated here. Durable state always lives in storage;
+// only an in-flight Return response is held in memory while its new tab loads.
 importScripts("../shared/constants.js", "../shared/validators.js", "./library.js");
 
 const S = globalThis.ReadTrailShared;
@@ -22,6 +22,32 @@ function getSessionStore() {
 
 function getLocalStore() {
   return chrome.storage && chrome.storage.local ? chrome.storage.local : null;
+}
+
+function valueSize(value) {
+  try { return JSON.stringify(value).length; } catch (_) { return Number.MAX_SAFE_INTEGER; }
+}
+
+function writeGrowingLocalRecord(key, record, callback) {
+  const store = getLocalStore();
+  if (!store) { callback(ERRORS.STORAGE_UNAVAILABLE); return; }
+  store.get([key], (result) => {
+    if (chrome.runtime.lastError) { callback(ERRORS.GET_STORAGE); return; }
+    const previous = result && result[key];
+    const write = () => store.set({ [key]: record }, () => {
+      callback(chrome.runtime.lastError ? ERRORS.SAVE_STORAGE : null);
+    });
+    if (previous && valueSize(record) <= valueSize(previous)) { write(); return; }
+    if (typeof store.getBytesInUse !== "function") { write(); return; }
+    store.getBytesInUse(null, (bytes) => {
+      if (chrome.runtime.lastError) { write(); return; }
+      if (typeof bytes === "number" && bytes >= LIMITS.STORAGE_SOFT_MAX) {
+        callback(ERRORS.STORAGE_FULL);
+        return;
+      }
+      write();
+    });
+  });
 }
 
 function tabKey(tabId) {
@@ -414,12 +440,8 @@ function handlePersistResumePoint(msg, sender, sendResponse) {
     position: S.clonePosition(msg.position),
     savedAt: Date.now()
   };
-  store.set({ [savedKey(url)]: record }, () => {
-    if (chrome.runtime.lastError) {
-      sendResponse({ ok: false, error: ERRORS.SAVE_STORAGE });
-      return;
-    }
-    sendResponse({ ok: true });
+  writeGrowingLocalRecord(savedKey(url), record, (error) => {
+    sendResponse(error ? { ok: false, error } : { ok: true });
   });
 }
 
@@ -592,6 +614,12 @@ function rememberSeenTab(tabId, url) {
   } catch (_) { /* session storage unavailable */ }
 }
 
+function forgetSeenTab(tabId, callback = () => {}) {
+  const session = getSessionStore();
+  if (!session || typeof session.remove !== "function") { callback(); return; }
+  try { session.remove(seenKey(tabId), callback); } catch (_) { callback(); }
+}
+
 // Returns the id of an open tab known to be showing this URL, or null.
 function findSeenTab(url, callback) {
   const session = getSessionStore();
@@ -630,11 +658,29 @@ function findSeenTab(url, callback) {
       const { tabId } = candidates[index];
       try {
         tabs.get(tabId, (tab) => {
-          if (chrome.runtime.lastError || !tab) {
+          if (chrome.runtime.lastError || !tab || tab.incognito === true) {
+            forgetSeenTab(tabId);
             tryNext(index + 1);
             return;
           }
-          callback(tab);
+          if (typeof tabs.sendMessage !== "function") {
+            forgetSeenTab(tabId);
+            tryNext(index + 1);
+            return;
+          }
+          try {
+            tabs.sendMessage(tabId, { type: "pageInfo" }, (info) => {
+              if (chrome.runtime.lastError || !info || info.url !== url) {
+                forgetSeenTab(tabId);
+                tryNext(index + 1);
+                return;
+              }
+              callback(tab);
+            });
+          } catch (_) {
+            forgetSeenTab(tabId);
+            tryNext(index + 1);
+          }
         });
       } catch (_) {
         tryNext(index + 1);
@@ -661,6 +707,18 @@ function focusTab(tab) {
 // Opens a new tab for the clip's page and leaves the passage id in the tab's
 // session record. The content script consumes it at bootstrap, so no message
 // races the script's injection at document_idle.
+const pendingReveals = new Map();
+const REVEAL_TIMEOUT_MS = 15000;
+
+function finishPendingReveal(tabId, response) {
+  const pending = pendingReveals.get(tabId);
+  if (!pending) return false;
+  pendingReveals.delete(tabId);
+  clearTimeout(pending.timer);
+  pending.sendResponse(response);
+  return true;
+}
+
 function openTabForReveal(passage, sendResponse) {
   const tabs = chrome.tabs;
   if (!tabs || typeof tabs.create !== "function") {
@@ -684,7 +742,10 @@ function openTabForReveal(passage, sendResponse) {
         sendResponse({ ok: false, error: writeError, tabId: tab.id });
         return;
       }
-      sendResponse({ ok: true, tabId: tab.id, opened: true, quality: null });
+      const timer = setTimeout(() => {
+        finishPendingReveal(tab.id, { ok: false, error: ERRORS.REVEAL_UNAVAILABLE, tabId: tab.id });
+      }, REVEAL_TIMEOUT_MS);
+      pendingReveals.set(tab.id, { sendResponse, timer, url: passage.url });
     });
   });
 }
@@ -746,13 +807,14 @@ function handleRevealPassage(msg, sendResponse) {
 // cleared from the tab record so a reload never repeats it, and the reply is
 // refused unless the content script's own URL matches the record.
 function handleTakeSeededReveal(msg, sender, sendResponse) {
-  if (!LIBRARY.isContentSender(sender) || !S.isValidTabId(sender.tab.id)) {
+  if (!LIBRARY.isContentSender(sender) || !S.isValidTabId(sender.tab.id) || sender.tab.incognito === true) {
     sendResponse({ ok: false, error: ERRORS.INVALID_SENDER });
     return;
   }
   const tabId = sender.tab.id;
   readTabRecord(tabId, (record, readError) => {
-    if (readError || !record || !S.isRecord(record.reveal) || record.url !== msg.url) {
+    if (readError || !record || !S.isRecord(record.reveal) || record.incognito || record.url !== sender.tab.url) {
+      if (record && record.url !== sender.tab.url) removeTabRecord(tabId, () => {});
       sendResponse({ ok: true, passage: null });
       return;
     }
@@ -760,7 +822,11 @@ function handleTakeSeededReveal(msg, sender, sendResponse) {
     const next = S.cloneTabRecord(record);
     delete next.reveal;
     next.updatedAt = Date.now();
-    writeTabRecord(tabId, next, () => {
+    writeTabRecord(tabId, next, (writeError) => {
+      if (writeError) {
+        sendResponse({ ok: false, error: writeError });
+        return;
+      }
       const store = getLocalStore();
       if (!store) {
         sendResponse({ ok: true, passage: null });
@@ -769,7 +835,7 @@ function handleTakeSeededReveal(msg, sender, sendResponse) {
       const key = LIBRARY.passageKey(passageId);
       store.get([key], (result) => {
         const passage = result && result[key];
-        if (chrome.runtime.lastError || !S.isValidPassage(passage) || passage.url !== msg.url) {
+        if (chrome.runtime.lastError || !S.isValidPassage(passage) || passage.url !== sender.tab.url) {
           sendResponse({ ok: true, passage: null });
           return;
         }
@@ -782,6 +848,28 @@ function handleTakeSeededReveal(msg, sender, sendResponse) {
       });
     });
   });
+}
+
+function handleCompleteSeededReveal(msg, sender, sendResponse) {
+  if (!LIBRARY.isContentSender(sender)
+    || !S.isValidTabId(sender.tab.id)
+    || sender.tab.incognito === true
+    || !S.isRevealQuality(msg.quality)) {
+    sendResponse({ ok: false, error: ERRORS.INVALID_SENDER });
+    return;
+  }
+  const pending = pendingReveals.get(sender.tab.id);
+  if (!pending || pending.url !== sender.tab.url) {
+    sendResponse({ ok: false, error: ERRORS.REVEAL_UNAVAILABLE });
+    return;
+  }
+  const completed = finishPendingReveal(sender.tab.id, {
+    ok: true,
+    tabId: sender.tab.id,
+    opened: true,
+    quality: msg.quality
+  });
+  sendResponse(completed ? { ok: true } : { ok: false, error: ERRORS.REVEAL_UNAVAILABLE });
 }
 
 function updateBadge(count) {
@@ -848,9 +936,7 @@ function writeSavedFromPosition(url, title, position, callback) {
     position: S.clonePosition(position),
     savedAt: Date.now()
   };
-  store.set({ [savedKey(url)]: record }, () => {
-    callback(chrome.runtime.lastError ? ERRORS.SAVE_STORAGE : null);
-  });
+  writeGrowingLocalRecord(savedKey(url), record, callback);
 }
 
 // Runs on tabs.onRemoved. Reads the tab's last checkpoint before deleting the
@@ -916,6 +1002,8 @@ const pendingTabRemovals = [];
 let tabRemovalInProgress = false;
 
 function handleTabRemoved(tabId) {
+  finishPendingReveal(tabId, { ok: false, error: ERRORS.REVEAL_UNAVAILABLE, tabId });
+  forgetSeenTab(tabId);
   pendingTabRemovals.push(tabId);
   if (tabRemovalInProgress) return;
 
@@ -1088,6 +1176,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     case "takeSeededReveal":
       handleTakeSeededReveal(msg, sender, sendResponse);
+      return true;
+    case "completeSeededReveal":
+      handleCompleteSeededReveal(msg, sender, sendResponse);
       return true;
     case "listRecentlyClosed":
       handleListRecentlyClosed(sendResponse);

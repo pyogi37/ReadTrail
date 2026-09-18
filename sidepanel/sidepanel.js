@@ -136,7 +136,7 @@
     if (openInTab) {
       openInTab.addEventListener("click", () => {
         try {
-          chrome.tabs.create({ url: chrome.runtime.getURL("sidepanel/sidepanel.html?mode=page") });
+          chrome.tabs.create({ url: chrome.runtime.getURL("sidepanel/desk.html") });
         } catch (_) { /* unavailable outside Chrome */ }
       });
     }

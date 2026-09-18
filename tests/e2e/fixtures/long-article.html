@@ -14,6 +14,10 @@
     <h1 id="title">A long fixture article</h1>
     <p id="intro">This page exists so the ReadTrail e2e harness has enough text to scroll, pause on, and restore. Every paragraph carries an id so anchors can use landmarks.</p>
     <a id="link" href="/long-article.html#end">Jump to the end (a link that reading lock should intercept)</a>
+    <div class="banner" aria-label="Test page changes">
+      <button type="button" id="move-p30">Move paragraph 30</button>
+      <button type="button" id="remove-p30">Remove moved paragraph 30</button>
+    </div>
     <div id="body">
       <!-- paragraphs are generated below -->
     </div>
@@ -27,6 +31,22 @@
       p.textContent = "Paragraph " + i + ". Reading is a slow negotiation between the page and the reader, and the line you were on is easy to lose when the tab, the window, or the day changes. This sentence is here to give the paragraph some honest length.";
       body.appendChild(p);
     }
+    document.getElementById("move-p30").addEventListener("click", () => {
+      const paragraph = document.getElementById("p30");
+      if (!paragraph) return;
+      const moved = document.createElement("p");
+      moved.id = "moved-p30";
+      moved.textContent = paragraph.textContent;
+      paragraph.remove();
+      const section = document.createElement("section");
+      section.id = "mutated-area";
+      section.appendChild(moved);
+      document.getElementById("main").appendChild(section);
+    });
+    document.getElementById("remove-p30").addEventListener("click", () => {
+      const moved = document.getElementById("moved-p30");
+      if (moved) moved.remove();
+    });
   </script>
 </body>
 </html>

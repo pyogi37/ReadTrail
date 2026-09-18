@@ -123,3 +123,7 @@ export async function activate(ext, url, explicitTabId) {
 export function panelUrl(extensionId, mode = "page") {
   return `chrome-extension://${extensionId}/sidepanel/sidepanel.html${mode === "page" ? "?mode=page" : ""}`;
 }
+
+export function deskUrl(extensionId) {
+  return `chrome-extension://${extensionId}/sidepanel/desk.html`;
+}

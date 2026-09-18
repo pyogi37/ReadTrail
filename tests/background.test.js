@@ -1084,3 +1084,89 @@ describe("ReadTrail service worker", () => {
     });
   });
 });
+
+describe("Return worker trust and completion", () => {
+  const urlA = "https://example.com/article-a";
+  const urlB = "https://example.com/article-b";
+
+  function savePassage(h) {
+    const done = vi.fn();
+    h.messageHandler({ type: "savePassage", url: urlA, title: "A", text: "quoted words" }, PAGE, done);
+    return done.mock.calls[0][0].passage;
+  }
+
+  it("waits for a newly opened tab to report the final reveal quality", () => {
+    const h = loadWorker({});
+    const passage = savePassage(h);
+    const returned = vi.fn();
+    h.messageHandler({ type: "revealPassage", id: passage.id }, PAGE, returned);
+    expect(returned).not.toHaveBeenCalled();
+    expect(h.tabsCreate).toHaveBeenCalledWith({ url: urlA }, expect.any(Function));
+
+    const seeded = vi.fn();
+    h.messageHandler({ type: "takeSeededReveal", url: urlA }, senders.content(100, urlA), seeded);
+    expect(seeded.mock.calls[0][0]).toEqual(expect.objectContaining({ ok: true, passage: expect.objectContaining({ text: "quoted words" }) }));
+    const completed = vi.fn();
+    h.messageHandler({ type: "completeSeededReveal", quality: "approximate" }, senders.content(100, urlA), completed);
+
+    expect(completed).toHaveBeenCalledWith({ ok: true });
+    expect(returned).toHaveBeenCalledWith({ ok: true, tabId: 100, opened: true, quality: "approximate" });
+  });
+
+  it("checks a seen tab's actual page before sending it clip text", () => {
+    const h = loadWorker({}, {}, { tabs: [{ id: 7, url: urlB, incognito: false }] });
+    const passage = savePassage(h);
+    h.sessionData["readtrail.seen.v1:7"] = { version: 1, url: urlA, updatedAt: 10 };
+    h.chrome.tabs.sendMessage.mockImplementation((_tabId, message, callback) => {
+      expect(message).toEqual({ type: "pageInfo" });
+      callback({ url: urlB, title: "B" });
+    });
+    const returned = vi.fn();
+    h.messageHandler({ type: "revealPassage", id: passage.id }, PAGE, returned);
+
+    expect(h.sessionData["readtrail.seen.v1:7"]).toBeUndefined();
+    expect(h.tabsCreate).toHaveBeenCalledWith({ url: urlA }, expect.any(Function));
+    const seeded = vi.fn();
+    h.messageHandler({ type: "takeSeededReveal", url: urlA }, senders.content(100, urlA), seeded);
+    h.messageHandler({ type: "completeSeededReveal", quality: "exact" }, senders.content(100, urlA), vi.fn());
+    expect(returned).toHaveBeenCalledWith({ ok: true, tabId: 100, opened: true, quality: "exact" });
+  });
+
+  it("refuses seeded reveals to the wrong page and to incognito senders", () => {
+    const wrong = loadWorker({});
+    const passage = savePassage(wrong);
+    const returned = vi.fn();
+    wrong.messageHandler({ type: "revealPassage", id: passage.id }, PAGE, returned);
+    const denied = vi.fn();
+    wrong.messageHandler({ type: "takeSeededReveal", url: urlA }, senders.content(100, urlB), denied);
+    expect(denied).toHaveBeenCalledWith({ ok: true, passage: null });
+    expect(wrong.sessionData["readtrail.tab.v1:100"]).toBeUndefined();
+    wrong.emit.tabs.onRemoved(100);
+    expect(returned).toHaveBeenCalledWith({ ok: false, error: "reveal-unavailable", tabId: 100 });
+
+    const incognito = loadWorker({});
+    const other = savePassage(incognito);
+    incognito.messageHandler({ type: "revealPassage", id: other.id }, PAGE, vi.fn());
+    const incognitoReply = vi.fn();
+    incognito.messageHandler(
+      { type: "takeSeededReveal", url: urlA },
+      senders.content(100, urlA, { incognito: true }),
+      incognitoReply
+    );
+    expect(incognitoReply).toHaveBeenCalledWith({ ok: false, error: "invalid-sender" });
+    expect(incognito.sessionData["readtrail.seen.v1:100"]).toBeUndefined();
+  });
+
+  it("guards new saved positions at the storage soft limit", () => {
+    const h = loadWorker({});
+    h.chrome.storage.local.getBytesInUse = vi.fn((_, callback) => callback(9 * 1024 * 1024));
+    const done = vi.fn();
+    h.messageHandler(
+      { type: "persistResumePoint", url: urlA, title: "A", position: makePosition() },
+      senders.content(9, urlA),
+      done
+    );
+    expect(done).toHaveBeenCalledWith({ ok: false, error: "storage-full" });
+    expect(h.localData[`readtrail.saved.v1:${urlA}`]).toBeUndefined();
+  });
+});

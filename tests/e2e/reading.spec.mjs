@@ -3,7 +3,7 @@
 // still needs a human, but the same JS runs in ?mode=page.
 import { test, expect } from "@playwright/test";
 import {
-  activate, closeExtension, launchExtension, panelUrl, readStorage, sendMessage, sendTabMessage, startFixtureServer, tabIdFor, tabIdsFor
+  activate, closeExtension, deskUrl, launchExtension, panelUrl, readStorage, sendMessage, sendTabMessage, startFixtureServer, tabIdFor, tabIdsFor
 } from "./helpers.mjs";
 
 let fixture;
@@ -179,4 +179,124 @@ test("passages: save a selection, see it in the panel, export and import round t
   expect(after.payload.passages[0].text).toBe("Paragraph 3.");
   await panel.close();
   await page.close();
+});
+
+test("Return text fallback finds an unchanged selection spanning block elements", async () => {
+  const url = articleUrl();
+  const page = await ext.context.newPage();
+  await page.goto(url);
+  await page.evaluate(() => {
+    const first = document.querySelector("#p10").firstChild;
+    const second = document.querySelector("#p11").firstChild;
+    const range = document.createRange();
+    range.setStart(first, 0);
+    range.setEnd(second, "Paragraph 11.".length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const tabId = await tabIdFor(ext.worker, url);
+  const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
+  expect(captured.ok).toBe(true);
+  expect(captured.text).toContain("Paragraph 10.");
+  expect(captured.text).toContain("Paragraph 11.");
+
+  await page.evaluate(() => {
+    const section = document.createElement("section");
+    for (const id of ["p10", "p11"]) {
+      const original = document.getElementById(id);
+      const clone = original.cloneNode(true);
+      clone.id = `moved-${id}`;
+      original.remove();
+      section.appendChild(clone);
+    }
+    document.querySelector("#main").appendChild(section);
+  });
+  const revealed = await sendTabMessage(ext, tabId, {
+    type: "revealPassage",
+    start: captured.start,
+    end: captured.end,
+    text: captured.text
+  });
+  expect(revealed).toEqual({ ok: true, quality: "approximate" });
+  await page.close();
+});
+
+test("Desk quotes a clip and Return reports changed and missing source text", async () => {
+  expect((await sendMessage(ext, { type: "clearLibrary" })).ok).toBe(true);
+  const url = articleUrl();
+  const source = await ext.context.newPage();
+  await source.goto(url);
+  await source.evaluate(() => {
+    const node = document.querySelector("#p30").firstChild;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, "Paragraph 30.".length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const tabId = await tabIdFor(ext.worker, url);
+  const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
+  expect(captured).toEqual(expect.objectContaining({ ok: true, text: "Paragraph 30." }));
+  const saved = await sendMessage(ext, {
+    type: "savePassage",
+    url,
+    title: captured.title,
+    text: captured.text,
+    start: captured.start,
+    end: captured.end
+  });
+  expect(saved.ok).toBe(true);
+
+  // Saving from the browser UI remembers this tab. The harness saves through
+  // its extension bridge, so provide the equivalent session hint explicitly.
+  await ext.worker.evaluate(({ id, pageUrl }) => new Promise((resolve) => {
+    chrome.storage.session.set({
+      [`readtrail.seen.v1:${id}`]: { version: 1, url: pageUrl, updatedAt: Date.now() }
+    }, resolve);
+  }), { id: tabId, pageUrl: url });
+
+  const desk = await ext.context.newPage();
+  await desk.goto(deskUrl(ext.extensionId));
+  await expect(desk.locator("#pageList .page-card")).toHaveCount(1);
+  await expect(desk.locator("#sourcesPane")).toBeVisible();
+  await expect(desk.locator("#draftPane")).toBeVisible();
+  await desk.setViewportSize({ width: 800, height: 900 });
+  await expect(desk.locator("#sourcesPane")).toBeVisible();
+  await expect(desk.locator("#draftPane")).toBeHidden();
+  await expect(desk.getByRole("tabpanel", { name: "Sources" })).toBeVisible();
+  await desk.locator("#sourcesTab").focus();
+  await desk.locator("#sourcesTab").press("ArrowRight");
+  await expect(desk.locator("#draftTab")).toBeFocused();
+  await expect(desk.locator("#sourcesPane")).toBeHidden();
+  await expect(desk.locator("#draftPane")).toBeVisible();
+  await expect(desk.getByRole("tabpanel", { name: "Draft" })).toBeVisible();
+  await desk.setViewportSize({ width: 1280, height: 900 });
+  await desk.locator("#newDraftTitle").fill("What changed in the source?");
+  await desk.locator("#newDraftButton").click();
+  await expect(desk.locator("#draftEditor")).toBeVisible();
+  await desk.locator(".block-text").fill("# Findings");
+  await expect(desk.getByRole("heading", { name: "Findings" })).toBeAttached();
+  await desk.locator("#pageList .page-summary").click();
+  await desk.locator("#pageList .btn-quote").click();
+  await expect(desk.locator(".quote-block .passage-text")).toHaveText("Paragraph 30.");
+
+  await source.locator("#move-p30").click();
+  await desk.locator(".quote-block .btn-return").click();
+  await expect(desk.locator("#draftStatus")).toHaveText("Found by text. The page has changed since you saved this.");
+
+  await source.locator("#remove-p30").click();
+  await desk.locator(".quote-block .btn-return").click();
+  await expect(desk.locator("#draftStatus")).toHaveText("Not found. The page may have changed. Your saved text is above.");
+
+  await source.close();
+  const beforeReopen = ext.context.pages().length;
+  await desk.locator(".quote-block .btn-return").click();
+  await expect.poll(() => ext.context.pages().length).toBe(beforeReopen + 1);
+  await expect(desk.locator("#draftStatus")).toHaveText("Found exactly. The passage is highlighted on the page.");
+  const reopened = ext.context.pages().find((candidate) => candidate !== desk && candidate !== ext.bridge && candidate.url() === url);
+  if (reopened) await reopened.close();
+
+  await desk.close();
 });

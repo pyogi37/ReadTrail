@@ -133,9 +133,28 @@
     // offset each character came from.
     const nodes = [];
     let flat = "";
+    let previousBlock = null;
+    const blockTags = new Set([
+      "ADDRESS", "ARTICLE", "ASIDE", "BLOCKQUOTE", "DIV", "DL", "FIELDSET", "FIGCAPTION", "FIGURE",
+      "FOOTER", "FORM", "H1", "H2", "H3", "H4", "H5", "H6", "HEADER", "HR", "LI", "MAIN", "NAV",
+      "OL", "P", "PRE", "SECTION", "TABLE", "TD", "TH", "TR", "UL"
+    ]);
+    const blockFor = (textNode) => {
+      let element = textNode && textNode.parentElement;
+      while (element && element !== document.body) {
+        if (blockTags.has(element.tagName)) return element;
+        element = element.parentElement;
+      }
+      return document.body;
+    };
     let node = walker.nextNode();
     while (node) {
       const value = typeof node.nodeValue === "string" ? node.nodeValue : "";
+      const block = blockFor(node);
+      if (value.length > 0 && previousBlock && block !== previousBlock && flat.length > 0 && !flat.endsWith(" ")) {
+        flat += " ";
+        nodes.push({ node, offset: 0 });
+      }
       for (let i = 0; i < value.length; i++) {
         const char = /\s/.test(value[i]) ? " " : value[i];
         // Collapse runs of whitespace exactly as capture did.
@@ -143,6 +162,7 @@
         flat += char;
         nodes.push({ node, offset: i });
       }
+      if (value.length > 0) previousBlock = block;
       node = walker.nextNode();
       if (flat.length > 2000000) break; // very large documents: give up safely
     }

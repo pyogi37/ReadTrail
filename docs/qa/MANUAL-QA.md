@@ -47,7 +47,7 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 - **QA-4.4 Always.** Set Always, repeat. Expected: the page appears directly under Library → Pages; nothing under Recently closed.
 - **QA-4.5 Never.** Set Never, repeat. Expected: nothing saved, nothing listed.
 - **QA-4.6 Incognito.** Allow the extension in incognito, activate a page there, close it. Expected: never listed, never saved.
-- **QA-4.7 Open in a tab.** Choose Open in a tab. Expected: the library opens as a full page without the This page section.
+- **QA-4.7 Open desk.** Choose Open desk. Expected: the full-page Desk opens with Sources and Draft panes; below 960 pixels, the pane switcher shows one at a time.
 - **QA-4.8 Keyboard.** Tab through the panel. Expected: visible focus on every control; toggle and buttons work with Space or Enter.
 - **QA-4.9 Reduced motion.** Enable reduced motion in the OS. Expected: no transitions in the panel.
 

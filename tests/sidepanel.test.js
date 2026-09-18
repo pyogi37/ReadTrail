@@ -917,7 +917,7 @@ describe("ReadTrail side panel shell and tab tracking", () => {
     expect(h.pendingCount("listRecentlyClosed")).toBe(before + 1);
   });
 
-  it("hides This page and Open in a tab, and sends no getTabInfo, in ?mode=page", () => {
+  it("hides This page and Open desk, and sends no getTabInfo, in ?mode=page", () => {
     const h = loadSidePanel({ mode: "page" });
     expect(pageSectionEl().hidden).toBe(true);
     expect(openInTabEl().hidden).toBe(true);
@@ -925,11 +925,11 @@ describe("ReadTrail side panel shell and tab tracking", () => {
     expect(h.pending.query).toHaveLength(0);
   });
 
-  it("opens the panel HTML in a full tab from Open in a tab", () => {
+  it("opens the Desk in a full tab from Open desk", () => {
     const h = loadSidePanel();
     openInTabEl().click();
     expect(h.chrome.tabs.create).toHaveBeenCalledWith({
-      url: "chrome-extension://test/sidepanel/sidepanel.html?mode=page"
+      url: "chrome-extension://test/sidepanel/desk.html"
     });
   });
 });

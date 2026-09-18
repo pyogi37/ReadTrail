@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReadTrail Desk</title>
+  <link rel="stylesheet" href="sidepanel.css">
+  <link rel="stylesheet" href="desk.css">
+</head>
+<body class="desk-body">
+  <a class="skip-link" href="#deskMain">Skip to the desk</a>
+  <header class="desk-header">
+    <div>
+      <p class="desk-eyebrow">ReadTrail</p>
+      <h1>Desk</h1>
+    </div>
+    <p class="desk-promise">Your sources and your thinking, together. Everything stays on this device.</p>
+  </header>
+
+  <nav class="desk-switcher" role="tablist" aria-label="Desk panes">
+    <button type="button" id="sourcesTab" role="tab" aria-selected="true" aria-controls="sourcesPane">Sources</button>
+    <button type="button" id="draftTab" role="tab" aria-selected="false" aria-controls="draftPane" tabindex="-1">Draft</button>
+  </nav>
+
+  <main class="desk-shell" id="deskMain" data-active-pane="sources">
+    <section class="desk-pane sources-pane" id="sourcesPane" role="tabpanel" aria-labelledby="sourcesTab">
+      <div class="pane-heading">
+        <div>
+          <p class="pane-kicker">Collected evidence</p>
+          <h2 id="sourcesHeading">Sources</h2>
+        </div>
+        <span class="usage" id="libraryUsage"></span>
+      </div>
+      <p class="pane-intro">Pages hold their passages and notes. Quote a passage to bring its source into the open draft.</p>
+
+      <div class="source-tools">
+        <div class="library-tabs" role="tablist" aria-label="Source views">
+          <button type="button" id="pagesViewButton" class="library-tab is-active" role="tab" aria-selected="true" aria-controls="pageList">Pages</button>
+          <button type="button" id="tagsViewButton" class="library-tab" role="tab" aria-selected="false" aria-controls="tagBrowser">Tags</button>
+        </div>
+        <div class="search-wrap" id="librarySearchWrap">
+          <label class="visually-hidden" for="librarySearch">Search your sources</label>
+          <input type="search" id="librarySearch" placeholder="Search pages and what you saved" autocomplete="off">
+        </div>
+      </div>
+
+      <p class="status-message" id="knowledgeStatus" role="status" aria-live="polite" hidden></p>
+      <div class="empty desk-empty" id="knowledgeEmpty">
+        <p class="empty-title">Your sources will gather here</p>
+        <p class="empty-text">Save a place, passage, note, or page tag from the browser. ReadTrail keeps each one under its page.</p>
+      </div>
+      <ul class="list page-list" id="searchResults" aria-label="Matching pages" hidden></ul>
+      <ul class="list page-list" id="pageList" role="tabpanel" aria-labelledby="pagesViewButton"></ul>
+      <div id="tagBrowser" class="tag-browser" role="tabpanel" aria-labelledby="tagsViewButton" hidden></div>
+
+      <details class="source-maintenance">
+        <summary>Import, export, and clear</summary>
+        <div class="transfer-row">
+          <button type="button" id="exportButton" class="btn-ghost btn-small">Export library</button>
+          <label class="btn-ghost btn-small file-label" for="importInput">Import</label>
+          <input type="file" id="importInput" accept="application/json,.json" class="visually-hidden">
+          <label class="checkbox-inline" for="importReplace">
+            <input type="checkbox" id="importReplace"> Replace instead of merge
+          </label>
+          <button type="button" id="clearSavedPlacesButton" class="btn-danger btn-small">Clear saved places</button>
+          <button type="button" id="clearKnowledgeButton" class="btn-danger btn-small">Clear page content</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="desk-pane draft-pane" id="draftPane" role="tabpanel" aria-labelledby="draftTab">
+      <div class="pane-heading draft-heading">
+        <div>
+          <p class="pane-kicker">Your synthesis</p>
+          <h2 id="draftsHeading">Draft</h2>
+        </div>
+        <span class="draft-save-state" id="draftSaveState" aria-live="polite"></span>
+      </div>
+      <p class="pane-intro">Write in blocks, arrange the argument, and return to every quoted passage in context.</p>
+
+      <form class="new-draft-form" id="newDraftForm">
+        <label for="newDraftTitle">Start with a question or working title</label>
+        <div class="new-draft-row">
+          <input type="text" id="newDraftTitle" maxlength="240" placeholder="What am I trying to understand?" required>
+          <button type="submit" id="newDraftButton" class="btn-primary">New draft</button>
+        </div>
+      </form>
+
+      <div class="draft-workspace">
+        <aside class="draft-index" aria-label="Drafts">
+          <p class="draft-index-label">Drafts</p>
+          <p class="empty-text" id="draftsEmpty">No drafts yet.</p>
+          <ul class="list" id="draftList"></ul>
+        </aside>
+
+        <div class="draft-editor-wrap">
+          <div class="draft-editor-empty" id="draftEditorEmpty">
+            <p class="empty-title">Open a draft to begin</p>
+            <p class="empty-text">Choose one from the list, or start a new question above.</p>
+          </div>
+
+          <article class="draft-editor" id="draftEditor" hidden>
+            <div class="draft-title-row">
+              <label class="visually-hidden" for="draftTitle">Draft title</label>
+              <input type="text" id="draftTitle" class="draft-title-input" maxlength="240">
+              <button type="button" id="closeDraftButton" class="btn-ghost btn-small">Close</button>
+            </div>
+            <label class="draft-tags-label" for="draftTags">Draft tags</label>
+            <input type="text" id="draftTags" placeholder="Add tags, separated by commas">
+            <p class="status-message draft-status" id="draftStatus" role="status" aria-live="polite" tabindex="-1" hidden></p>
+            <ol class="draft-blocks" id="draftBlocks"></ol>
+          </article>
+        </div>
+      </div>
+      <p class="visually-hidden" id="draftLive" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/validators.js"></script>
+  <script src="search-index.js"></script>
+  <script src="export-import.js"></script>
+  <script src="knowledge-view.js"></script>
+  <script src="draft-view.js"></script>
+  <script src="desk.js"></script>
+</body>
+</html>

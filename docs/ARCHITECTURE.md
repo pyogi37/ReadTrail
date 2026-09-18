@@ -57,7 +57,8 @@ All messages are `{ type, ... }` sent with `chrome.runtime.sendMessage`. Handler
 | `removeDraft` / `listDrafts` | page | `{id}` / none | `{ok}` / `{ok,drafts}` newest first |
 | `appendQuote` | page | `{draftId,passageId}` | `{ok,draft}` (snapshot copied from the passage) |
 | `revealPassage` | page | `{id}` | `{ok,tabId,opened,quality}` or `not-found` |
-| `takeSeededReveal` | content | `{url}` | `{ok,passage}` (`passage` is null unless this tab was opened by Return) |
+| `takeSeededReveal` | content | `{url}` | `{ok,passage}` (authoritative `sender.tab.url` must match the one-time seed) |
+| `completeSeededReveal` | content | `{quality}` | `{ok}`; completes the originating `revealPassage` reply |
 | `exportLibrary` | page | none | `{ok,payload}` |
 | `importLibrary` | page | `{payload,mode:"merge"|"replace"}` | `{ok,imported,skipped,rejected,mode}` |
 
@@ -73,7 +74,9 @@ Messages delivered to a content script with `chrome.tabs.sendMessage(tabId, ...)
 
 ### Return
 
-`revealPassage` reads the clip, looks for a tab already known to be showing its URL (`readtrail.seen.v1:<tabId>`, written only when the reader saved a clip from that tab), focuses it, and asks its content script to find the passage. With no such tab it opens one and seeds `reveal` in the new tab's record. The content script resolves both anchors and **compares the resolved text with the stored clip text** before reporting `exact`; otherwise it searches the page's text with the same whitespace normalisation capture uses and reports `approximate`, or `missing`. The flash is a second named highlight removed on a timer, because CSS transitions do not apply to `::highlight`.
+`revealPassage` reads the clip, looks for a tab previously associated with its URL (`readtrail.seen.v1:<tabId>`, written only when the reader saved a clip from that tab), asks that candidate for `pageInfo`, and reuses it only when the exact live URL still matches. Stale records are removed. With no matching tab it opens one and seeds `reveal` in the new tab's record; the original Desk request stays pending until that content script returns `completeSeededReveal`, so every path reports an honest quality. The seed is released only to the non-incognito content sender whose authoritative tab URL matches, and only after the seed-clearing write succeeds.
+
+The content script resolves both anchors and **compares the resolved text with the stored clip text** before reporting `exact`; otherwise it searches the page's text with the same whitespace normalisation capture uses, including separators between block elements, and reports `approximate`, or `missing`. The flash is a second named highlight removed on a timer, because CSS transitions do not apply to `::highlight`.
 
 The worker's `background/library.js` owns the knowledge-layer handlers and the "Save selection to ReadTrail" context menu. `content/passage.js` captures the selection on request and draws saved passages with the CSS Custom Highlight API (no DOM mutation).
 

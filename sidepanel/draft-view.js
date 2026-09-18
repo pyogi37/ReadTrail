@@ -17,9 +17,13 @@
   let drafts = [];
   let current = null;      // the open draft, or null
   let saveTimer = null;
-  let saving = false;
   let dirty = false;
+  let activeSave = null;
+  let saveQueue = [];
+  let saveWaiters = [];
+  let failedSaveIds = new Set();
   let pendingFocus = null; // { index, control } restored after a re-render
+  let navigationHandler = null;
 
   function sendMessage(message, callback) {
     try {
@@ -77,7 +81,9 @@
     });
   }
 
-  function openDraft(id) {
+  function openDraft(id, options = {}) {
+    flushSave();
+    stashCurrent();
     const draft = drafts.find((d) => d.id === id);
     if (!draft) {
       current = null;
@@ -85,7 +91,6 @@
       renderEditor();
       return;
     }
-    flushSave();
     current = JSON.parse(JSON.stringify(draft));
     dirty = false;
     setSaveState("");
@@ -93,13 +98,16 @@
     renderIndex();
     renderEditor();
     if (els) els.title.focus();
+    if (!options.silent && typeof navigationHandler === "function") navigationHandler(current.id);
   }
 
-  function closeDraft() {
+  function closeDraft(options = {}) {
     flushSave();
+    stashCurrent();
     current = null;
     renderIndex();
     renderEditor();
+    if (!options.silent && typeof navigationHandler === "function") navigationHandler(null);
   }
 
   // --- Saving ---
@@ -114,32 +122,66 @@
     }, SAVE_DEBOUNCE_MS);
   }
 
-  function flushSave() {
+  function flushSave(callback) {
     if (saveTimer !== null) {
       clearTimeout(saveTimer);
       saveTimer = null;
-      commit();
     }
+    if (dirty) commit();
+    if (typeof callback !== "function") return;
+    if (!activeSave && saveQueue.length === 0) callback(true);
+    else saveWaiters.push({ draftId: current ? current.id : null, callback });
   }
 
   function commit() {
-    if (!current || saving || !dirty) return;
-    saving = true;
-    const snapshot = { id: current.id, title: current.title, tags: current.tags, blocks: current.blocks };
+    if (!current || !dirty) return;
+    const snapshot = JSON.parse(JSON.stringify({ id: current.id, title: current.title, tags: current.tags, blocks: current.blocks }));
+    dirty = false;
+    const queuedIndex = saveQueue.findIndex((job) => job.id === snapshot.id);
+    if (queuedIndex >= 0) saveQueue[queuedIndex] = snapshot;
+    else saveQueue.push(snapshot);
+    processSaveQueue();
+  }
+
+  function stashCurrent() {
+    if (!current) return;
+    const index = drafts.findIndex((draft) => draft.id === current.id);
+    if (index >= 0) drafts[index] = JSON.parse(JSON.stringify(current));
+  }
+
+  function processSaveQueue() {
+    if (activeSave || saveQueue.length === 0) return;
+    const snapshot = saveQueue.shift();
+    activeSave = snapshot;
     sendMessage({ type: "updateDraft", ...snapshot }, (res) => {
-      saving = false;
+      activeSave = null;
       if (res && res.ok && res.draft) {
-        dirty = false;
-        setSaveState("Saved");
-        const index = drafts.findIndex((d) => d.id === res.draft.id);
-        if (index >= 0) drafts[index] = res.draft;
-        else drafts.unshift(res.draft);
-        current.updatedAt = res.draft.updatedAt;
+        const hasNewer = saveQueue.some((job) => job.id === snapshot.id)
+          || (current && current.id === snapshot.id && dirty);
+        const index = drafts.findIndex((draft) => draft.id === res.draft.id);
+        if (!hasNewer) {
+          if (index >= 0) drafts[index] = res.draft;
+          else drafts.unshift(res.draft);
+        }
+        if (current && current.id === res.draft.id) {
+          current.updatedAt = res.draft.updatedAt;
+          if (!dirty && !saveQueue.some((job) => job.id === current.id)) setSaveState("Saved");
+        }
         renderIndex();
+      } else {
+        failedSaveIds.add(snapshot.id);
+        if (current && current.id === snapshot.id) dirty = true;
+        setSaveState("Not saved");
+        setStatus(saveErrorText(res), "alert");
+      }
+      if (saveQueue.length > 0) {
+        processSaveQueue();
         return;
       }
-      setSaveState("Not saved");
-      setStatus(saveErrorText(res), "alert");
+      const waiters = saveWaiters;
+      saveWaiters = [];
+      for (const waiter of waiters) waiter.callback(!failedSaveIds.has(waiter.draftId));
+      failedSaveIds = new Set();
     });
   }
 
@@ -352,10 +394,22 @@
     area.value = block.text;
     area.setAttribute("aria-label", blockLabel(block, index));
     area.placeholder = index === 0 ? "What do these sources tell you? Start a line with # for a heading." : "";
+    const semanticHeading = document.createElement("h3");
+    semanticHeading.className = "visually-hidden draft-semantic-heading";
+    const syncHeading = () => {
+      const heading = area.value.startsWith("# ");
+      area.classList.toggle("heading-block-text", heading);
+      area.setAttribute("aria-label", `${blockLabel(current.blocks[index], index)}${heading ? ", heading" : ""}`);
+      semanticHeading.hidden = !heading;
+      semanticHeading.textContent = heading ? (area.value.slice(2).trim() || "Untitled heading") : "";
+    };
     area.addEventListener("input", () => {
       current.blocks[index].text = area.value;
+      syncHeading();
       scheduleSave();
     });
+    syncHeading();
+    li.appendChild(semanticHeading);
     li.appendChild(area);
     li.appendChild(blockActions(block, index));
     return li;
@@ -419,11 +473,6 @@
         focusStatus();
         return;
       }
-      if (res.opened) {
-        setStatus("Opened the page in a new tab and looked for the passage there.", "status");
-        focusStatus();
-        return;
-      }
       setStatus(revealText(res.quality), res.quality === "missing" ? "alert" : "status");
       focusStatus();
     });
@@ -446,7 +495,9 @@
     if (target < 0 || target >= current.blocks.length) return;
     const [block] = current.blocks.splice(index, 1);
     current.blocks.splice(target, 0, block);
-    pendingFocus = { index: target, control: delta < 0 ? ".btn-move-up" : ".btn-move-down" };
+    // The control for repeating the same move is disabled at an edge, so put
+    // focus on the enabled inverse control after the block is rebuilt.
+    pendingFocus = { index: target, control: delta < 0 ? ".btn-move-down" : ".btn-move-up" };
     renderBlocks();
     announce(`Moved to position ${target + 1} of ${current.blocks.length}.`);
     scheduleSave();
@@ -488,23 +539,31 @@
       if (callback) callback(false);
       return;
     }
-    flushSave();
-    sendMessage({ type: "appendQuote", draftId: current.id, passageId }, (res) => {
-      if (!res || !res.ok || !res.draft) {
-        setStatus(saveErrorText(res), "alert");
+    const draftId = current.id;
+    flushSave((saved) => {
+      if (!saved) {
         if (callback) callback(false);
         return;
       }
-      current = JSON.parse(JSON.stringify(res.draft));
-      dirty = false;
-      const index = drafts.findIndex((d) => d.id === res.draft.id);
-      if (index >= 0) drafts[index] = res.draft;
-      pendingFocus = { index: current.blocks.length - 1, control: ".btn-return" };
-      setSaveState("Saved");
-      setStatus(`Quoted into "${current.title}".`, "status");
-      renderIndex();
-      renderBlocks();
-      if (callback) callback(true);
+      sendMessage({ type: "appendQuote", draftId, passageId }, (res) => {
+        if (!res || !res.ok || !res.draft) {
+          setStatus(saveErrorText(res), "alert");
+          if (callback) callback(false);
+          return;
+        }
+        const index = drafts.findIndex((d) => d.id === res.draft.id);
+        if (index >= 0) drafts[index] = res.draft;
+        if (current && current.id === draftId) {
+          current = JSON.parse(JSON.stringify(res.draft));
+          dirty = false;
+          pendingFocus = { index: current.blocks.length - 1, control: ".btn-return" };
+          setSaveState("Saved");
+          setStatus(`Quoted into "${current.title}".`, "status");
+          renderBlocks();
+        }
+        renderIndex();
+        if (callback) callback(true);
+      });
     });
   }
 
@@ -514,7 +573,11 @@
 
   // --- Init ---
 
-  function init() {
+  function setNavigationHandler(handler) {
+    navigationHandler = typeof handler === "function" ? handler : null;
+  }
+
+  function init(callback) {
     const $ = (id) => document.getElementById(id);
     els = {
       list: $("draftList"),
@@ -551,8 +614,8 @@
     els.close.addEventListener("click", closeDraft);
     window.addEventListener("pagehide", flushSave);
 
-    load();
+    load(callback);
   }
 
-  NS.draftView = { init, load, openDraft, quoteInto, currentDraft, flushSave };
+  NS.draftView = { init, load, openDraft, quoteInto, currentDraft, flushSave, closeDraft, setNavigationHandler };
 })();

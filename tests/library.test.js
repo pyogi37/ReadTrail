@@ -285,12 +285,34 @@ describe("drafts", () => {
   it("rejects a quote block whose snapshot the caller invented", () => {
     const h = load();
     const draft = draftOf(h);
+    const forged = {
+      type: "quote",
+      passageId: MISSING_ID,
+      text: "made up",
+      url: "https://forged.example/source",
+      title: "Invented source"
+    };
+    expect(call(h, { type: "saveDraft", title: "Forged", blocks: [forged] }))
+      .toEqual({ ok: false, error: "invalid-input" });
     const res = call(h, {
       type: "updateDraft",
       id: draft.id,
-      blocks: [{ type: "quote", passageId: MISSING_ID, text: "made up", url: "not-a-url", title: "" }]
+      blocks: [forged]
     });
     expect(res).toEqual({ ok: false, error: "invalid-input" });
+  });
+
+  it("allows an update to retain or reorder authorized quote snapshots but not rewrite them", () => {
+    const h = load();
+    const passage = call(h, { type: "savePassage", url: URL_A, title: "Real", text: "source words" }).passage;
+    const created = draftOf(h, { blocks: [{ type: "text", text: "intro" }] });
+    const quoted = call(h, { type: "appendQuote", draftId: created.id, passageId: passage.id }).draft;
+    const reordered = call(h, { type: "updateDraft", id: created.id, blocks: [quoted.blocks[1], quoted.blocks[0]] });
+    expect(reordered.ok).toBe(true);
+    expect(reordered.draft.blocks[0]).toEqual(quoted.blocks[1]);
+    const rewritten = { ...quoted.blocks[1], text: "rewritten by caller" };
+    expect(call(h, { type: "updateDraft", id: created.id, blocks: [rewritten] }))
+      .toEqual({ ok: false, error: "invalid-input" });
   });
 
   it("updates title, tags, and blocks, and reports a missing draft", () => {
@@ -333,6 +355,24 @@ describe("drafts", () => {
     expect(call(h, { type: "importLibrary", payload: legacy, mode: "replace" }).ok).toBe(true);
   });
 
+  it("rejects a malformed replace import before clearing existing data", () => {
+    const h = load();
+    const existing = draftOf(h);
+    const payload = {
+      format: "readtrail-export",
+      version: 1,
+      exportedAt: 1,
+      saved: [],
+      passages: [],
+      notes: [],
+      pagemeta: [],
+      drafts: [{ version: 1, id: "bad" }]
+    };
+    expect(call(h, { type: "importLibrary", payload, mode: "replace" }))
+      .toEqual({ ok: false, error: "invalid-input" });
+    expect(call(h, { type: "listDrafts" }).drafts.map((item) => item.id)).toEqual([existing.id]);
+  });
+
   it("clears drafts only when asked", () => {
     const h = load();
     draftOf(h);
@@ -349,5 +389,23 @@ describe("drafts", () => {
     const lib = call(h, { type: "listLibrary" });
     expect(lib.counts).toEqual({ passages: 0, notes: 0, saved: 0, drafts: 1 });
     expect(lib.drafts).toHaveLength(1);
+  });
+
+  it("guards every size-increasing library write while allowing reductions", () => {
+    const h = load();
+    const note = call(h, { type: "saveNote", url: URL_A, text: "a longer note" }).note;
+    h.chrome.storage.local.getBytesInUse = vi.fn((_, callback) => callback(9 * 1024 * 1024));
+
+    expect(call(h, { type: "savePassage", url: URL_A, text: "clip" })).toEqual({ ok: false, error: "storage-full" });
+    expect(call(h, { type: "saveNote", url: URL_A, text: "note" })).toEqual({ ok: false, error: "storage-full" });
+    expect(call(h, { type: "setPageTags", url: URL_A, tags: ["full"] })).toEqual({ ok: false, error: "storage-full" });
+    expect(call(h, { type: "saveDraft", title: "Full" })).toEqual({ ok: false, error: "storage-full" });
+
+    expect(call(h, { type: "updateNote", id: note.id, text: "short" }).ok).toBe(true);
+    const empty = { format: "readtrail-export", version: 1, exportedAt: 1, saved: [], passages: [], notes: [], pagemeta: [], drafts: [] };
+    const mergePayload = { ...empty, notes: [{ ...note, id: MISSING_ID }] };
+    expect(call(h, { type: "importLibrary", payload: mergePayload, mode: "merge" }))
+      .toEqual({ ok: false, error: "storage-full" });
+    expect(call(h, { type: "importLibrary", payload: empty, mode: "replace" }).ok).toBe(true);
   });
 });
