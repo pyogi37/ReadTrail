@@ -3,7 +3,7 @@
 Rewritten at the end of every working session. Keep under 40 lines.
 
 - **Current phase:** 2.0 Phase A ("Draft and Return"). The data layer and Return are built, tested, and committed. The Desk user interface is the unfinished half.
-- **Read first:** `docs/PRODUCT-DIRECTION.md` (the 2.0 recommendation), then `docs/DECISIONS.md` items 20 to 26.
+- **Read first:** `docs/HANDOFF-2026-09-18.md`, then `docs/PRODUCT-DIRECTION.md`, then `docs/DECISIONS.md` items 20 to 26.
 - **Last commit:** see `git log -1`. Nothing is pushed.
 - **Checks:** `npm test` 278 passing in 14 files, `npm run test:e2e` 4 passing, `npm run package:check` 28 files, `git diff --check` clean.
 
