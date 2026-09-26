@@ -26,6 +26,7 @@
   let pendingFocus = null; // { index, control } restored after a re-render
   let removed = null;      // { block, index } while the undo offer stands
   let undoTimer = null;
+  let reloadTimer = null;
   // passageId -> { quality, opened }. A verdict belongs to the quote it is
   // about, survives the rebuild that follows a save, and lets a reader see
   // which of their quotes still resolve without pressing every one again.
@@ -68,6 +69,16 @@
 
   // --- Loading ---
 
+  // Storage changes arrive in bursts; a replace-mode import rewrites every
+  // draft at once.
+  function scheduleReload() {
+    if (reloadTimer !== null) clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null;
+      load();
+    }, 150);
+  }
+
   function load(callback) {
     sendMessage({ type: "listDrafts" }, (res) => {
       if (!res || !res.ok || !Array.isArray(res.drafts)) {
@@ -94,9 +105,16 @@
     clearVerdicts();
     const draft = drafts.find((d) => d.id === id);
     if (!draft) {
+      // A deep link can name a draft made after this tab loaded. Read through
+      // to storage once before concluding it is gone.
+      if (!options.reloaded) {
+        load(() => openDraft(id, { ...options, reloaded: true }));
+        return;
+      }
       current = null;
       renderIndex();
       renderEditor();
+      setStatus("That draft no longer exists. Choose one from the list, or start a new question.", "alert");
       return;
     }
     current = JSON.parse(JSON.stringify(draft));
@@ -715,5 +733,5 @@
     load(callback);
   }
 
-  NS.draftView = { init, load, openDraft, quoteInto, currentDraft, flushSave, closeDraft, setNavigationHandler };
+  NS.draftView = { init, load, scheduleReload, openDraft, quoteInto, currentDraft, flushSave, closeDraft, setNavigationHandler };
 })();

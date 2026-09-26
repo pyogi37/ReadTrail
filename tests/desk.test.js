@@ -74,6 +74,7 @@ function loadDesk({ hash = "#/sources", passages = [], drafts = [], pagemeta = [
 
   const pending = {};
   const messages = [];
+  const storageHandlers = [];
   const push = (type, callback) => (pending[type] = pending[type] || []).push(callback);
   globalThis.chrome = {
     runtime: {
@@ -85,7 +86,7 @@ function loadDesk({ hash = "#/sources", passages = [], drafts = [], pagemeta = [
       getURL: vi.fn((relative) => `chrome-extension://test/${relative}`)
     },
     tabs: { create: vi.fn() },
-    storage: { onChanged: { addListener: vi.fn() } }
+    storage: { onChanged: { addListener: vi.fn((handler) => storageHandlers.push(handler)) } }
   };
 
   for (const source of sources) window.eval(source);
@@ -97,7 +98,8 @@ function loadDesk({ hash = "#/sources", passages = [], drafts = [], pagemeta = [
   };
   shift("listLibrary")(libraryResponse(passages, pagemeta));
   shift("listDrafts")({ ok: true, drafts });
-  return { messages, pending, shift, chrome: globalThis.chrome };
+  const emitStorage = (changes, area = "local") => storageHandlers.forEach((handler) => handler(changes, area));
+  return { messages, pending, shift, emitStorage, chrome: globalThis.chrome };
 }
 
 describe("ReadTrail Desk", () => {
@@ -239,6 +241,42 @@ describe("ReadTrail Desk", () => {
     expect(document.activeElement).toBe(verdict);
     expect(document.querySelector("#draftStatus").textContent).not.toContain("Found");
     void role;
+  });
+
+  it("reloads its drafts when another tab writes one, so no Desk holds a stale list", () => {
+    const h = loadDesk({ drafts: [draft()] });
+    expect(document.querySelectorAll(".draft-row")).toHaveLength(1);
+
+    // Sources refreshed themselves and drafts never did, so a second Desk tab
+    // kept a stale list for its whole life and its autosave, which ships the
+    // whole document, would overwrite the newer one.
+    vi.useFakeTimers();
+    h.emitStorage({ "readtrail.draft.v1:draft-2": { newValue: {} } });
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+    h.shift("listDrafts")({ ok: true, drafts: [draft(), draft({ id: "draft-2", title: "Written elsewhere" })] });
+
+    const titles = [...document.querySelectorAll(".draft-row .item-title")].map((n) => n.textContent);
+    expect(titles).toContain("Written elsewhere");
+  });
+
+  it("reads through to storage for a route naming a draft it has not loaded", () => {
+    const h = loadDesk({ hash: "#/drafts/draft-9", drafts: [] });
+
+    // The route named a draft made after this tab loaded. Rendering an empty
+    // editor and saying nothing is the silent failure this replaces.
+    h.shift("listDrafts")({ ok: true, drafts: [draft({ id: "draft-9", title: "Made elsewhere" })] });
+
+    expect(document.querySelector("#draftEditor").hidden).toBe(false);
+    expect(document.querySelector("#draftTitle").value).toBe("Made elsewhere");
+  });
+
+  it("says so when a routed draft really is gone", () => {
+    const h = loadDesk({ hash: "#/drafts/draft-gone", drafts: [] });
+    h.shift("listDrafts")({ ok: true, drafts: [] });
+
+    expect(document.querySelector("#draftEditor").hidden).toBe(true);
+    expect(document.querySelector("#draftStatus").textContent).toContain("no longer exists");
   });
 
   it("appends a block at the end, so writing after a quote is one control", () => {

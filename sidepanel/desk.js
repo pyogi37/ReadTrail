@@ -118,10 +118,17 @@
     if (chrome.storage && chrome.storage.onChanged) {
       chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== "local" || !changes) return;
+        const keys = Object.keys(changes);
         const sourcePrefixes = [KEYS.SAVED_PREFIX, KEYS.PASSAGE_PREFIX, KEYS.NOTE_PREFIX, KEYS.PAGEMETA_PREFIX]
           .filter(Boolean);
-        if (Object.keys(changes).some((key) => sourcePrefixes.some((prefix) => key.startsWith(prefix)))) {
+        if (keys.some((key) => sourcePrefixes.some((prefix) => key.startsWith(prefix)))) {
           knowledgeView.scheduleReload();
+        }
+        // Sources refreshed themselves and drafts never did, so a second Desk
+        // tab held a stale list for its whole life. Since a save ships the
+        // whole document, the stale tab's autosave would win.
+        if (KEYS.DRAFT_PREFIX && keys.some((key) => key.startsWith(KEYS.DRAFT_PREFIX))) {
+          draftView.scheduleReload();
         }
       });
     }
