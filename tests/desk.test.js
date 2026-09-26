@@ -312,6 +312,50 @@ describe("ReadTrail Desk", () => {
     void h;
   });
 
+  it("never shows a verdict on a quote nobody checked, even of the same clip", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [quoteBlock(), quoteBlock()] })]
+    });
+    const blocks = () => [...document.querySelectorAll(".quote-block")];
+    expect(blocks()).toHaveLength(2);
+
+    blocks()[0].querySelector(".btn-return").click();
+    h.shift("revealPassage")({ ok: true, opened: false, quality: "exact" });
+
+    // The same clip can be quoted twice. A verdict is evidence about one
+    // press; showing it on a block nobody pressed asserts a fact the product
+    // was never told.
+    expect(blocks()[1].querySelector(".quote-verdict").hidden).toBe(true);
+
+    // The bleed only appears once the list rebuilds, which any edit does.
+    document.querySelector(".btn-insert-below").click();
+
+    const after = blocks().map((b) => b.querySelector(".quote-verdict"));
+    expect(after[0].hidden).toBe(false);
+    expect(after[1].hidden).toBe(true);
+    expect(after[1].textContent).toBe("");
+  });
+
+  it("moves a verdict with its block rather than leaving it at a position", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "intro" }, quoteBlock()] })]
+    });
+    document.querySelector(".btn-return").click();
+    h.shift("revealPassage")({ ok: true, opened: false, quality: "approximate" });
+    expect(document.querySelector(".quote-block .quote-verdict").dataset.quality).toBe("approximate");
+
+    // The quote moves to the top. Its answer is about the quote, not about
+    // the second slot in the list.
+    document.querySelector(".quote-block .btn-move-up").click();
+
+    const blocks = [...document.querySelectorAll(".draft-block")];
+    expect(blocks[0].classList.contains("quote-block")).toBe(true);
+    expect(blocks[0].querySelector(".quote-verdict").dataset.quality).toBe("approximate");
+    expect(blocks[0].querySelector(".quote-verdict").hidden).toBe(false);
+  });
+
   it("keeps each quote's verdict through the rebuild that follows a save", () => {
     const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
     document.querySelector(".btn-return").click();

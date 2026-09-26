@@ -27,10 +27,31 @@
   let removed = null;      // { block, index } while the undo offer stands
   let undoTimer = null;
   let reloadTimer = null;
-  // passageId -> { quality, opened }. A verdict belongs to the quote it is
-  // about, survives the rebuild that follows a save, and lets a reader see
-  // which of their quotes still resolve without pressing every one again.
+  // A verdict is evidence about one press on one block. The same clip can be
+  // quoted more than once, so a verdict cannot be keyed by its passage: doing
+  // that put an answer on a quote nobody checked, which asserts a fact the
+  // product was never told. Nor by position, which shifts under every edit.
+  // Each block carries a key that travels with it instead, held outside the
+  // record so nothing new is persisted.
   let verdicts = new Map();
+  let blockKeys = [];
+  let keySeed = 0;
+
+  function newBlockKey() {
+    keySeed += 1;
+    return `b${keySeed}`;
+  }
+
+  // Called whenever the block list is adopted wholesale. `keep` preserves the
+  // keys of the blocks that carried over, by position.
+  function resetBlockKeys(length, keep = []) {
+    blockKeys = [];
+    for (let i = 0; i < length; i += 1) blockKeys.push(keep[i] || newBlockKey());
+  }
+
+  function verdictKey(index) {
+    return blockKeys[index];
+  }
   let navigationHandler = null;
 
   function sendMessage(message, callback) {
@@ -118,6 +139,7 @@
       return;
     }
     current = JSON.parse(JSON.stringify(draft));
+    resetBlockKeys(current.blocks.length);
     dirty = false;
     setSaveState("");
     setStatus("", "status");
@@ -478,7 +500,7 @@
     verdict.id = `verdict-${block.passageId}-${index}`;
     verdict.setAttribute("role", "status");
     verdict.tabIndex = -1;
-    const remembered = verdicts.get(block.passageId);
+    const remembered = verdicts.get(verdictKey(index));
     if (remembered) {
       verdict.textContent = revealText(remembered.quality, remembered.opened);
       verdict.dataset.quality = remembered.quality;
@@ -495,7 +517,7 @@
     back.type = "button";
     back.className = "btn-small btn-return";
     back.textContent = "Return";
-    back.addEventListener("click", () => returnToClip(block, back, verdict));
+    back.addEventListener("click", () => returnToClip(block, index, back, verdict));
     row.appendChild(back);
 
     const open = document.createElement("button");
@@ -524,19 +546,19 @@
     if (typeof verdict.focus === "function") verdict.focus();
   }
 
-  function returnToClip(block, button, verdict) {
+  function returnToClip(block, index, button, verdict) {
     button.disabled = true;
     showVerdict(verdict, "Looking for the passage…", "checking");
     sendMessage({ type: "revealPassage", id: block.passageId }, (res) => {
       button.disabled = false;
       if (!res || !res.ok) {
-        verdicts.delete(block.passageId);
+        verdicts.delete(verdictKey(index));
         showVerdict(verdict, res && res.error === "not-found"
           ? "That clip is no longer in your library. This quote keeps the text you saved."
           : "ReadTrail could not open that page. Please try again.", "missing");
         return;
       }
-      verdicts.set(block.passageId, { quality: res.quality, opened: Boolean(res.opened) });
+      verdicts.set(verdictKey(index), { quality: res.quality, opened: Boolean(res.opened) });
       showVerdict(verdict, revealText(res.quality, res.opened), res.quality);
     });
   }
@@ -569,6 +591,8 @@
   function moveBlock(index, delta) {
     const target = index + delta;
     if (target < 0 || target >= current.blocks.length) return;
+    const [movedKey] = blockKeys.splice(index, 1);
+    blockKeys.splice(target, 0, movedKey);
     const [block] = current.blocks.splice(index, 1);
     current.blocks.splice(target, 0, block);
     // The control for repeating the same move is disabled at an edge, so put
@@ -590,6 +614,7 @@
       return;
     }
     current.blocks.splice(index, 0, { type: "text", text: "" });
+    blockKeys.splice(index, 0, newBlockKey());
     pendingFocus = { index, control: "textarea" };
     renderBlocks();
     scheduleSave();
@@ -597,8 +622,13 @@
 
   function removeBlock(index) {
     const block = current.blocks[index];
+    const [removedKey] = blockKeys.splice(index, 1);
+    verdicts.delete(removedKey);
     current.blocks.splice(index, 1);
-    if (current.blocks.length === 0) current.blocks.push({ type: "text", text: "" });
+    if (current.blocks.length === 0) {
+      current.blocks.push({ type: "text", text: "" });
+      blockKeys.push(newBlockKey());
+    }
     pendingFocus = { index: Math.max(0, index - 1), control: null };
     renderBlocks();
     const note = block && block.type === "quote"
@@ -639,8 +669,10 @@
     // rather than leaving a stray blank above the restored block.
     if (current.blocks.length === 1 && current.blocks[0].type === "text" && current.blocks[0].text === "") {
       current.blocks = [];
+      blockKeys = [];
     }
     current.blocks.splice(at, 0, block);
+    blockKeys.splice(at, 0, newBlockKey());
     pendingFocus = { index: at, control: null };
     renderBlocks();
     setStatus("Block restored.", "status");
@@ -676,7 +708,9 @@
         const index = drafts.findIndex((d) => d.id === res.draft.id);
         if (index >= 0) drafts[index] = res.draft;
         if (current && current.id === draftId) {
+          const carried = blockKeys.slice(0, current ? current.blocks.length : 0);
           current = JSON.parse(JSON.stringify(res.draft));
+          resetBlockKeys(current.blocks.length, carried);
           dirty = false;
           pendingFocus = { index: current.blocks.length - 1, control: ".btn-return" };
           setSaveState("Saved");
