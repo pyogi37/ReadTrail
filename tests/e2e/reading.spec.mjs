@@ -284,17 +284,19 @@ test("Desk quotes a clip and Return reports changed and missing source text", as
 
   await source.locator("#move-p30").click();
   await desk.locator(".quote-block .btn-return").click();
-  await expect(desk.locator("#draftStatus")).toHaveText("Found by text. The page has changed since you saved this.");
+  await expect(desk.locator("#draftStatus")).toHaveText("Found by its wording in the tab you had open. The page has changed since you saved this.");
 
   await source.locator("#remove-p30").click();
   await desk.locator(".quote-block .btn-return").click();
-  await expect(desk.locator("#draftStatus")).toHaveText("Not found. The page may have changed. Your saved text is above.");
+  await expect(desk.locator("#draftStatus")).toHaveText("Not found in the tab you had open. The page may have changed. This quote keeps the text you saved.");
 
   await source.close();
   const beforeReopen = ext.context.pages().length;
   await desk.locator(".quote-block .btn-return").click();
   await expect.poll(() => ext.context.pages().length).toBe(beforeReopen + 1);
-  await expect(desk.locator("#draftStatus")).toHaveText("Found exactly. The passage is highlighted on the page.");
+  // The source tab was closed, so Return had to open a fresh one. The reader is
+  // still looking at the Desk, so the verdict must say where it looked.
+  await expect(desk.locator("#draftStatus")).toHaveText("Opened the page in a new tab and found the passage there.");
   const reopened = ext.context.pages().find((candidate) => candidate !== desk && candidate !== ext.bridge && candidate.url() === url);
   if (reopened) await reopened.close();
 

@@ -476,15 +476,23 @@
         focusStatus();
         return;
       }
-      setStatus(revealText(res.quality), res.quality === "missing" ? "alert" : "status");
+      setStatus(revealText(res.quality, res.opened), res.quality === "missing" ? "alert" : "status");
       focusStatus();
     });
   }
 
-  function revealText(quality) {
-    if (quality === "exact") return "Found exactly. The passage is highlighted on the page.";
-    if (quality === "approximate") return "Found by text. The page has changed since you saved this.";
-    return "Not found. The page may have changed. Your saved text is above.";
+  // Return answers about one particular tab. When it had to open a fresh one,
+  // the reader is still looking at the tab they came from, where nothing moved,
+  // so a bare "found it" would be a true sentence about the wrong window.
+  function revealText(quality, opened) {
+    if (opened) {
+      if (quality === "exact") return "Opened the page in a new tab and found the passage there.";
+      if (quality === "approximate") return "Opened the page in a new tab and found it by its wording. The page has changed since you saved this.";
+      return "Opened the page in a new tab and could not find the passage. The page may have changed. This quote keeps the text you saved.";
+    }
+    if (quality === "exact") return "Found exactly, in the tab you already had open.";
+    if (quality === "approximate") return "Found by its wording in the tab you had open. The page has changed since you saved this.";
+    return "Not found in the tab you had open. The page may have changed. This quote keeps the text you saved.";
   }
 
   function focusStatus() {

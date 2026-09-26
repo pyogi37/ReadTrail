@@ -214,16 +214,21 @@ describe("ReadTrail Desk", () => {
     expect(heading.textContent).toBe("Findings");
   });
 
+  // Return answers about one tab. Saying "found it" without saying where is a
+  // true sentence about a window the reader is not looking at.
   it.each([
-    ["exact", "Found exactly. The passage is highlighted on the page.", "status"],
-    ["approximate", "Found by text. The page has changed since you saved this.", "status"],
-    ["missing", "Not found. The page may have changed. Your saved text is above.", "alert"]
-  ])("reports and focuses the %s Return outcome", (quality, message, role) => {
+    ["exact", false, "Found exactly, in the tab you already had open.", "status"],
+    ["approximate", false, "Found by its wording in the tab you had open. The page has changed since you saved this.", "status"],
+    ["missing", false, "Not found in the tab you had open. The page may have changed. This quote keeps the text you saved.", "alert"],
+    ["exact", true, "Opened the page in a new tab and found the passage there.", "status"],
+    ["approximate", true, "Opened the page in a new tab and found it by its wording. The page has changed since you saved this.", "status"],
+    ["missing", true, "Opened the page in a new tab and could not find the passage. The page may have changed. This quote keeps the text you saved.", "alert"]
+  ])("names the tab it looked in for the %s outcome (opened=%s)", (quality, opened, message, role) => {
     const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
     document.querySelector(".btn-return").click();
     expect(h.messages.at(-1)).toEqual({ type: "revealPassage", id: "passage-1" });
 
-    h.shift("revealPassage")({ ok: true, opened: false, quality });
+    h.shift("revealPassage")({ ok: true, opened, quality });
 
     const status = document.querySelector("#draftStatus");
     expect(status.textContent).toBe(message);

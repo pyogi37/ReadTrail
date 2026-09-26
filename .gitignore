@@ -10,3 +10,4 @@ Claude outputs/
 # skills-lock.json with: npx skills add pbakaus/impeccable
 .agents/
 .claude/skills/
+.impeccable/
