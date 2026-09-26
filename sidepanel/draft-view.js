@@ -518,7 +518,13 @@
 
     const cite = document.createElement("p");
     cite.className = "quote-cite";
-    cite.textContent = [block.title, hostOf(block.url)].filter(Boolean).join(" · ");
+    cite.textContent = block.title || hostOf(block.url);
+    if (block.title && hostOf(block.url)) {
+      const host = document.createElement("span");
+      host.className = "quote-cite-host";
+      host.textContent = ` · ${hostOf(block.url)}`;
+      cite.appendChild(host);
+    }
     li.appendChild(cite);
 
     // Return's answer belongs on the quote it is about, not in a line above

@@ -320,10 +320,19 @@ html {
   line-height: 1.35;
 }
 
+/* Provenance is the product's whole thesis and it was set at 11px in the
+   dimmest grey on the page: the same size and colour as "Insert text below",
+   smaller than the quote it cites and smaller than the commentary about it.
+   It is now the second-loudest thing in the block, after the passage. */
 .quote-cite {
   margin: 7px 0 10px 12px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.quote-cite .quote-cite-host {
   color: var(--muted);
-  font-size: 11px;
 }
 
 .quote-actions,
@@ -526,4 +535,26 @@ html {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* A quote block carried six controls and a text block four, all of them on,
+   always. Two of the six are the product's verbs; the rest is list plumbing,
+   and the plumbing outnumbered the product two to one in every block. Return
+   and Open page stay; the plumbing appears when the block is touched or
+   focused, which is how a document editor behaves. */
+.block-actions {
+  opacity: 0;
+  transition: opacity var(--motion);
+}
+
+.draft-block:hover .block-actions,
+.draft-block:focus-within .block-actions {
+  opacity: 1;
+}
+
+/* Without a hover to reveal them, they stay. */
+@media (hover: none) {
+  .block-actions {
+    opacity: 1;
+  }
 }
