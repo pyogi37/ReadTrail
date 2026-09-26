@@ -412,6 +412,17 @@ describe("ReadTrail Desk", () => {
     expect(document.activeElement.value).toBe("second");
   });
 
+  it("focuses the way out of a draft removal, and closes it on Escape", () => {
+    const h = loadDesk({ drafts: [draft({ blocks: [quoteBlock()] })] });
+    document.querySelector(".btn-remove-draft").click();
+    const box = document.querySelector(".draft-row .item-confirm");
+    expect(document.activeElement).toBe(box.querySelector(".btn-ghost"));
+
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.querySelector(".draft-row .item-confirm")).toBeNull();
+    expect(h.messages).not.toContainEqual({ type: "removeDraft", id: "draft-1" });
+  });
+
   it("moves a quote block from its own controls, which have no textarea", () => {
     loadDesk({
       hash: "#/drafts/draft-1",

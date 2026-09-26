@@ -341,8 +341,16 @@
     actions.appendChild(no);
     box.appendChild(text);
     box.appendChild(actions);
+    box.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      box.remove();
+      const button = row.querySelector(".btn-remove-draft");
+      if (button) button.focus();
+    });
     row.appendChild(box);
-    yes.focus();
+    // Focus the way out, as every other confirmation in this product does.
+    no.focus();
   }
 
   function createDraft() {
