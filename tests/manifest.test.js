@@ -4,6 +4,7 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
 describe("ReadTrail manifest integration", () => {
   it("uses only the permissions required for local page activation and the side panel", () => {
@@ -11,6 +12,14 @@ describe("ReadTrail manifest integration", () => {
     expect(manifest).not.toHaveProperty("host_permissions");
     expect(manifest.permissions).not.toContain("tabs");
     expect(manifest.permissions).not.toContain("notifications");
+  });
+
+  // A drifting version is invisible in chrome://extensions, so a reload looks
+  // like it did nothing. The packaging script refuses a mismatch; this keeps
+  // the two files in step before it gets that far.
+  it("keeps the manifest and package versions in step", () => {
+    expect(manifest.version).toBe(pkg.version);
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
   it("opens the side panel from the toolbar action instead of a popup", () => {

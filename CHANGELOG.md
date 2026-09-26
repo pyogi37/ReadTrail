@@ -4,9 +4,25 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 
 ## [Unreleased]
 
-### Planned for 1.1.0
+### Planned
 
 - Optional AI actions (summaries, tag and connection suggestions) using the reader's own Anthropic API key. Off unless a key is added.
+
+## [2.0.0] - Unreleased
+
+The first public release. Version 1.0.0 was completed but never submitted to the Chrome Web Store, so 2.0.0 contains everything listed under 1.0.0 below as well as the Desk.
+
+### Added
+
+- **Drafts.** Write in blocks beside your sources. A draft holds your own text and quotes of passages you saved, and each quote keeps the title, site, and exact position of the passage it came from.
+- **The Desk**, a full tab opened from the side panel: your sources on the left, the draft you are writing on the right.
+- **Return.** Go from any quote back to the exact paragraph in its page. ReadTrail focuses the tab you already have open when it can, and always says what it found: the passage exactly, the passage by its wording because the page changed, or nothing at all.
+- Drafts are included in export and import. A file exported before drafts existed still imports.
+
+### Changed
+
+- The side panel leads with a button that opens the Desk, replacing the small link in its footer.
+- The privacy documents now state one rule about reading a page: nothing is read automatically, and two actions read it when you ask them to, at that moment only. Those are **Save selection** and **Return**. This corrects wording that was already inaccurate, because Save selection never required turning ReadTrail on.
 
 ## [1.0.0] - Unreleased
 
