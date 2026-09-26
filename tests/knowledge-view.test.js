@@ -145,13 +145,14 @@ function clickToggle(checked) {
   toggle.dispatchEvent(new Event("change"));
 }
 
-function libraryResponse({ saved = [], passages = [], notes = [], pagemeta = [] } = {}) {
+function libraryResponse({ saved = [], passages = [], notes = [], pagemeta = [], drafts = [] } = {}) {
   return {
     ok: true,
     saved,
     passages,
     notes,
     pagemeta,
+    drafts,
     counts: { passages: passages.length, notes: notes.length, saved: saved.length },
     limit: 1500
   };
@@ -508,10 +509,15 @@ describe("knowledge view remove", () => {
     expect(clearKnowledgeButtonEl().disabled).toBe(true);
   });
 
-  it("Remove sends removePassage and reloads the list on success", () => {
+  it("Remove asks first, then sends removePassage and reloads on success", () => {
     const h = loadSidePanel();
     setupLibrary(h, { passages: [makePassage({ id: "p1" })] });
     findPassage("p1").querySelector(".btn-remove-item").click();
+
+    // Removing a clip breaks every quote of it and nothing on screen changes,
+    // so it asks before acting rather than after.
+    expect(h.runtimeMsgs).not.toContainEqual({ type: "removePassage", id: "p1" });
+    findPassage("p1").querySelector(".item-confirm .btn-danger-solid").click();
     expect(h.runtimeMsgs).toContainEqual({ type: "removePassage", id: "p1" });
 
     h.shiftType("removePassage")({ ok: true });
@@ -520,10 +526,30 @@ describe("knowledge view remove", () => {
     expect(findPassage("p1")).toBeUndefined();
   });
 
+  it("names the drafts a clip is quoted in before removing it", () => {
+    const h = loadSidePanel();
+    setupLibrary(h, {
+      passages: [makePassage({ id: "p1" })],
+      drafts: [
+        { version: 1, id: "d1", title: "First question", tags: [], blocks: [{ type: "quote", passageId: "p1", text: "t", url: "https://example.com/a", title: "A" }], createdAt: 1, updatedAt: 1 },
+        { version: 1, id: "d2", title: "Second question", tags: [], blocks: [{ type: "quote", passageId: "p1", text: "t", url: "https://example.com/a", title: "A" }], createdAt: 1, updatedAt: 1 }
+      ]
+    });
+    findPassage("p1").querySelector(".btn-remove-item").click();
+    const text = findPassage("p1").querySelector(".item-confirm .confirm-text").textContent;
+    expect(text).toContain("quoted in 2 drafts");
+    expect(text).toContain("lose their way back");
+
+    findPassage("p1").querySelector(".item-confirm .btn-ghost").click();
+    expect(findPassage("p1").querySelector(".item-confirm")).toBeNull();
+    expect(h.runtimeMsgs).not.toContainEqual({ type: "removePassage", id: "p1" });
+  });
+
   it("shows an alert status when removing a note fails", () => {
     const h = loadSidePanel();
     setupLibrary(h, { notes: [makeNote({ id: "n1" })] });
     findNote("n1").querySelector(".btn-remove-item").click();
+    findNote("n1").querySelector(".item-confirm .btn-danger-solid").click();
     expect(h.runtimeMsgs).toContainEqual({ type: "removeNote", id: "n1" });
 
     h.shiftType("removeNote")({ ok: false });

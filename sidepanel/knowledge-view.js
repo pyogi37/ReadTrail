@@ -9,7 +9,7 @@
   const LIMITS = shared.LIMITS || { TEXT_MAX: 4000, LIBRARY_MAX: 1500, IMPORT_MAX_BYTES: 8 * 1024 * 1024 };
 
   let els = null;
-  let library = { saved: [], passages: [], notes: [], pagemeta: [], counts: { passages: 0, notes: 0, saved: 0 }, limit: LIMITS.LIBRARY_MAX };
+  let library = { saved: [], passages: [], notes: [], pagemeta: [], drafts: [], counts: { passages: 0, notes: 0, saved: 0 }, limit: LIMITS.LIBRARY_MAX };
   let records = [];
   let index = null;
   let query = "";
@@ -72,6 +72,7 @@
         passages: Array.isArray(res.passages) ? res.passages : [],
         notes: Array.isArray(res.notes) ? res.notes : [],
         pagemeta: Array.isArray(res.pagemeta) ? res.pagemeta : [],
+        drafts: Array.isArray(res.drafts) ? res.drafts : [],
         counts: res.counts || { passages: 0, notes: 0, saved: 0 },
         limit: Number.isInteger(res.limit) ? res.limit : LIMITS.LIBRARY_MAX
       };
@@ -384,9 +385,57 @@
     // what goes.
     remove.setAttribute("aria-label", kind === "passage" ? "Remove this passage" : "Remove this note");
     remove.disabled = busy.has(item.id);
-    remove.addEventListener("click", () => removeItem(item.id, kind));
+    remove.addEventListener("click", () => confirmRemoveItem(remove.closest(".knowledge-item"), item.id, kind));
     actions.appendChild(remove);
     return actions;
+  }
+
+  // Removing a clip is the most damaging action on this surface: it breaks
+  // every quote of it, in every draft, and the quotes keep their text so
+  // nothing on screen changes. The reader is told the count before it happens.
+  function quotingDrafts(passageId) {
+    return library.drafts.filter((entry) => Array.isArray(entry.blocks)
+      && entry.blocks.some((block) => block && block.type === "quote" && block.passageId === passageId));
+  }
+
+  function confirmRemoveItem(node, id, kind) {
+    if (node.querySelector(".item-confirm")) return;
+    const box = document.createElement("div");
+    box.className = "item-confirm";
+    box.setAttribute("role", "alertdialog");
+    box.setAttribute("aria-label", kind === "passage" ? "Confirm removing this passage" : "Confirm removing this note");
+    const text = document.createElement("span");
+    text.className = "confirm-text";
+    const quoted = kind === "passage" ? quotingDrafts(id) : [];
+    if (quoted.length === 1) {
+      text.textContent = `Remove this passage? It is quoted in "${quoted[0].title}". That quote keeps its text but loses its way back to the page.`;
+    } else if (quoted.length > 1) {
+      text.textContent = `Remove this passage? It is quoted in ${quoted.length} drafts. Those quotes keep their text but lose their way back to the page.`;
+    } else {
+      text.textContent = kind === "passage" ? "Remove this passage?" : "Remove this note?";
+    }
+    const actions = document.createElement("div");
+    actions.className = "confirm-actions";
+    const yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "btn-danger-solid";
+    yes.textContent = kind === "passage" ? "Remove passage" : "Remove note";
+    yes.addEventListener("click", () => removeItem(id, kind));
+    const no = document.createElement("button");
+    no.type = "button";
+    no.className = "btn-ghost";
+    no.textContent = "Cancel";
+    no.addEventListener("click", () => {
+      box.remove();
+      const button = node.querySelector(".btn-remove-item");
+      if (button) button.focus();
+    });
+    actions.appendChild(yes);
+    actions.appendChild(no);
+    box.appendChild(text);
+    box.appendChild(actions);
+    node.appendChild(box);
+    yes.focus();
   }
 
   function removeItem(id, kind) {
@@ -397,6 +446,7 @@
       busy.delete(id);
       if (res && res.ok) {
         expanded.delete(id);
+        setStatus(kind === "passage" ? "Passage removed." : "Note removed.", "status");
         load();
         return;
       }
