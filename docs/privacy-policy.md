@@ -1,6 +1,6 @@
 # ReadTrail Privacy Policy
 
-_Last updated: 2026-09-13. Applies to ReadTrail 1.0._
+_Last updated: 2026-09-27. Describes ReadTrail as it currently behaves; the release it ships with is named in the changelog._
 
 ReadTrail is a Chrome extension that helps you follow the current line while reading, pause at an exact place, and return to pages you deliberately save. It is built local-first: everything it stores stays in your Chrome profile on your device.
 
@@ -13,14 +13,17 @@ ReadTrail is a Chrome extension that helps you follow the current line while rea
 | Saved pages (exact page URL, page title, reading position) | Only when you choose **Save for later** or when you chose "Always save my place" in Settings | `chrome.storage.local` on this device | So you can continue reading later |
 | Recently closed list (page URL, title, position) | Only when a tab closes with unsaved progress and your setting is "Ask me" | `chrome.storage.session`; each entry expires after 30 minutes | To let you save that place from the side panel |
 | Saved passages, notes, and tags (the text you selected, notes you typed, tags you added) | Only when you explicitly save a passage, write a note, or add a tag | `chrome.storage.local` on this device | Your reading library |
+| Drafts you write (their title, your text, and the passages you quoted) | Only when you create or edit a draft | `chrome.storage.local` on this device | Your own writing, with each quote still pointing at the passage it came from |
+| Which page a tab is showing (its URL only) | Only when you save a clip from that tab | `chrome.storage.session` on this device; removed when the tab closes and erased when Chrome closes | So **Return** can bring you back to the tab you are already using instead of opening a second one |
 
 The reading position never contains page text. It stores a path of child-node indexes, the id of a nearby element, the tag name and length of the text node, and scroll offsets.
 
 ## What ReadTrail never does
 
-- It does not read, track, or store anything on a page before you turn ReadTrail on for that page.
+- It never reads a page on its own. Before you turn ReadTrail on for a page it attaches no listeners, follows nothing you do, draws nothing, and records no reading position.
+- Two actions read a page because you asked them to, and only at the moment you ask. **Save selection** reads the text you have selected. **Return** looks for a passage you already saved, so it can scroll you to it. Return keeps nothing it sees: it reports only whether it found the passage exactly, found it by its wording because the page changed, or could not find it.
 - It does not collect browsing history. A page URL is stored only for tabs you activated, and durably only for pages you saved.
-- It does not send any data anywhere. Version 1.0 makes no network requests.
+- It does not send any data anywhere. ReadTrail makes no network requests at all.
 - It does not use analytics, telemetry, accounts, or cloud sync. `chrome.storage.sync` is never used.
 - It does not store anything from incognito tabs durably, and it never offers to save them.
 

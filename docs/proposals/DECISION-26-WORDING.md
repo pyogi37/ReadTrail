@@ -1,6 +1,6 @@
 # Proposal: privacy wording for Return (Decision 26)
 
-**Status: awaiting the owner's confirmation. Nothing in this document has been applied.**
+**Status: approved by the owner on 2026-09-27 and applied. Kept as the record of the reasoning.**
 
 Prepared 2026-09-27 by the lead. Decision 26 is the last thing blocking 2.0 Phase A. It is a wording question, not a code question: Return is built and tested, and the question is how to describe it truthfully.
 

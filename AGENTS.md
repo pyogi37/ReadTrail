@@ -40,7 +40,7 @@ Model routing and token rules: `docs/AI-WORKFLOW.md`.
 
 ## Privacy and interaction rules
 
-- Nothing is captured before activation: no pointer tracking, DOM inspection, canvas, or state writes on a dormant page.
+- Nothing is captured automatically: no pointer tracking, no canvas, no reading-state writes on a dormant page. Exactly two reader-initiated actions read a dormant page, at the moment they are invoked: `capturePassage` (Save selection) and `revealPassage` (Return). Return stores nothing it reads. Do not add a third without the owner's decision.
 - Passage text is stored only when the reader explicitly saves a passage. Never store page content, selections, or history otherwise.
 - Incognito tabs never produce durable records.
 - On an active page, primary clicks belong to the reading lock; scrolling and text selection stay available. Turning ReadTrail off hides UI but keeps the session anchor.
