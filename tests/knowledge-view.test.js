@@ -481,8 +481,13 @@ describe("knowledge view remove", () => {
     expect(h.runtimeMsgs).toContainEqual({ type: "continueSavedResumePoint", url: HTTP_TAB.url });
     h.shiftType("continueSavedResumePoint")({ ok: true, tabId: 10 });
 
-    vi.spyOn(globalThis, "confirm").mockReturnValue(true);
+    // Every destructive action on this surface asks the same way now: an
+    // inline row that names the cost, not a native dialog.
     clearSavedPlacesButtonEl().click();
+    expect(h.runtimeMsgs).not.toContainEqual({ type: "clearSavedResumePoints" });
+    const confirmRow = clearSavedPlacesButtonEl().parentElement.querySelector(".item-confirm");
+    expect(confirmRow.textContent).toContain("1 of them");
+    confirmRow.querySelector(".btn-danger-solid").click();
     expect(h.runtimeMsgs).toContainEqual({ type: "clearSavedResumePoints" });
     h.shiftType("clearSavedResumePoints")({ ok: true });
     expect(h.pendingCount("listLibrary")).toBeGreaterThan(0);
@@ -496,9 +501,11 @@ describe("knowledge view remove", () => {
       notes: [makeNote()],
       pagemeta: [{ version: 1, url: HTTP_TAB.url, tags: ["research"], updatedAt: 1 }]
     });
-    vi.spyOn(globalThis, "confirm").mockReturnValue(true);
-
     clearKnowledgeButtonEl().click();
+    const row = clearKnowledgeButtonEl().parentElement.querySelector(".item-confirm");
+    expect(row.textContent).toContain("2 items");
+    expect(row.textContent).toContain("cannot be undone");
+    row.querySelector(".btn-danger-solid").click();
     expect(h.runtimeMsgs).toContainEqual({
       type: "clearLibrary", kinds: ["passages", "notes", "pagemeta"]
     });

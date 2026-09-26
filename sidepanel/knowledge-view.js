@@ -398,6 +398,47 @@
       && entry.blocks.some((block) => block && block.type === "quote" && block.passageId === passageId));
   }
 
+  // Four destructive actions on one surface had four different protections,
+  // three of them a native dialog that cannot be styled, cannot be dismissed
+  // by keyboard consistently, and reads as the browser talking rather than
+  // the product. This is the one idiom, used by all of them.
+  function askFirst(node, { label, text, confirmLabel, onConfirm, onCancel }) {
+    const existing = node.querySelector(".item-confirm");
+    if (existing) return;
+    const box = document.createElement("div");
+    box.className = "item-confirm";
+    box.setAttribute("role", "alertdialog");
+    box.setAttribute("aria-label", label);
+    const message = document.createElement("span");
+    message.className = "confirm-text";
+    message.textContent = text;
+    const actions = document.createElement("div");
+    actions.className = "confirm-actions";
+    const yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "btn-danger-solid";
+    yes.textContent = confirmLabel;
+    yes.addEventListener("click", () => {
+      box.remove();
+      onConfirm();
+    });
+    const no = document.createElement("button");
+    no.type = "button";
+    no.className = "btn-ghost";
+    no.textContent = "Cancel";
+    no.addEventListener("click", () => {
+      box.remove();
+      if (typeof onCancel === "function") onCancel();
+    });
+    actions.appendChild(yes);
+    actions.appendChild(no);
+    box.appendChild(message);
+    box.appendChild(actions);
+    node.appendChild(box);
+    yes.focus();
+    return box;
+  }
+
   function confirmRemoveItem(node, id, kind) {
     if (node.querySelector(".item-confirm")) return;
     const box = document.createElement("div");
@@ -526,14 +567,19 @@
       remove.className = "btn-danger btn-small btn-remove-saved-position";
       remove.textContent = "Remove saved place";
       remove.addEventListener("click", () => {
-        if (!globalThis.confirm("Remove the saved reading position? Passages, notes, and page tags will stay.")) return;
-        sendMessage({ type: "removeSavedResumePoint", url: page.url }, (res) => {
-          if (res && res.ok) {
-            setStatus("Saved reading position removed.", "status");
-            load();
-          } else {
-            setStatus("Could not remove the saved reading position.", "alert");
-          }
+        askFirst(remove.closest(".page-body") || remove.parentElement, {
+          label: "Confirm removing this saved reading position",
+          text: "Remove the saved reading position? The passages, notes and tags on this page stay.",
+          confirmLabel: "Remove saved place",
+          onCancel: () => remove.focus(),
+          onConfirm: () => sendMessage({ type: "removeSavedResumePoint", url: page.url }, (res) => {
+            if (res && res.ok) {
+              setStatus("Saved reading position removed.", "status");
+              load();
+            } else {
+              setStatus("Could not remove the saved reading position.", "alert");
+            }
+          })
         });
       });
       actions.appendChild(remove);
@@ -740,8 +786,16 @@
   }
 
   function onClearKnowledge() {
-    const confirmed = globalThis.confirm("Clear all passages, notes, and page tags? Saved reading positions and settings will stay intact.");
-    if (!confirmed) return;
+    askFirst(els.clearButton.parentElement, {
+      label: "Confirm clearing all page content",
+      text: `Clear every passage, note and page tag? That is ${usedEntries()} items, and it cannot be undone. Saved reading positions and your settings stay.`,
+      confirmLabel: "Clear page content",
+      onCancel: () => els.clearButton.focus(),
+      onConfirm: clearKnowledge
+    });
+  }
+
+  function clearKnowledge() {
     els.clearButton.disabled = true;
     sendMessage({ type: "clearLibrary", kinds: ["passages", "notes", "pagemeta"] }, (res) => {
       if (!res || !res.ok) {
@@ -756,8 +810,16 @@
 
   function onClearSavedPlaces() {
     if (!library.saved.length) return;
-    const confirmed = globalThis.confirm("Clear every saved reading position? Passages, notes, and page tags will stay.");
-    if (!confirmed) return;
+    askFirst(els.clearSavedButton.parentElement, {
+      label: "Confirm clearing all saved reading positions",
+      text: `Clear every saved reading position? That is ${library.saved.length} of them, and it cannot be undone. Passages, notes and tags stay.`,
+      confirmLabel: "Clear saved places",
+      onCancel: () => els.clearSavedButton.focus(),
+      onConfirm: clearSavedPlaces
+    });
+  }
+
+  function clearSavedPlaces() {
     els.clearSavedButton.disabled = true;
     sendMessage({ type: "clearSavedResumePoints" }, (res) => {
       if (!res || !res.ok) {
