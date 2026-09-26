@@ -23,6 +23,10 @@
   let saveWaiters = [];
   let failedSaveIds = new Set();
   let pendingFocus = null; // { index, control } restored after a re-render
+  // passageId -> { quality, opened }. A verdict belongs to the quote it is
+  // about, survives the rebuild that follows a save, and lets a reader see
+  // which of their quotes still resolve without pressing every one again.
+  let verdicts = new Map();
   let navigationHandler = null;
 
   function sendMessage(message, callback) {
@@ -84,6 +88,7 @@
   function openDraft(id, options = {}) {
     flushSave();
     stashCurrent();
+    clearVerdicts();
     const draft = drafts.find((d) => d.id === id);
     if (!draft) {
       current = null;
@@ -435,6 +440,23 @@
     cite.textContent = [block.title, hostOf(block.url)].filter(Boolean).join(" · ");
     li.appendChild(cite);
 
+    // Return's answer belongs on the quote it is about, not in a line above
+    // the whole document where it is off-screen in any real draft.
+    const verdict = document.createElement("p");
+    verdict.className = "quote-verdict";
+    verdict.id = `verdict-${block.passageId}-${index}`;
+    verdict.setAttribute("role", "status");
+    verdict.tabIndex = -1;
+    const remembered = verdicts.get(block.passageId);
+    if (remembered) {
+      verdict.textContent = revealText(remembered.quality, remembered.opened);
+      verdict.dataset.quality = remembered.quality;
+      verdict.hidden = false;
+    } else {
+      verdict.hidden = true;
+    }
+    li.appendChild(verdict);
+
     const row = document.createElement("div");
     row.className = "quote-actions";
 
@@ -442,7 +464,7 @@
     back.type = "button";
     back.className = "btn-primary btn-small btn-return";
     back.textContent = "Return";
-    back.addEventListener("click", () => returnToClip(block, back));
+    back.addEventListener("click", () => returnToClip(block, back, verdict));
     row.appendChild(back);
 
     const open = document.createElement("button");
@@ -464,20 +486,27 @@
 
   // Return says exactly what happened. An anchor that resolves is not enough:
   // the worker and content script compare the text before claiming "exactly".
-  function returnToClip(block, button) {
+  function showVerdict(verdict, text, quality) {
+    verdict.textContent = text;
+    verdict.dataset.quality = quality;
+    verdict.hidden = false;
+    if (typeof verdict.focus === "function") verdict.focus();
+  }
+
+  function returnToClip(block, button, verdict) {
     button.disabled = true;
-    setStatus("Looking for the passage…", "status");
+    showVerdict(verdict, "Looking for the passage…", "checking");
     sendMessage({ type: "revealPassage", id: block.passageId }, (res) => {
       button.disabled = false;
       if (!res || !res.ok) {
-        setStatus(res && res.error === "not-found"
-          ? "That clip is no longer in your library. The quote above keeps its text."
-          : "ReadTrail could not open that page. Please try again.", "alert");
-        focusStatus();
+        verdicts.delete(block.passageId);
+        showVerdict(verdict, res && res.error === "not-found"
+          ? "That clip is no longer in your library. This quote keeps the text you saved."
+          : "ReadTrail could not open that page. Please try again.", "missing");
         return;
       }
-      setStatus(revealText(res.quality, res.opened), res.quality === "missing" ? "alert" : "status");
-      focusStatus();
+      verdicts.set(block.passageId, { quality: res.quality, opened: Boolean(res.opened) });
+      showVerdict(verdict, revealText(res.quality, res.opened), res.quality);
     });
   }
 
@@ -497,6 +526,11 @@
 
   function focusStatus() {
     if (els && els.status && typeof els.status.focus === "function") els.status.focus();
+  }
+
+  // A draft the reader opens fresh should not show verdicts from the last one.
+  function clearVerdicts() {
+    verdicts = new Map();
   }
 
   // --- Block operations ---

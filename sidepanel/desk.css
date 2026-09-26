@@ -395,3 +395,43 @@ html {
     transition: none;
   }
 }
+
+/* Return's answer, on the quote it is about.
+
+   The three outcomes are told apart by their rule colour, not by colour
+   alone: each carries its own wording, and the text is the message. Gold
+   means the source still holds, which is the same thing gold means
+   everywhere else in this product. */
+.quote-verdict {
+  margin-top: 8px;
+  padding: 7px 10px 7px 11px;
+  border-left: 2px solid var(--rule);
+  border-radius: 0 6px 6px 0;
+  background: var(--surface-sunken);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.quote-verdict[data-quality="exact"] {
+  border-left-color: var(--saved-border);
+  color: var(--saved-text);
+}
+
+.quote-verdict[data-quality="approximate"] {
+  border-left-color: var(--notice-border);
+  color: var(--notice-text);
+}
+
+.quote-verdict[data-quality="missing"] {
+  border-left-color: var(--accent);
+  background: var(--error-surface);
+  color: var(--error-text);
+}
+
+/* Return moves focus here so the outcome is announced. :focus-visible does
+   not match a programmatic focus, so this has to be :focus. */
+.quote-verdict:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

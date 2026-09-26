@@ -230,10 +230,28 @@ describe("ReadTrail Desk", () => {
 
     h.shift("revealPassage")({ ok: true, opened, quality });
 
-    const status = document.querySelector("#draftStatus");
-    expect(status.textContent).toBe(message);
-    expect(status.getAttribute("role")).toBe(role);
-    expect(document.activeElement).toBe(status);
+    // The answer belongs on the quote it is about, not in a line above the
+    // whole document where a long draft pushes it off-screen.
+    const verdict = document.querySelector(".quote-block .quote-verdict");
+    expect(verdict.textContent).toBe(message);
+    expect(verdict.hidden).toBe(false);
+    expect(verdict.dataset.quality).toBe(quality);
+    expect(document.activeElement).toBe(verdict);
+    expect(document.querySelector("#draftStatus").textContent).not.toContain("Found");
+    void role;
+  });
+
+  it("keeps each quote's verdict through the rebuild that follows a save", () => {
+    const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
+    document.querySelector(".btn-return").click();
+    h.shift("revealPassage")({ ok: true, opened: false, quality: "missing" });
+    expect(document.querySelector(".quote-verdict").dataset.quality).toBe("missing");
+
+    // Any edit rebuilds the block list; a reader must not lose the answer they
+    // just asked for, and must still see which quotes no longer resolve.
+    document.querySelector(".btn-insert-below").click();
+    expect(document.querySelector(".quote-verdict").dataset.quality).toBe("missing");
+    expect(document.querySelector(".quote-verdict").hidden).toBe(false);
   });
 
   it("routes topics and searches into Sources and supports the narrow pane switcher", () => {
