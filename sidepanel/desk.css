@@ -558,3 +558,15 @@ html {
     opacity: 1;
   }
 }
+
+/* How much of the argument still stands, before the reader sends it
+   anywhere. This is the reason Return's outcomes are worth keeping. */
+.draft-summary {
+  margin: 0 0 10px;
+  padding: 7px 11px;
+  border-left: 2px solid var(--saved-border);
+  border-radius: 0 6px 6px 0;
+  background: var(--surface-sunken);
+  color: var(--saved-text);
+  font-size: 12px;
+}

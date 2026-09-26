@@ -383,6 +383,25 @@
     renderBlocks();
   }
 
+  // The reason to keep the outcomes: a reader can see how much of their
+  // argument still stands before they send it anywhere.
+  function renderSummary() {
+    if (!els || !els.summary) return;
+    const quotes = current ? current.blocks.filter((b) => b.type === "quote") : [];
+    const checked = quotes.filter((b) => b.checked);
+    if (checked.length === 0) {
+      els.summary.hidden = true;
+      els.summary.textContent = "";
+      return;
+    }
+    const held = checked.filter((b) => b.checked.quality === "exact").length;
+    const lost = checked.filter((b) => b.checked.quality === "missing").length;
+    const parts = [`${held} of ${quotes.length} ${quotes.length === 1 ? "quote" : "quotes"} still resolved exactly when you checked`];
+    if (lost > 0) parts.push(`${lost} could not be found`);
+    els.summary.textContent = `${parts.join("; ")}.`;
+    els.summary.hidden = false;
+  }
+
   function renderBlocks() {
     els.blocks.textContent = "";
     const frag = document.createDocumentFragment();
@@ -390,6 +409,7 @@
       frag.appendChild(block.type === "quote" ? quoteBlockNode(block, index) : textBlockNode(block, index));
     });
     els.blocks.appendChild(frag);
+    renderSummary();
     restoreFocus();
   }
 
@@ -539,6 +559,10 @@
       verdict.textContent = revealText(remembered.quality, remembered.opened);
       verdict.dataset.quality = remembered.quality;
       verdict.hidden = false;
+    } else if (block.checked) {
+      verdict.textContent = rememberedText(block.checked);
+      verdict.dataset.quality = block.checked.quality;
+      verdict.hidden = false;
     } else {
       verdict.hidden = true;
     }
@@ -593,6 +617,14 @@
         return;
       }
       verdicts.set(verdictKey(index), { quality: res.quality, opened: Boolean(res.opened) });
+      // Persist what was found, so the draft can still say which quotes held
+      // after the tab is closed. The tab clause is deliberately not stored: it
+      // describes this moment, not the quote.
+      if (current && current.blocks[index] && current.blocks[index].type === "quote") {
+        current.blocks[index].checked = { quality: res.quality, at: Date.now() };
+        scheduleSave();
+        renderSummary();
+      }
       showVerdict(verdict, revealText(res.quality, res.opened), res.quality);
     });
   }
@@ -600,6 +632,28 @@
   // Return answers about one particular tab. When it had to open a fresh one,
   // the reader is still looking at the tab they came from, where nothing moved,
   // so a bare "found it" would be a true sentence about the wrong window.
+  // How long ago, in the words a person would use.
+  function agoText(at) {
+    const ms = Date.now() - at;
+    if (!Number.isFinite(ms) || ms < 0) return "earlier";
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return minutes === 1 ? "a minute ago" : `${minutes} minutes ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours === 1 ? "an hour ago" : `${hours} hours ago`;
+    const days = Math.floor(hours / 24);
+    return days === 1 ? "yesterday" : `${days} days ago`;
+  }
+
+  // A remembered outcome describes the quote, not the tab it was found in, so
+  // it never repeats the clause about which window was open.
+  function rememberedText(checked) {
+    const when = agoText(checked.at);
+    if (checked.quality === "exact") return `Found exactly when you last checked, ${when}.`;
+    if (checked.quality === "approximate") return `Found by its wording when you last checked, ${when}. The page had changed.`;
+    return `Not found when you last checked, ${when}. This quote keeps the text you saved.`;
+  }
+
   function revealText(quality, opened) {
     if (opened) {
       if (quality === "exact") return "Opened the page in a new tab and found the passage there.";
@@ -781,6 +835,7 @@
       live: $("draftLive"),
       close: $("closeDraftButton"),
       append: $("draftAppend"),
+      summary: $("draftSummary"),
       undo: $("draftUndo")
     };
     if (!els.list) return;

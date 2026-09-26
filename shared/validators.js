@@ -434,6 +434,17 @@
     return REVEAL_QUALITIES.includes(value);
   }
 
+  // What Return last found for this quote. Optional, so every draft written
+  // before it existed still validates, and so a quote never checked simply
+  // has nothing to say.
+  function isValidChecked(value) {
+    if (value === undefined) return true;
+    return isRecord(value)
+      && isRevealQuality(value.quality)
+      && isFiniteNumber(value.at)
+      && value.at >= 0;
+  }
+
   function isValidDraftBlock(block) {
     if (!isRecord(block)) return false;
     if (block.type === "text") return isValidText(block.text, true);
@@ -442,18 +453,23 @@
       && isValidText(block.text, false)
       && isValidPageUrl(block.url)
       && typeof block.title === "string"
-      && block.title.length <= LIMITS.TITLE_MAX;
+      && block.title.length <= LIMITS.TITLE_MAX
+      && isValidChecked(block.checked);
   }
 
   function cloneDraftBlock(block) {
     if (block.type === "text") return { type: "text", text: block.text };
-    return {
+    const clone = {
       type: "quote",
       passageId: block.passageId,
       text: block.text,
       url: block.url,
       title: block.title
     };
+    if (isValidChecked(block.checked) && block.checked !== undefined) {
+      clone.checked = { quality: block.checked.quality, at: block.checked.at };
+    }
+    return clone;
   }
 
   function draftChars(blocks) {
@@ -517,6 +533,7 @@
     clonePageMeta,
     isValidDraftBlock,
     cloneDraftBlock,
+    isValidChecked,
     isValidDraftBlocks,
     isValidDraft,
     cloneDraft,

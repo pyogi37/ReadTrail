@@ -337,6 +337,43 @@ describe("ReadTrail Desk", () => {
     expect(after[1].textContent).toBe("");
   });
 
+  it("keeps what Return found, so a reopened draft still knows which quotes held", () => {
+    const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
+    document.querySelector(".btn-return").click();
+    h.shift("revealPassage")({ ok: true, opened: false, quality: "missing" });
+
+    // The outcome is written onto the quote and saved with the draft, not
+    // held in a map that dies with the tab. The save is debounced.
+    globalThis.ReadTrailSidePanel.draftView.flushSave();
+    const saved = h.messages.filter((m) => m.type === "updateDraft").at(-1);
+    expect(saved.blocks[0].checked).toEqual({ quality: "missing", at: expect.any(Number) });
+  });
+
+  it("reads a remembered outcome back without repeating the tab clause", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({
+        blocks: [
+          quoteBlock({ checked: { quality: "exact", at: Date.now() - 90 * 60 * 1000 } }),
+          quoteBlock({ passageId: "passage-2", checked: { quality: "missing", at: Date.now() - 60 * 1000 } })
+        ]
+      })]
+    });
+
+    const verdicts = [...document.querySelectorAll(".quote-verdict")];
+    expect(verdicts[0].hidden).toBe(false);
+    expect(verdicts[0].textContent).toContain("Found exactly when you last checked");
+    expect(verdicts[0].textContent).toContain("hour");
+    expect(verdicts[0].textContent).not.toContain("tab");
+    expect(verdicts[1].dataset.quality).toBe("missing");
+
+    // And the draft can say how much of the argument still stands.
+    const summary = document.querySelector("#draftSummary");
+    expect(summary.hidden).toBe(false);
+    expect(summary.textContent).toContain("1 of 2 quotes still resolved exactly");
+    expect(summary.textContent).toContain("1 could not be found");
+  });
+
   it("moves a block with Alt and an arrow, keeping the caret in it", () => {
     loadDesk({
       hash: "#/drafts/draft-1",
