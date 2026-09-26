@@ -480,3 +480,50 @@ html {
   font-size: 11px;
   line-height: 1.45;
 }
+
+/* The Desk had no help of any kind and no route to Settings. The panel has
+   both. */
+.desk-header-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.desk-help {
+  margin: 0 0 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--surface-sunken);
+}
+
+.desk-help summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 0;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.desk-help ol {
+  margin: 10px 0 0 18px;
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.desk-help strong {
+  color: var(--text);
+}
+
+.desk-help-keys {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

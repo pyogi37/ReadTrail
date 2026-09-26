@@ -337,6 +337,31 @@ describe("ReadTrail Desk", () => {
     expect(after[1].textContent).toBe("");
   });
 
+  it("moves a block with Alt and an arrow, keeping the caret in it", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "first" }, { type: "text", text: "second" }] })]
+    });
+    const second = document.querySelectorAll(".block-text")[1];
+    second.focus();
+    // Placing a block used to mean one mouse press per position.
+    second.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", altKey: true, bubbles: true }));
+
+    const order = [...document.querySelectorAll(".block-text")].map((t) => t.value);
+    expect(order).toEqual(["second", "first"]);
+    expect(document.activeElement.value).toBe("second");
+  });
+
+  it("adds a block below with Control and Enter", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [{ type: "text", text: "only" }] })] });
+    const area = document.querySelector(".block-text");
+    area.focus();
+    area.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }));
+
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(2);
+    expect(document.activeElement).toBe(document.querySelectorAll(".block-text")[1]);
+  });
+
   it("announces only the heading line, not the prose beneath it", () => {
     loadDesk({
       hash: "#/drafts/draft-1",

@@ -112,6 +112,13 @@
       showPane("draft");
     });
 
+    const options = document.getElementById("deskOptions");
+    if (options) {
+      options.addEventListener("click", () => {
+        try { chrome.runtime.openOptionsPage(); } catch (_) { /* unavailable outside Chrome */ }
+      });
+    }
+
     knowledgeView.init();
     draftView.init(applyRoute);
     window.addEventListener("hashchange", applyRoute);

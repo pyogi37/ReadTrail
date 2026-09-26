@@ -479,6 +479,19 @@
       semanticHeading.hidden = !heading;
       semanticHeading.textContent = heading ? (area.value.split("\n")[0].slice(2).trim() || "Untitled heading") : "";
     };
+    // The only accelerators on this surface. Placing a quote used to mean
+    // pressing "Move up" once per position with the mouse.
+    area.addEventListener("keydown", (event) => {
+      if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        moveBlock(index, event.key === "ArrowUp" ? -1 : 1, true);
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        insertTextBlock(index + 1);
+      }
+    });
     area.addEventListener("input", () => {
       current.blocks[index].text = area.value;
       syncHeading();
@@ -599,7 +612,7 @@
 
   // --- Block operations ---
 
-  function moveBlock(index, delta) {
+  function moveBlock(index, delta, movedByKeyboard = false) {
     const target = index + delta;
     if (target < 0 || target >= current.blocks.length) return;
     const [movedKey] = blockKeys.splice(index, 1);
@@ -608,7 +621,7 @@
     current.blocks.splice(target, 0, block);
     // The control for repeating the same move is disabled at an edge, so put
     // focus on the enabled inverse control after the block is rebuilt.
-    pendingFocus = { index: target, control: delta < 0 ? ".btn-move-down" : ".btn-move-up" };
+    pendingFocus = { index: target, control: movedByKeyboard ? "textarea" : (delta < 0 ? ".btn-move-down" : ".btn-move-up") };
     renderBlocks();
     announce(`Moved to position ${target + 1} of ${current.blocks.length}.`);
     scheduleSave();
