@@ -35,7 +35,7 @@
   --notice-border: rgba(140, 200, 255, 0.34);
   --notice-text: #cfe6ff;
   --danger-bg: #a94b46;
-  --danger-bg-hover: #c05b55;
+  --danger-bg-hover: #b5504a;
 
   /* One display face, shared with the Desk, so the margin and the desk
      speak with the same voice. Body text stays in the system face, which
@@ -127,7 +127,7 @@ body {
 /* --- Sections --- */
 
 .section-heading {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
