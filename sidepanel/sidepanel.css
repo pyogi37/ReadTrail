@@ -489,9 +489,36 @@ body {
 
 /* --- Footer --- */
 
-.footer {
+/* The Desk is half the product, so the way into it is a real button at the
+   top of the panel rather than a link below the fold. */
+.desk-button {
+  width: 100%;
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: rgba(255, 107, 107, 0.12);
+  color: var(--text);
+  transition: background var(--motion);
+}
+
+.desk-button:hover {
+  background: rgba(255, 107, 107, 0.2);
+}
+
+.desk-button-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.desk-button-hint {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .link-button {
