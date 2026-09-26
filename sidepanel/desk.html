@@ -105,10 +105,19 @@
               <input type="text" id="draftTitle" class="draft-title-input" maxlength="240">
               <button type="button" id="closeDraftButton" class="btn-ghost btn-small">Close</button>
             </div>
-            <label class="draft-tags-label" for="draftTags">Draft tags</label>
-            <input type="text" id="draftTags" placeholder="Add tags, separated by commas">
-            <p class="status-message draft-status" id="draftStatus" role="status" aria-live="polite" tabindex="-1" hidden></p>
+            <div class="draft-status-row">
+              <p class="status-message draft-status" id="draftStatus" role="status" aria-live="polite" tabindex="-1" hidden></p>
+              <button type="button" id="draftUndo" class="btn-ghost btn-small" hidden>Undo remove</button>
+            </div>
             <ol class="draft-blocks" id="draftBlocks"></ol>
+            <div class="draft-append-row">
+              <button type="button" id="draftAppend" class="btn-ghost btn-small">Add text below</button>
+            </div>
+            <details class="draft-tags">
+              <summary>Tags for this draft</summary>
+              <label class="draft-tags-label" for="draftTags">Comma separated. Saved with the draft and included in exports; browsing drafts by tag is not built yet.</label>
+              <input type="text" id="draftTags" placeholder="Add tags, separated by commas">
+            </details>
           </article>
         </div>
       </div>

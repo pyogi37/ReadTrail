@@ -241,6 +241,39 @@ describe("ReadTrail Desk", () => {
     void role;
   });
 
+  it("appends a block at the end, so writing after a quote is one control", () => {
+    const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(1);
+
+    document.querySelector("#draftAppend").click();
+
+    const blocks = document.querySelectorAll(".draft-block");
+    expect(blocks).toHaveLength(2);
+    expect(blocks[1].classList.contains("text-block")).toBe(true);
+    expect(document.activeElement).toBe(blocks[1].querySelector("textarea"));
+    void h;
+  });
+
+  it("offers a visible way back after removing a block, and restores it in place", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "first" }, { type: "text", text: "second" }] })]
+    });
+    const undo = document.querySelector("#draftUndo");
+    expect(undo.hidden).toBe(true);
+
+    document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(1);
+    expect(undo.hidden).toBe(false);
+    expect(document.querySelector("#draftStatus").textContent).toContain("Block removed");
+
+    undo.click();
+    const texts = [...document.querySelectorAll(".block-text")].map((t) => t.value);
+    expect(texts).toEqual(["first", "second"]);
+    expect(undo.hidden).toBe(true);
+    void h;
+  });
+
   it("keeps each quote's verdict through the rebuild that follows a save", () => {
     const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
     document.querySelector(".btn-return").click();

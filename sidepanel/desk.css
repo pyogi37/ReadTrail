@@ -435,3 +435,47 @@ html {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+
+/* The way to keep writing after a quote. Without it the only path was to
+   find "Insert text below" on the last block among four identical chips. */
+.draft-append-row {
+  margin-top: 10px;
+}
+
+.draft-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.draft-status-row .status-message {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+
+/* Tags are saved with the draft but nothing browses them yet, so they do not
+   get a prominent slot in the editor. */
+.draft-tags {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+
+.draft-tags summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 4px 0;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.draft-tags .draft-tags-label {
+  display: block;
+  margin: 6px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}

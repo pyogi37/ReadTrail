@@ -12,6 +12,7 @@
   const shared = globalThis.ReadTrailShared || {};
   const LIMITS = shared.LIMITS || { TEXT_MAX: 4000, DRAFT_BLOCKS_MAX: 200, DRAFTS_MAX: 100 };
   const SAVE_DEBOUNCE_MS = 400;
+  const UNDO_WINDOW_MS = 12000;
 
   let els = null;
   let drafts = [];
@@ -23,6 +24,8 @@
   let saveWaiters = [];
   let failedSaveIds = new Set();
   let pendingFocus = null; // { index, control } restored after a re-render
+  let removed = null;      // { block, index } while the undo offer stands
+  let undoTimer = null;
   // passageId -> { quality, opened }. A verdict belongs to the quote it is
   // about, survives the rebuild that follows a save, and lets a reader see
   // which of their quotes still resolve without pressing every one again.
@@ -548,6 +551,11 @@
     scheduleSave();
   }
 
+  function appendTextBlock() {
+    if (!current) return;
+    insertTextBlock(current.blocks.length);
+  }
+
   function insertTextBlock(index) {
     if (current.blocks.length >= LIMITS.DRAFT_BLOCKS_MAX) {
       setStatus("This draft has as many blocks as it can hold.", "alert");
@@ -565,9 +573,50 @@
     if (current.blocks.length === 0) current.blocks.push({ type: "text", text: "" });
     pendingFocus = { index: Math.max(0, index - 1), control: null };
     renderBlocks();
-    announce(block && block.type === "quote"
+    const note = block && block.type === "quote"
       ? "Quote removed from this draft. The clip it came from is still in your library."
-      : "Block removed.");
+      : "Block removed.";
+    announce(note);
+    offerUndo(block, index, note);
+    scheduleSave();
+  }
+
+  // A removal is the only destructive action in the editor and it autosaves
+  // within 400ms, so the way back has to be offered immediately and has to be
+  // visible: the live region alone tells a sighted reader nothing.
+  function offerUndo(block, index, note) {
+    if (!block || !els) return;
+    removed = { block, index };
+    if (undoTimer !== null) clearTimeout(undoTimer);
+    setStatus(note, "status");
+    els.undo.hidden = false;
+    undoTimer = setTimeout(() => {
+      undoTimer = null;
+      removed = null;
+      if (els) els.undo.hidden = true;
+    }, UNDO_WINDOW_MS);
+  }
+
+  function undoRemove() {
+    if (!removed || !current) return;
+    const { block, index } = removed;
+    removed = null;
+    if (undoTimer !== null) {
+      clearTimeout(undoTimer);
+      undoTimer = null;
+    }
+    els.undo.hidden = true;
+    const at = Math.min(index, current.blocks.length);
+    // Removing the last block inserts an empty one to write in; drop it again
+    // rather than leaving a stray blank above the restored block.
+    if (current.blocks.length === 1 && current.blocks[0].type === "text" && current.blocks[0].text === "") {
+      current.blocks = [];
+    }
+    current.blocks.splice(at, 0, block);
+    pendingFocus = { index: at, control: null };
+    renderBlocks();
+    setStatus("Block restored.", "status");
+    announce("Block restored.");
     scheduleSave();
   }
 
@@ -638,7 +687,9 @@
       status: $("draftStatus"),
       saveState: $("draftSaveState"),
       live: $("draftLive"),
-      close: $("closeDraftButton")
+      close: $("closeDraftButton"),
+      append: $("draftAppend"),
+      undo: $("draftUndo")
     };
     if (!els.list) return;
 
@@ -657,6 +708,8 @@
       scheduleSave();
     });
     els.close.addEventListener("click", closeDraft);
+    els.append.addEventListener("click", appendTextBlock);
+    els.undo.addEventListener("click", undoRemove);
     window.addEventListener("pagehide", flushSave);
 
     load(callback);
