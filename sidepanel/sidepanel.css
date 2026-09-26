@@ -42,7 +42,12 @@
      is what a 280px panel can actually set. */
   --font-display: Georgia, 'Times New Roman', serif;
 
+  /* --motion carries its own easing, so it belongs in `transition` and never
+     beside --ease-out in an `animation` shorthand: two easing functions in one
+     shorthand is invalid and the whole declaration is dropped. Animations use
+     the bare durations. */
   --motion: 180ms ease-out;
+  --motion-dur: 180ms;
   --motion-fast: 110ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
 }
@@ -635,13 +640,13 @@ button:focus-visible {
 
 /* Applied to the one block the reader just added, moved, or quoted into. */
 .just-changed {
-  animation: readtrail-rise var(--motion) var(--ease-out);
+  animation: readtrail-rise var(--motion-dur) var(--ease-out);
 }
 
 /* Set by the toggle handler, never during a render, so re-opening a card
    while typing in search cannot replay it. */
 .page-body.just-opened {
-  animation: readtrail-settle var(--motion) var(--ease-out);
+  animation: readtrail-settle var(--motion-dur) var(--ease-out);
 }
 
 /* A message that appears in place is easy to miss if it simply blinks in. */

@@ -282,6 +282,16 @@ test("Desk quotes a clip and Return reports changed and missing source text", as
   await desk.locator("#pageList .btn-quote").click();
   await expect(desk.locator(".quote-block .passage-text")).toHaveText("Paragraph 30.");
 
+  // The quoted block is marked so the reader can see which one just arrived.
+  // Asserting the stylesheet contains the rule is not enough: an invalid
+  // shorthand computes to animation-name "none" and the text still matches.
+  const quotedMotion = await desk.locator(".quote-block").evaluate((el) => {
+    const s = getComputedStyle(el.closest(".draft-block") || el);
+    return { name: s.animationName, duration: s.animationDuration };
+  });
+  expect(quotedMotion.name).not.toBe("none");
+  expect(quotedMotion.duration).not.toBe("0s");
+
   await source.locator("#move-p30").click();
   await desk.locator(".quote-block .btn-return").click();
   await expect(desk.locator("#draftStatus")).toHaveText("Found by its wording in the tab you had open. The page has changed since you saved this.");
