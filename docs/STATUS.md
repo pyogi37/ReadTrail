@@ -2,37 +2,42 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** 2.0 Phase A ("Draft and Return"). The Desk implementation and all ten independent-review fixes are complete and committed, awaiting follow-up review.
+- **Current phase:** 2.0 Phase A ("Draft and Return"). Implementation and ten review fixes are committed at `e254f7c`. Phase A is **not yet independently accepted**: see "Blocked" below.
 - **Read first:** `docs/HANDOFF-2026-09-18.md`, then `docs/PRODUCT-DIRECTION.md`, then `docs/DECISIONS.md` items 20 to 26.
 - **Last commit:** see `git log -1`. Nothing is pushed.
-- **Checks:** `npm test` 297 passing in 15 files, `npm run test:e2e` 6 passing, `npm run package:check` 31 files, `git diff --check` clean.
+
+## Verified by the lead on 2026-09-27, at `e254f7c`, clean tree
+
+| Check | Result |
+|---|---|
+| `npm test` | 297 passing, 15 files |
+| `npm run test:e2e` | 6 scenarios passing |
+| `npm run package:check` | 31 files would ship |
+| `git diff --check` | clean |
+
+These are the lead's own runs, matching the counts in `docs/qa/runs/2026-09-18-2.0-phase-a-fixes.md`. No implementation code changed in this session.
 
 ## Done in this phase
 
-- Draft records: `readtrail.draft.v1:<uuid>`, validators and cloners, bounds (100 drafts, 200 blocks, 24,000 characters), a 9 MB storage guard that never blocks a removal.
-- Worker handlers `saveDraft`, `updateDraft`, `removeDraft`, `listDrafts`, `appendQuote`. The quote snapshot is copied from the stored passage inside the worker, so no surface can author provenance.
-- Drafts flow through `listLibrary`, `clearLibrary`, export, and import. A file written before drafts existed still imports.
-- Return: `revealPassage` in the worker (tab reuse through `readtrail.seen.v1:<tabId>`, otherwise a new tab seeded with `reveal`), and in the content script (anchor resolve, **text-equality gate**, text-search fallback, flash, three-way quality reply).
-- 16 new tests covering drafts and all three Return outcomes.
-- Desk: responsive Sources/Draft panes, accessible narrow-screen switcher, and hash routes for drafts, topics, and searches.
-- Sources reuses the page-first knowledge view; its optional Quote hook leaves the side panel unchanged. The panel footer now opens the Desk.
-- Draft UI creates, edits, reorders, removes, and quotes blocks; Return moves focus to its exact/approximate/missing result.
-- Desk unit coverage and a Playwright honesty scenario (quote, move source text, then remove it). Desktop and narrow layouts were visually checked.
-- Review fixes: draft-aware queued saves; quote provenance enforcement; replace-import preflight; all durable growth behind the 9 MB guard.
-- Return now verifies a seen tab's live URL, releases seeds only to the authoritative non-incognito sender, and waits for a reopened tab's final quality.
-- Text fallback handles block boundaries; `# ` blocks expose heading presentation and semantics; narrow panes implement the complete tab/tabpanel relationship.
-- Remediation evidence: `docs/qa/runs/2026-09-18-2.0-phase-a-fixes.md`.
-
-## In progress
-
-- None. Phase A is ready for an independent follow-up review.
+- Draft records, bounds, and the storage guard that never blocks a removal.
+- Worker handlers for drafts; `appendQuote` copies each quote's snapshot from the stored passage, so no surface can author provenance.
+- Drafts flow through `listLibrary`, `clearLibrary`, export, and import; a file written before drafts existed still imports.
+- Return: tab reuse through `readtrail.seen.v1:<tabId>`, otherwise a new tab seeded with `reveal`; anchors, then a text-equality gate, then a text search; honest exact, approximate, or missing.
+- The Desk: responsive Sources and Draft panes, a keyboard-reachable narrow-screen switcher, hash routes, block editing with focus restored after a move.
+- Ten findings from `docs/qa/runs/2026-09-18-2.0-phase-a.md` fixed and verified in `...-fixes.md`.
 
 ## Blocked / needs owner
 
-- **DECISIONS 26:** Return reads a dormant page's DOM when the reader asks it to. Same class of action as the existing "Save selection", but the vision's wording says no DOM inspection happens before activation. `PRIVACY.md` and the store justification need the owner's confirmed wording before 2.0 ships.
-- Push `main`; enable GitHub Pages from `/docs`; approve store copy and screenshots (all carried over from the 1.0 handoff).
+1. **The Codex follow-up review was not received.** The session that asked for it referenced the review but included no content, so its findings could not be reproduced, and Phase A must not be recorded as accepted until that review arrives. Nothing was changed on the strength of an unseen review.
+2. **Decision 26.** Proposed wording for every synchronized location is ready in `docs/proposals/DECISION-26-WORDING.md`. It is a proposal only; no privacy document has been edited. It also raises one gap: the `readtrail.seen.v1:<tabId>` session record is not yet disclosed in the privacy policy, and the current "does not read anything before you turn it on" line is already inaccurate in shipped 1.0 because Save selection never required activation.
+3. Carried over: push `main`, enable GitHub Pages from `/docs`, approve store copy, take screenshots.
+
+## Manual QA genuinely not done
+
+Real third-party articles, Chrome restart persistence, incognito-window interface, NVDA or Narrator, Windows high contrast, and physical 200% zoom. The browser evidence so far is Playwright Chromium against the local fixture only.
 
 ## Next task
 
-1. Follow-up review the ten fixes against the findings in `docs/qa/runs/2026-09-18-2.0-phase-a.md` and the verification run beside it.
-2. If no defects remain, resolve Decision 26 and complete the remaining manual release checks. Do not push without the owner.
+1. Paste the Codex follow-up review. Reproduce each finding before changing code, fix in severity order with a regression test each, one commit per fix.
+2. Confirm or amend the Decision 26 wording, then apply it in one docs-only commit.
+3. Do not start Phase B, and do not push.
