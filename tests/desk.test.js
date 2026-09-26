@@ -337,6 +337,23 @@ describe("ReadTrail Desk", () => {
     expect(after[1].textContent).toBe("");
   });
 
+  it("announces only the heading line, not the prose beneath it", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "# Findings\n\nSome body text." }] })]
+    });
+    // A screen reader's heading list is the way through a long draft. Taking
+    // everything after "# " put the whole block into every entry.
+    expect(document.querySelector(".draft-semantic-heading").textContent).toBe("Findings");
+  });
+
+  it("does not take the caret when a route restores a draft", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+    // Focusing the title on a restore strands the Sources pane behind the
+    // landing point: a forward-tab reader can never reach it.
+    expect(document.activeElement).not.toBe(document.querySelector("#draftTitle"));
+  });
+
   it("moves a verdict with its block rather than leaving it at a position", () => {
     const h = loadDesk({
       hash: "#/drafts/draft-1",

@@ -288,7 +288,6 @@ html {
   display: grid;
   gap: 12px;
   list-style: none;
-  counter-reset: draft-block;
 }
 
 .draft-block {
@@ -470,6 +469,13 @@ html {
 .draft-tags .draft-tags-label {
   display: block;
   margin: 6px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.draft-tags-help {
+  margin: 4px 0 6px;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.45;

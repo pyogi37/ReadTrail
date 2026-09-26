@@ -1040,8 +1040,7 @@ input[type="search"]:focus-visible {
    keep, and quoting is exactly that. Return takes the quiet outline,
    because it navigates away rather than building anything. They no longer
    look alike, and neither stretches to fill its row. */
-.btn-quote,
-.btn-continue-page {
+.btn-quote {
   padding: 5px 11px;
   border-radius: 8px;
   border: 1px solid var(--saved-border);
@@ -1051,18 +1050,20 @@ input[type="search"]:focus-visible {
   transition: background var(--motion), color var(--motion);
 }
 
-.btn-quote:hover:not(:disabled),
-.btn-continue-page:hover:not(:disabled) {
+.btn-quote:hover:not(:disabled) {
   background: var(--saved-surface);
   color: var(--saved-text);
 }
 
-.btn-quote:disabled,
-.btn-continue-page:disabled {
+.btn-quote:disabled {
   opacity: 0.55;
 }
 
-.btn-return {
+/* Continue reading and Return do the same job: they leave this surface for a
+   page. Gold is what the reader kept, which is Quote alone. A first pass gave
+   Continue reading the gold and drew the distinction on the wrong axis. */
+.btn-return,
+.btn-continue-page {
   padding: 5px 11px;
   border-radius: 8px;
   border: 1px solid var(--rule);
@@ -1072,11 +1073,22 @@ input[type="search"]:focus-visible {
   transition: background var(--motion), border-color var(--motion);
 }
 
-.btn-return:hover:not(:disabled) {
+.btn-return:hover:not(:disabled),
+.btn-continue-page:hover:not(:disabled) {
   background: var(--surface-raised);
   border-color: var(--accent);
 }
 
-.btn-return:disabled {
+.btn-return:disabled,
+.btn-continue-page:disabled {
   opacity: 0.55;
+}
+
+/* Inside a collapsed editor Save is the primary action, but it inherited the
+   full-column width of .btn-primary and became the loudest control on the
+   Desk: a 448px accent slab for a maintenance action, beside an 85px one for
+   the primary. */
+.btn-save-tags {
+  width: auto;
+  align-self: start;
 }

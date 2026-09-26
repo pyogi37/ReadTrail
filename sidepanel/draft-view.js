@@ -13,6 +13,7 @@
   const LIMITS = shared.LIMITS || { TEXT_MAX: 4000, DRAFT_BLOCKS_MAX: 200, DRAFTS_MAX: 100 };
   const SAVE_DEBOUNCE_MS = 400;
   const UNDO_WINDOW_MS = 12000;
+  const STATUS_LIFETIME_MS = 9000;
 
   let els = null;
   let drafts = [];
@@ -27,6 +28,7 @@
   let removed = null;      // { block, index } while the undo offer stands
   let undoTimer = null;
   let reloadTimer = null;
+  let statusTimer = null;
   // A verdict is evidence about one press on one block. The same clip can be
   // quoted more than once, so a verdict cannot be keyed by its passage: doing
   // that put an answer on a quote nobody checked, which asserts a fact the
@@ -78,6 +80,19 @@
 
   function setStatus(message, role) {
     if (!els) return;
+    if (statusTimer !== null) {
+      clearTimeout(statusTimer);
+      statusTimer = null;
+    }
+    if (message && role !== "alert") {
+      statusTimer = setTimeout(() => {
+        statusTimer = null;
+        if (els && els.status.getAttribute("role") !== "alert") {
+          els.status.textContent = "";
+          els.status.hidden = true;
+        }
+      }, STATUS_LIFETIME_MS);
+    }
     els.status.textContent = message || "";
     els.status.setAttribute("role", role || "status");
     els.status.hidden = !message;
@@ -145,7 +160,7 @@
     setStatus("", "status");
     renderIndex();
     renderEditor();
-    if (els) els.title.focus();
+    if (els && !options.silent) els.title.focus();
     if (!options.silent && typeof navigationHandler === "function") navigationHandler(current.id);
   }
 
@@ -462,7 +477,7 @@
       area.classList.toggle("heading-block-text", heading);
       area.setAttribute("aria-label", `${blockLabel(current.blocks[index], index)}${heading ? ", heading" : ""}`);
       semanticHeading.hidden = !heading;
-      semanticHeading.textContent = heading ? (area.value.slice(2).trim() || "Untitled heading") : "";
+      semanticHeading.textContent = heading ? (area.value.split("\n")[0].slice(2).trim() || "Untitled heading") : "";
     };
     area.addEventListener("input", () => {
       current.blocks[index].text = area.value;
@@ -575,10 +590,6 @@
     if (quality === "exact") return "Found exactly, in the tab you already had open.";
     if (quality === "approximate") return "Found by its wording in the tab you had open. The page has changed since you saved this.";
     return "Not found in the tab you had open. The page may have changed. This quote keeps the text you saved.";
-  }
-
-  function focusStatus() {
-    if (els && els.status && typeof els.status.focus === "function") els.status.focus();
   }
 
   // A draft the reader opens fresh should not show verdicts from the last one.
