@@ -33,7 +33,7 @@ None. All JavaScript ships inside the package. There is no eval, no remote scrip
 - Health, financial, authentication information: not collected.
 - Personal communications: not collected.
 - Location: not collected.
-- Web history: **not collected**. Page URLs are stored on the device only for pages the reader explicitly activates (temporary) or saves (durable). They are never transmitted.
+- Web history: **not collected**. A page URL is stored on the device only for a page the reader explicitly acts on: a tab they turned ReadTrail on for, a page they saved, a page they clipped from, or the tab that clip is open in (the last two are session-only and erased when Chrome closes). No list of visited pages is built, and nothing is ever transmitted.
 - User activity: not collected. Click and pointer events are used live to draw the guide and are not logged.
 - Website content: **stored on the device only when the reader explicitly saves a passage**. Never transmitted.
 
