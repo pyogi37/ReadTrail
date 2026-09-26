@@ -336,6 +336,9 @@
     pendingFocus = null;
     const item = els.blocks.children[index];
     if (!item) return;
+    // The whole list was rebuilt; mark just this one so the reader can see
+    // which block moved or arrived.
+    item.classList.add("just-changed");
     const target = control ? item.querySelector(control) : item.querySelector("textarea, button");
     if (target && typeof target.focus === "function") target.focus();
   }

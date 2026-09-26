@@ -239,7 +239,57 @@ if (typeof globalThis.URL.revokeObjectURL !== "function") {
   globalThis.URL.revokeObjectURL = () => {};
 }
 
+
+describe("motion", () => {
+  const css = readSource("sidepanel/sidepanel.css");
+
+  // The reader's setting has to switch off animations, not only transitions.
+  // The blanket rule used to cover transitions alone, so any animation added
+  // later would have played regardless.
+  it("switches off every animation and transition under prefers-reduced-motion", () => {
+    const block = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    const body = block.slice(0, block.indexOf("}\n}") + 3);
+    expect(body).toContain("transition: none !important");
+    expect(body).toContain("animation: none !important");
+    expect(body).toContain("scroll-behavior: auto !important");
+  });
+
+  // Every list rebuilds completely on each render, including on each keystroke
+  // in search. An animation attached to a list item would replay constantly.
+  it("puts no entrance animation on a page card, a list, or a draft block", () => {
+    for (const selector of [".page-card", ".knowledge-item", ".draft-block", ".list"]) {
+      const rule = new RegExp(`\\${selector}\\s*\\{[^}]*animation`);
+      expect(rule.test(css)).toBe(false);
+    }
+  });
+
+  it("animates only the node an interaction marked", () => {
+    expect(css).toContain(".just-changed {");
+    expect(css).toContain(".page-body.just-opened {");
+  });
+});
+
 describe("knowledge view rendering", () => {
+  it("marks a card as just opened only when the reader opens it, never on a re-render", () => {
+    const h = loadSidePanel();
+    setupLibrary(h, { passages: [makePassage()] });
+    const card = () => pageListEl().querySelector(".page-card");
+    const details = card().querySelector(".page-details");
+
+    // Opening it is the reader's doing, so the body may announce itself.
+    details.open = true;
+    details.dispatchEvent(new Event("toggle"));
+    expect(card().querySelector(".page-body").classList.contains("just-opened")).toBe(true);
+
+    // A re-render restores the open state programmatically. Nothing should
+    // animate, or typing in search would flash the card on every keystroke.
+    librarySearchEl().value = "passage";
+    librarySearchEl().dispatchEvent(new Event("input"));
+    const reopened = searchResultsEl().querySelector(".page-body")
+      || pageListEl().querySelector(".page-body");
+    expect(reopened.classList.contains("just-opened")).toBe(false);
+  });
+
   it("shows the page-first empty state while keeping search available", () => {
     const h = loadSidePanel();
     setupLibrary(h, {});

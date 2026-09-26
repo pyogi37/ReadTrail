@@ -119,7 +119,9 @@
       <ul class="list page-list" id="searchResults" aria-label="Matching pages" hidden></ul>
       <ul class="list page-list" id="pageList" role="tabpanel" aria-labelledby="pagesViewButton"></ul>
       <div id="tagBrowser" class="tag-browser" role="tabpanel" aria-labelledby="tagsViewButton" hidden></div>
-      <div class="transfer-row">
+      <details class="source-maintenance">
+        <summary>Import, export, and clear</summary>
+        <div class="transfer-row">
         <button type="button" id="exportButton" class="btn-ghost btn-small">Export library</button>
         <label class="btn-ghost btn-small file-label" for="importInput">Import</label>
         <input type="file" id="importInput" accept="application/json,.json" class="visually-hidden">
@@ -128,7 +130,8 @@
         </label>
         <button type="button" id="clearSavedPlacesButton" class="btn-danger btn-small">Clear saved places</button>
         <button type="button" id="clearKnowledgeButton" class="btn-danger btn-small">Clear page content</button>
-      </div>
+        </div>
+      </details>
     </section>
 
     <section class="library-section" id="librarySection" aria-labelledby="libraryHeading" hidden aria-hidden="true">

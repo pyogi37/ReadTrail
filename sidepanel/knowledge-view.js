@@ -359,7 +359,18 @@
         quote.textContent = "Quoting…";
         quoteHandler(item, (ok) => {
           quote.disabled = false;
-          quote.textContent = ok ? "Quoted" : "Quote";
+          if (!ok) {
+            quote.textContent = "Quote";
+            return;
+          }
+          // Confirm quietly, then return the control to the reader: the same
+          // passage can belong in another draft.
+          quote.textContent = "Quoted";
+          quote.classList.add("is-done");
+          setTimeout(() => {
+            quote.classList.remove("is-done");
+            quote.textContent = "Quote";
+          }, 1800);
         });
       });
       actions.appendChild(quote);
@@ -531,8 +542,12 @@
     details.className = "page-details";
     details.open = forceOpen || expandedPages.has(page.url);
     details.addEventListener("toggle", () => {
-      if (details.open) expandedPages.add(page.url);
-      else expandedPages.delete(page.url);
+      if (details.open) {
+        expandedPages.add(page.url);
+        body.classList.add("just-opened");
+      } else {
+        expandedPages.delete(page.url);
+      }
     });
 
     const summary = document.createElement("summary");

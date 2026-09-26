@@ -20,6 +20,8 @@
   --danger-bg: #b34444;
   --danger-bg-hover: #c95959;
   --motion: 180ms ease-out;
+  --motion-fast: 110ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
 }
 
 * {
@@ -546,9 +548,88 @@ button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
   }
+}
+
+/* --- Motion ---
+
+   Motion here is informational: it shows what changed and where it came
+   from. Nothing loops, nothing runs longer than the reader's next glance,
+   and everything above is switched off under prefers-reduced-motion.
+
+   The lists rebuild completely on every render, including on every
+   keystroke in search, so none of these rules may sit on a list item. Each
+   one is triggered by the interaction itself and dies with the node. */
+
+@keyframes readtrail-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes readtrail-settle {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Applied to the one block the reader just added, moved, or quoted into. */
+.just-changed {
+  animation: readtrail-rise var(--motion) var(--ease-out);
+}
+
+/* Set by the toggle handler, never during a render, so re-opening a card
+   while typing in search cannot replay it. */
+.page-body.just-opened {
+  animation: readtrail-settle var(--motion) var(--ease-out);
+}
+
+/* A message that appears in place is easy to miss if it simply blinks in. */
+.status-message,
+.item-status,
+.error,
+.error-message {
+  animation: readtrail-settle var(--motion-fast) var(--ease-out);
+}
+
+/* The control answers the press before the work behind it lands. */
+button:not(:disabled):active,
+.file-label:active {
+  transform: translateY(1px);
+}
+
+/* A quoted clip confirms quietly and then offers itself again, because the
+   same passage can belong in a second draft. */
+.btn-quote.is-done {
+  background: transparent;
+  border-color: var(--saved-border);
+  color: var(--saved-text);
+}
+
+/* Housekeeping controls, folded away in the panel as they already are on
+   the Desk, so two destructive buttons are not the loudest thing present. */
+.source-maintenance {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+
+.source-maintenance summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.source-maintenance .transfer-row {
+  margin-top: 8px;
 }
 
 /* --- Page actions and notes --- */
