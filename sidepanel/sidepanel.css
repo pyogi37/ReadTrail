@@ -440,7 +440,6 @@ body {
 
 .item-actions .btn-primary {
   width: auto;
-  flex: 1 1 auto;
   padding: 7px 10px;
   font-size: 12px;
 }
@@ -1018,4 +1017,56 @@ input[type="search"]:focus-visible {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* --- The two verbs only this product has ---
+
+   The solid accent is reserved for one control per surface: "New draft" on
+   the Desk, "Save for later" in the panel. Everything else that used it was
+   competing with it, which is how a screen ends up with nine primary
+   buttons and no primary action.
+
+   Quote takes gold, because gold already means what the reader chose to
+   keep, and quoting is exactly that. Return takes the quiet outline,
+   because it navigates away rather than building anything. They no longer
+   look alike, and neither stretches to fill its row. */
+.btn-quote,
+.btn-continue-page {
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--saved-border);
+  background: transparent;
+  color: var(--saved-text);
+  font-size: 11px;
+  transition: background var(--motion), color var(--motion);
+}
+
+.btn-quote:hover:not(:disabled),
+.btn-continue-page:hover:not(:disabled) {
+  background: var(--saved-surface);
+  color: var(--saved-text);
+}
+
+.btn-quote:disabled,
+.btn-continue-page:disabled {
+  opacity: 0.55;
+}
+
+.btn-return {
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  transition: background var(--motion), border-color var(--motion);
+}
+
+.btn-return:hover:not(:disabled) {
+  background: var(--surface-raised);
+  border-color: var(--accent);
+}
+
+.btn-return:disabled {
+  opacity: 0.55;
 }

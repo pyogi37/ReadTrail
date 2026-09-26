@@ -462,7 +462,7 @@
 
     const back = document.createElement("button");
     back.type = "button";
-    back.className = "btn-primary btn-small btn-return";
+    back.className = "btn-small btn-return";
     back.textContent = "Return";
     back.addEventListener("click", () => returnToClip(block, back, verdict));
     row.appendChild(back);

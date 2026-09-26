@@ -302,7 +302,7 @@
     actions.className = "confirm-actions";
     const save = document.createElement("button");
     save.type = "submit";
-    save.className = "btn-primary btn-small";
+    save.className = "btn-primary btn-small btn-save-tags";
     save.textContent = busy.has(item.id) ? "Saving…" : "Save";
     save.disabled = busy.has(item.id);
     const cancel = document.createElement("button");
@@ -352,7 +352,7 @@
     if (kind === "passage" && quoteHandler) {
       const quote = document.createElement("button");
       quote.type = "button";
-      quote.className = "btn-primary btn-small btn-quote";
+      quote.className = "btn-small btn-quote";
       quote.textContent = "Quote";
       quote.addEventListener("click", () => {
         quote.disabled = true;
@@ -446,7 +446,7 @@
     actions.className = "item-actions page-actions-row";
     const open = document.createElement("button");
     open.type = "button";
-    open.className = page.saved ? "btn-primary btn-small btn-continue-page" : "btn-ghost btn-small btn-open-page";
+    open.className = page.saved ? "btn-small btn-continue-page" : "btn-ghost btn-small btn-open-page";
     open.textContent = page.saved ? "Continue reading" : "Open page";
     const busyKey = `page:${page.url}`;
     open.disabled = busy.has(busyKey);
@@ -511,7 +511,7 @@
     label.appendChild(input);
     const save = document.createElement("button");
     save.type = "submit";
-    save.className = "btn-primary btn-small";
+    save.className = "btn-primary btn-small btn-save-tags";
     save.textContent = "Save tags";
     form.appendChild(label);
     form.appendChild(save);
