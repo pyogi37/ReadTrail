@@ -533,6 +533,22 @@ describe("knowledge view remove", () => {
     expect(findPassage("p1")).toBeUndefined();
   });
 
+  it("opens a confirmation on Cancel, and lets Escape close it", () => {
+    const h = loadSidePanel();
+    setupLibrary(h, { passages: [makePassage({ id: "p1" })] });
+    findPassage("p1").querySelector(".btn-remove-item").click();
+
+    // A native dialog focuses the way out and closes on Escape. The custom
+    // one focused the destructive button and ignored Escape, so a single
+    // Enter destroyed a clip.
+    const box = findPassage("p1").querySelector(".item-confirm");
+    expect(document.activeElement).toBe(box.querySelector(".btn-ghost"));
+
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(findPassage("p1").querySelector(".item-confirm")).toBeNull();
+    expect(h.runtimeMsgs).not.toContainEqual({ type: "removePassage", id: "p1" });
+  });
+
   it("names the drafts a clip is quoted in before removing it", () => {
     const h = loadSidePanel();
     setupLibrary(h, {

@@ -395,10 +395,24 @@
       return;
     }
     const held = checked.filter((b) => b.checked.quality === "exact").length;
+    const byWording = checked.filter((b) => b.checked.quality === "approximate").length;
     const lost = checked.filter((b) => b.checked.quality === "missing").length;
-    const parts = [`${held} of ${quotes.length} ${quotes.length === 1 ? "quote" : "quotes"} still resolved exactly when you checked`];
-    if (lost > 0) parts.push(`${lost} could not be found`);
-    els.summary.textContent = `${parts.join("; ")}.`;
+    const unchecked = quotes.length - checked.length;
+
+    // Say what was actually checked. Counting checked quotes against every
+    // quote reported on ones nobody examined, and hid the approximate ones in
+    // neither number.
+    const parts = [];
+    if (held > 0) parts.push(`${held} found exactly`);
+    if (byWording > 0) parts.push(`${byWording} found by wording`);
+    if (lost > 0) parts.push(`${lost} not found`);
+    const noun = quotes.length === 1 ? "quote" : "quotes";
+    let text = `${checked.length} of ${quotes.length} ${noun} checked: ${parts.join(", ")}.`;
+    if (unchecked > 0) text += ` ${unchecked} not checked yet.`;
+    els.summary.textContent = text;
+    // Gold is what the reader kept, so it is only right when everything the
+    // reader checked still holds and nothing is outstanding.
+    els.summary.dataset.state = (lost === 0 && byWording === 0 && unchecked === 0) ? "held" : "mixed";
     els.summary.hidden = false;
   }
 
@@ -429,6 +443,14 @@
   function blockLabel(block, index) {
     const position = `Block ${index + 1} of ${current.blocks.length}`;
     return block.type === "quote" ? `${position}, quote from ${block.title || hostOf(block.url)}` : `${position}, your text`;
+  }
+
+  function bindBlockKeys(node, index) {
+    node.addEventListener("keydown", (event) => {
+      if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+      event.preventDefault();
+      moveBlock(index, event.key === "ArrowUp" ? -1 : 1, true);
+    });
   }
 
   function blockActions(block, index) {
@@ -592,6 +614,9 @@
     row.appendChild(open);
     li.appendChild(row);
     li.appendChild(blockActions(block, index));
+    // A quote block has no textarea, so without this the only block class that
+    // always lands at the end had no keyboard move.
+    bindBlockKeys(li, index);
     return li;
   }
 
@@ -732,11 +757,25 @@
     if (undoTimer !== null) clearTimeout(undoTimer);
     setStatus(note, "status");
     els.undo.hidden = false;
+    // Put the way back where the block was, not at the top of a document the
+    // reader may be a thousand pixels down.
+    const at = Math.min(index, els.blocks.children.length - 1);
+    const neighbour = els.blocks.children[at];
+    if (neighbour && neighbour.parentNode) {
+      neighbour.parentNode.insertBefore(els.undo, neighbour);
+    }
+    els.undo.focus();
     undoTimer = setTimeout(() => {
       undoTimer = null;
       removed = null;
-      if (els) els.undo.hidden = true;
+      retireUndo();
     }, UNDO_WINDOW_MS);
+  }
+
+  function retireUndo() {
+    if (!els || !els.undo) return;
+    els.undo.hidden = true;
+    if (els.undoHome && els.undo.parentNode !== els.undoHome) els.undoHome.appendChild(els.undo);
   }
 
   function undoRemove() {
@@ -747,7 +786,7 @@
       clearTimeout(undoTimer);
       undoTimer = null;
     }
-    els.undo.hidden = true;
+    retireUndo();
     const at = Math.min(index, current.blocks.length);
     // Removing the last block inserts an empty one to write in; drop it again
     // rather than leaving a stray blank above the restored block.
@@ -836,7 +875,8 @@
       close: $("closeDraftButton"),
       append: $("draftAppend"),
       summary: $("draftSummary"),
-      undo: $("draftUndo")
+      undo: $("draftUndo"),
+      undoHome: $("draftUndo") ? $("draftUndo").parentNode : null
     };
     if (!els.list) return;
 

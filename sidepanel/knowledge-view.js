@@ -21,6 +21,8 @@
   let statusText = "";
   let statusRole = "status";
   let reloadTimer = null;
+  let statusTimer = null;
+  const STATUS_LIFETIME_MS = 9000;
   let quoteHandler = null;
   let navigationHandler = null;
 
@@ -50,6 +52,16 @@
   }
 
   function setStatus(message, role) {
+    if (statusTimer !== null) {
+      clearTimeout(statusTimer);
+      statusTimer = null;
+    }
+    if (message && role !== "alert") {
+      statusTimer = setTimeout(() => {
+        statusTimer = null;
+        setStatus("", "status");
+      }, STATUS_LIFETIME_MS);
+    }
     statusText = message || "";
     statusRole = role || "status";
     if (!els) return;
@@ -434,8 +446,15 @@
     actions.appendChild(no);
     box.appendChild(message);
     box.appendChild(actions);
+    box.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      box.remove();
+      if (typeof onCancel === "function") onCancel();
+    });
     node.appendChild(box);
-    yes.focus();
+    // Focus the way out, not the way through. A native dialog does the same.
+    no.focus();
     return box;
   }
 
@@ -475,8 +494,15 @@
     actions.appendChild(no);
     box.appendChild(text);
     box.appendChild(actions);
+    box.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      box.remove();
+      const button = node.querySelector(".btn-remove-item");
+      if (button) button.focus();
+    });
     node.appendChild(box);
-    yes.focus();
+    no.focus();
   }
 
   function removeItem(id, kind) {

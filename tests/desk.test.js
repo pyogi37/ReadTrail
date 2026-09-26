@@ -305,10 +305,16 @@ describe("ReadTrail Desk", () => {
     expect(undo.hidden).toBe(false);
     expect(document.querySelector("#draftStatus").textContent).toContain("Block removed");
 
+    // The way back belongs where the block was, not at the top of a document
+    // the reader may be a thousand pixels down.
+    expect(undo.parentElement.id).toBe("draftBlocks");
+    expect(document.activeElement).toBe(undo);
+
     undo.click();
     const texts = [...document.querySelectorAll(".block-text")].map((t) => t.value);
     expect(texts).toEqual(["first", "second"]);
     expect(undo.hidden).toBe(true);
+    expect(undo.parentElement.id).not.toBe("draftBlocks");
     void h;
   });
 
@@ -370,8 +376,25 @@ describe("ReadTrail Desk", () => {
     // And the draft can say how much of the argument still stands.
     const summary = document.querySelector("#draftSummary");
     expect(summary.hidden).toBe(false);
-    expect(summary.textContent).toContain("1 of 2 quotes still resolved exactly");
-    expect(summary.textContent).toContain("1 could not be found");
+    expect(summary.textContent).toBe("2 of 2 quotes checked: 1 found exactly, 1 not found.");
+    // Gold means what the reader kept, so a result with anything missing
+    // must not wear it.
+    expect(summary.dataset.state).toBe("mixed");
+  });
+
+  it("counts only the quotes it actually checked, and says how many it did not", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [quoteBlock(), quoteBlock({ passageId: "passage-2" }), quoteBlock({ passageId: "passage-3" })] })]
+    });
+    document.querySelectorAll(".btn-return")[0].click();
+    h.shift("revealPassage")({ ok: true, opened: false, quality: "approximate" });
+
+    // Reporting one checked quote against all three claimed something about
+    // two the product never looked at.
+    const summary = document.querySelector("#draftSummary");
+    expect(summary.textContent).toBe("1 of 3 quotes checked: 1 found by wording. 2 not checked yet.");
+    expect(summary.dataset.state).toBe("mixed");
   });
 
   it("moves a block with Alt and an arrow, keeping the caret in it", () => {
@@ -387,6 +410,19 @@ describe("ReadTrail Desk", () => {
     const order = [...document.querySelectorAll(".block-text")].map((t) => t.value);
     expect(order).toEqual(["second", "first"]);
     expect(document.activeElement.value).toBe("second");
+  });
+
+  it("moves a quote block from its own controls, which have no textarea", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "intro" }, quoteBlock()] })]
+    });
+    const quote = document.querySelector(".quote-block");
+    quote.querySelector(".btn-return").focus();
+    quote.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", altKey: true, bubbles: true }));
+
+    const blocks = [...document.querySelectorAll(".draft-block")];
+    expect(blocks[0].classList.contains("quote-block")).toBe(true);
   });
 
   it("adds a block below with Control and Enter", () => {

@@ -1092,3 +1092,12 @@ input[type="search"]:focus-visible {
   width: auto;
   align-self: start;
 }
+
+/* An alert and a notice were pixel-identical, so a save failure arrived in
+   the same reassuring blue as a success. The urgency reached a screen reader
+   through role="alert" and nobody else. */
+.status-message[role="alert"] {
+  background: var(--error-surface);
+  border-color: var(--accent);
+  color: var(--error-text);
+}

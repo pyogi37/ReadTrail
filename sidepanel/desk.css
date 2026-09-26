@@ -544,18 +544,26 @@ html {
    focused, which is how a document editor behaves. */
 .block-actions {
   opacity: 0;
+  /* Opacity alone left a fully transparent "Remove block" as the topmost hit
+     target at its own coordinates. Visibility takes it out of hit testing and
+     out of the accessibility tree while it is concealed. The row keeps its
+     height, so revealing it shifts nothing. */
+  visibility: hidden;
   transition: opacity var(--motion);
 }
 
 .draft-block:hover .block-actions,
 .draft-block:focus-within .block-actions {
   opacity: 1;
+  visibility: visible;
 }
 
-/* Without a hover to reveal them, they stay. */
-@media (hover: none) {
+/* Where there is no hover to reveal them, and in the stacked layout where a
+   reserved empty row is most of what you see, they stay. */
+@media (hover: none), (max-width: 959px) {
   .block-actions {
     opacity: 1;
+    visibility: visible;
   }
 }
 
@@ -564,9 +572,17 @@ html {
 .draft-summary {
   margin: 0 0 10px;
   padding: 7px 11px;
-  border-left: 2px solid var(--saved-border);
+  border-left: 2px solid var(--rule);
   border-radius: 0 6px 6px 0;
   background: var(--surface-sunken);
-  color: var(--saved-text);
+  color: var(--muted);
   font-size: 12px;
+}
+
+/* Gold only when everything checked still holds and nothing is outstanding.
+   A mixed or negative result in the colour that means "what you kept" was
+   the calmest treatment on the pane carrying the most alarming sentence. */
+.draft-summary[data-state="held"] {
+  border-left-color: var(--saved-border);
+  color: var(--saved-text);
 }
