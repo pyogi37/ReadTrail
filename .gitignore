@@ -5,3 +5,8 @@ test-results/
 playwright-report/
 .pw-user-data/
 Claude outputs/
+
+# Agent tooling installed on demand (impeccable). Reinstallable from
+# skills-lock.json with: npx skills add pbakaus/impeccable
+.agents/
+.claude/skills/

@@ -159,6 +159,10 @@ html {
   cursor: pointer;
   color: var(--muted);
   font-size: 11px;
+  padding: 4px 0;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
 }
 
 .desk-empty {

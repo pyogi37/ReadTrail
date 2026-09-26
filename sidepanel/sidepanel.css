@@ -293,7 +293,7 @@ body {
   border-radius: 8px;
   border: 1px solid transparent;
   background: var(--accent);
-  color: #1a1a2e;
+  color: var(--surface);
   font-weight: 600;
   transition: filter var(--motion), background var(--motion);
 }
@@ -340,6 +340,14 @@ body {
   font-size: 12px;
 }
 
+/* Return sends focus here to announce what it found. Without a visible
+   treatment a sighted keyboard reader loses their place, because
+   :focus-visible does not match a programmatic focus. */
+.status-message:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .status-message {
   margin: 8px 0;
   padding: 8px 10px;
@@ -356,6 +364,12 @@ body {
   cursor: pointer;
   font-size: 12px;
   color: var(--muted);
+  /* WCAG 2.2 target size (2.5.8) asks for 24px; a bare summary renders at
+     about 16. Padding is what makes the row clickable, not just the words. */
+  padding: 4px 0;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
 }
 
 .first-use ol {
@@ -664,6 +678,10 @@ button:not(:disabled):active,
   cursor: pointer;
   color: var(--muted);
   font-size: 11px;
+  padding: 4px 0;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
 }
 
 .source-maintenance .transfer-row {
