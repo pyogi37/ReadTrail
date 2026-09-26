@@ -296,6 +296,15 @@ test("Desk quotes a clip and Return reports changed and missing source text", as
   await desk.locator(".quote-block .btn-return").click();
   await expect(desk.locator(".quote-block .quote-verdict")).toHaveText("Found by its wording in the tab you had open. The page has changed since you saved this.");
 
+  // A Return records what it found on the quote. If that write ever looks like
+  // tampering to the worker's provenance guard, every autosave afterwards is
+  // rejected and the reader silently loses everything they type next. This is
+  // the first thing to check after a Return, not the last.
+  await desk.locator(".block-text").first().fill("Still writing after a Return.");
+  await expect(desk.locator("#draftSaveState")).toHaveText("Saved");
+  await desk.reload();
+  await expect(desk.locator(".block-text").first()).toHaveValue("Still writing after a Return.");
+
   await source.locator("#remove-p30").click();
   await desk.locator(".quote-block .btn-return").click();
   await expect(desk.locator(".quote-block .quote-verdict")).toHaveText("Not found in the tab you had open. The page may have changed. This quote keeps the text you saved.");

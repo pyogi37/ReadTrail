@@ -275,6 +275,38 @@ describe("drafts", () => {
     });
   });
 
+  it("still saves a draft after Return records what it found", () => {
+    const h = load();
+    const passage = call(h, { type: "savePassage", url: URL_A, text: "the real words" }, PAGE).passage;
+    const draft = draftOf(h);
+    const quoted = call(h, { type: "appendQuote", draftId: draft.id, passageId: passage.id }).draft;
+
+    // Return writes its outcome onto the quote. The provenance guard must not
+    // read that as the caller tampering with the snapshot, or every autosave
+    // after a Return is rejected and the reader silently loses their writing.
+    const blocks = quoted.blocks.map((block) => (block.type === "quote"
+      ? { ...block, checked: { quality: "missing", at: 1234 } }
+      : block));
+    const res = call(h, { type: "updateDraft", id: draft.id, blocks });
+
+    expect(res.ok).toBe(true);
+    expect(res.draft.blocks[0].checked).toEqual({ quality: "missing", at: 1234 });
+    expect(res.draft.blocks[0].text).toBe("the real words");
+  });
+
+  it("still refuses a quote whose snapshot the caller rewrote, checked or not", () => {
+    const h = load();
+    const passage = call(h, { type: "savePassage", url: URL_A, text: "the real words" }, PAGE).passage;
+    const draft = draftOf(h);
+    const quoted = call(h, { type: "appendQuote", draftId: draft.id, passageId: passage.id }).draft;
+
+    const tampered = quoted.blocks.map((block) => (block.type === "quote"
+      ? { ...block, text: "words I made up", checked: { quality: "exact", at: 1 } }
+      : block));
+    expect(call(h, { type: "updateDraft", id: draft.id, blocks: tampered }))
+      .toEqual({ ok: false, error: "invalid-input" });
+  });
+
   it("refuses to quote a passage that does not exist", () => {
     const h = load();
     const draft = draftOf(h);

@@ -473,12 +473,26 @@
   // Accepts only blocks that are already well formed. A quote's snapshot is
   // never taken from the caller's word: handleAppendQuote copies it from the
   // stored passage, and an edit may only keep or drop a quote, never invent one.
+  // What a surface may never author: the passage a quote points at and the
+  // snapshot of it. What a surface may change: `checked`, which is Return
+  // reporting what it last found. Signing the whole block, `checked` included,
+  // made every save after a Return look like tampering and silently rejected
+  // the reader's writing from then on.
+  function quoteProvenance(block) {
+    return JSON.stringify({
+      passageId: block.passageId,
+      text: block.text,
+      url: block.url,
+      title: block.title
+    });
+  }
+
   function cleanBlocks(value, existingBlocks = []) {
     if (!Array.isArray(value)) return null;
     const allowedQuotes = new Map();
     for (const block of existingBlocks) {
       if (block.type !== "quote") continue;
-      const signature = JSON.stringify(S.cloneDraftBlock(block));
+      const signature = quoteProvenance(block);
       allowedQuotes.set(signature, (allowedQuotes.get(signature) || 0) + 1);
     }
     const out = [];
@@ -492,7 +506,7 @@
       }
       if (raw.type !== "quote" || !S.isValidDraftBlock(raw)) return null;
       const quote = S.cloneDraftBlock(raw);
-      const signature = JSON.stringify(quote);
+      const signature = quoteProvenance(quote);
       const remaining = allowedQuotes.get(signature) || 0;
       if (remaining === 0) return null;
       allowedQuotes.set(signature, remaining - 1);
