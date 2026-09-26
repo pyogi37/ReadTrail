@@ -1,7 +1,9 @@
 :root {
-  --desk-paper: #202039;
-  --desk-ink: #10101f;
-  --desk-warm: #f1c66c;
+  /* The Desk shares the palette in sidepanel.css, which it loads first.
+     These are the two surfaces only the Desk has. */
+  --desk-paper: #211d2c;
+  --desk-ink: #100e16;
+  --desk-warm: var(--saved-text);
 }
 
 html {
@@ -13,8 +15,8 @@ html {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 16% -10%, rgba(255, 107, 107, 0.13), transparent 34rem),
-    linear-gradient(145deg, var(--surface) 0%, #151529 100%);
+    radial-gradient(circle at 16% -10%, rgba(228, 98, 92, 0.12), transparent 34rem),
+    linear-gradient(145deg, var(--surface) 0%, #120f19 100%);
 }
 
 .skip-link {
@@ -45,7 +47,7 @@ html {
 }
 
 .desk-header h1 {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: clamp(28px, 3vw, 42px);
   font-weight: 400;
   letter-spacing: -0.03em;
@@ -64,7 +66,7 @@ html {
 .desk-promise {
   max-width: 450px;
   color: var(--muted);
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 14px;
   text-align: right;
 }
@@ -104,7 +106,7 @@ html {
   padding: 18px;
   border: 1px solid var(--rule);
   border-radius: 14px;
-  background: rgba(26, 26, 46, 0.88);
+  background: rgba(23, 20, 31, 0.9);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
 }
 
@@ -122,7 +124,7 @@ html {
 }
 
 .pane-heading h2 {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 25px;
   font-weight: 400;
 }
@@ -131,7 +133,7 @@ html {
   max-width: 620px;
   margin-bottom: 16px;
   color: var(--muted);
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 13px;
 }
 
@@ -182,7 +184,7 @@ html {
   padding: 12px;
   border: 1px solid rgba(241, 198, 108, 0.24);
   border-radius: 10px;
-  background: rgba(241, 198, 108, 0.04);
+  background: rgba(241, 198, 108, 0.05);
 }
 
 .new-draft-form > label,
@@ -271,7 +273,7 @@ html {
   border-bottom: 1px solid var(--rule);
   border-radius: 0;
   background: transparent;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 22px;
 }
 
@@ -305,7 +307,7 @@ html {
   min-height: 88px;
   border: 0;
   background: transparent;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 15px;
   line-height: 1.6;
 }
