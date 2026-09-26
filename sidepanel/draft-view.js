@@ -378,10 +378,15 @@
     const actions = document.createElement("div");
     actions.className = "block-actions";
 
+    // Without a per-block name a screen reader hears "Move up, button" once
+    // per block with nothing telling them apart.
+    const position = `block ${index + 1} of ${current.blocks.length}`;
+
     const up = document.createElement("button");
     up.type = "button";
     up.className = "btn-ghost btn-small btn-move-up";
     up.textContent = "Move up";
+    up.setAttribute("aria-label", `Move ${position} up`);
     up.disabled = index === 0;
     up.addEventListener("click", () => moveBlock(index, -1));
 
@@ -389,6 +394,7 @@
     down.type = "button";
     down.className = "btn-ghost btn-small btn-move-down";
     down.textContent = "Move down";
+    down.setAttribute("aria-label", `Move ${position} down`);
     down.disabled = index === current.blocks.length - 1;
     down.addEventListener("click", () => moveBlock(index, 1));
 
@@ -396,12 +402,16 @@
     insert.type = "button";
     insert.className = "btn-ghost btn-small btn-insert-below";
     insert.textContent = "Insert text below";
+    insert.setAttribute("aria-label", `Insert a text block below ${position}`);
     insert.addEventListener("click", () => insertTextBlock(index + 1));
 
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "btn-danger btn-small btn-remove-block";
     remove.textContent = block.type === "quote" ? "Remove quote" : "Remove block";
+    remove.setAttribute("aria-label", block.type === "quote"
+      ? `Remove the quote in ${position}`
+      : `Remove ${position}`);
     remove.addEventListener("click", () => removeBlock(index));
 
     actions.appendChild(up);

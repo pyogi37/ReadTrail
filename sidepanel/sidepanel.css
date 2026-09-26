@@ -956,8 +956,14 @@ input[type="search"]:focus-visible {
   opacity: 0.7;
 }
 
+/* 11px where its sibling uses 12px left this at 23.9px, a tenth of a pixel
+   under the WCAG 2.2 target size, and no spacing exception applies. */
 .btn-edit-tags {
   font-size: 11px;
+  padding: 4px 0;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .item-editor {
@@ -1002,12 +1008,16 @@ input[type="search"]:focus-visible {
   display: inline-block;
 }
 
+/* The checkbox itself renders at 13px; the label is the real activation area
+   and was only 17.4px tall. */
 .checkbox-inline {
   font-size: 12px;
   color: var(--muted);
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 24px;
+  padding: 3px 0;
 }
 
 .visually-hidden {

@@ -1,9 +1,7 @@
 :root {
   /* The Desk shares the palette in sidepanel.css, which it loads first.
      These are the two surfaces only the Desk has. */
-  --desk-paper: #211d2c;
   --desk-ink: #100e16;
-  --desk-warm: var(--saved-text);
 }
 
 html {
@@ -390,11 +388,8 @@ html {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .skip-link {
-    transition: none;
-  }
-}
+/* The skip link declares no transition, and the shared reduced-motion rule in
+   sidepanel.css already covers everything that does. */
 
 /* Return's answer, on the quote it is about.
 

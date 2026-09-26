@@ -379,6 +379,10 @@
     remove.type = "button";
     remove.className = "btn-danger btn-small btn-remove-item";
     remove.textContent = busy.has(item.id) ? "Removing…" : "Remove";
+    // Five controls in this product are labelled "Remove" and mean five
+    // different things. The visible word stays short; the announced one says
+    // what goes.
+    remove.setAttribute("aria-label", kind === "passage" ? "Remove this passage" : "Remove this note");
     remove.disabled = busy.has(item.id);
     remove.addEventListener("click", () => removeItem(item.id, kind));
     actions.appendChild(remove);
