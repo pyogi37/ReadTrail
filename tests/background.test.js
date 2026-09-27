@@ -1160,6 +1160,74 @@ describe("Return worker trust and completion", () => {
     expect(incognito.sessionData["readtrail.seen.v1:100"]).toBeUndefined();
   });
 
+  // A content script is not trusted to name the outcome. The seeded path
+  // checked this; the existing-tab path forwarded whatever it was handed, and
+  // an unknown quality became a `checked` record that every later save failed.
+  it("refuses an outcome the content script invented on the existing-tab path", () => {
+    const h = loadWorker({}, {}, { tabs: [{ id: 7, url: urlA, incognito: false }] });
+    const passage = savePassage(h);
+    h.sessionData["readtrail.seen.v1:7"] = { version: 1, url: urlA, updatedAt: 10 };
+    h.chrome.tabs.sendMessage.mockImplementation((_tabId, message, callback) => {
+      if (message.type === "pageInfo") { callback({ url: urlA, title: "A" }); return; }
+      callback({ ok: true, quality: "bogus" });
+    });
+    const returned = vi.fn();
+    h.messageHandler({ type: "revealPassage", id: passage.id }, PAGE, returned);
+    expect(returned).toHaveBeenCalledWith({ ok: false, error: "reveal-unavailable", tabId: 7 });
+  });
+
+  it("takes the reveal seed away when Return has already reported failure", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadWorker({});
+      const passage = savePassage(h);
+      const returned = vi.fn();
+      h.messageHandler({ type: "revealPassage", id: passage.id }, PAGE, returned);
+      expect(h.sessionData["readtrail.tab.v1:100"].reveal).toEqual({ passageId: passage.id });
+
+      // Nothing ever reports back, so Return gives up.
+      vi.advanceTimersByTime(20000);
+      expect(returned).toHaveBeenCalledWith({ ok: false, error: "reveal-unavailable", tabId: 100 });
+
+      // The seed must go with it. Left behind, a reload of that tab minutes
+      // later would still jump and flash at a passage Return said it could not
+      // reach.
+      expect(h.sessionData["readtrail.tab.v1:100"].reveal).toBeUndefined();
+      const late = vi.fn();
+      h.messageHandler({ type: "takeSeededReveal", url: urlA }, senders.content(100, urlA), late);
+      expect(late).toHaveBeenCalledWith({ ok: true, passage: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Decision 50: the panel saves from an extension page, so the content-sender
+  // branch never ran and every first Return opened a duplicate of the tab the
+  // reader was already reading.
+  it("remembers the tab a panel save names, once that tab confirms the page", () => {
+    const h = loadWorker({}, {}, { tabs: [{ id: 7, url: urlA, incognito: false }] });
+    h.chrome.tabs.sendMessage.mockImplementation((_tabId, message, callback) => {
+      if (message.type === "pageInfo") { callback({ url: urlA, title: "A" }); return; }
+      callback(undefined);
+    });
+    const done = vi.fn();
+    h.messageHandler({ type: "savePassage", tabId: 7, url: urlA, title: "A", text: "quoted words" }, PAGE, done);
+    expect(done.mock.calls[0][0].ok).toBe(true);
+    expect(h.sessionData["readtrail.seen.v1:7"]).toEqual(expect.objectContaining({ url: urlA }));
+  });
+
+  it("does not believe a tab that is showing something else", () => {
+    const h = loadWorker({}, {}, { tabs: [{ id: 7, url: urlA, incognito: false }] });
+    h.chrome.tabs.sendMessage.mockImplementation((_tabId, message, callback) => {
+      if (message.type === "pageInfo") { callback({ url: urlB, title: "B" }); return; }
+      callback(undefined);
+    });
+    const done = vi.fn();
+    h.messageHandler({ type: "savePassage", tabId: 7, url: urlA, title: "A", text: "quoted words" }, PAGE, done);
+    expect(done.mock.calls[0][0].ok).toBe(true);
+    expect(h.sessionData["readtrail.seen.v1:7"]).toBeUndefined();
+  });
+
   it("guards new saved positions at the storage soft limit", () => {
     const h = loadWorker({});
     h.chrome.storage.local.getBytesInUse = vi.fn((_, callback) => callback(9 * 1024 * 1024));

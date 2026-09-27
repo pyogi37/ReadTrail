@@ -445,11 +445,13 @@
   // has nothing to say.
   function isValidChecked(value) {
     if (value === undefined) return true;
-    return isRecord(value)
-      && isRevealQuality(value.quality)
-      && isFiniteNumber(value.at)
-      && value.at >= 0
-      && (value.reason === undefined || CHECKED_REASONS.includes(value.reason));
+    if (!isRecord(value) || !isRevealQuality(value.quality)) return false;
+    if (!isFiniteNumber(value.at) || value.at < 0) return false;
+    if (value.reason === undefined) return true;
+    // A reason says why the quote can no longer be checked at all, so it is
+    // only coherent beside a missing outcome. Accepting it next to "exact" let
+    // one record say the clip was gone while the summary counted it as held.
+    return CHECKED_REASONS.includes(value.reason) && value.quality === "missing";
   }
 
   function isValidDraftBlock(block) {

@@ -250,16 +250,13 @@ test("Desk quotes a clip and Return reports changed and missing source text", as
   });
   expect(saved.ok).toBe(true);
 
-  // Seed the hint that lets Return reuse this tab. Only the right-click menu
-  // writes it for real: the side panel's own Save selection sends savePassage
-  // from an extension page, where there is no sender.tab, so the worker never
-  // learns the tab and Return opens a duplicate. That is a known defect, not a
-  // harness limitation, and this line papering over it is why no test saw it.
-  await ext.worker.evaluate(({ id, pageUrl }) => new Promise((resolve) => {
-    chrome.storage.session.set({
-      [`readtrail.seen.v1:${id}`]: { version: 1, url: pageUrl, updatedAt: Date.now() }
-    }, resolve);
-  }), { id: tabId, pageUrl: url });
+  // No hint is seeded here any more. A save that names its tab teaches the
+  // worker which page that tab is showing, so Return reuses it. Seeding this by
+  // hand is what hid the defect that it did not.
+  const seen = await ext.worker.evaluate(() => new Promise((resolve) => {
+    chrome.storage.session.get(null, (all) => resolve(Object.keys(all).filter((key) => key.startsWith("readtrail.seen.v1:"))));
+  }));
+  expect(seen).toEqual([`readtrail.seen.v1:${tabId}`]);
 
   const desk = await ext.context.newPage();
   await desk.goto(deskUrl(ext.extensionId));

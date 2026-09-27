@@ -462,6 +462,97 @@ describe("drafts", () => {
     expect(call(h, { type: "listDrafts" }).drafts.map((item) => item.id)).toEqual([existing.id]);
   });
 
+  // Replace used to clear the library and then write. A failed write left the
+  // reader with nothing at all, reported as a storage error.
+  it("keeps the existing library when a replace import cannot be written", () => {
+    let armed = false;
+    const h = load({
+      errors: { local: { set: (obj) => armed && Object.keys(obj).some((key) => key.startsWith("readtrail.passage.v1")) } }
+    });
+    const keep = call(h, { type: "savePassage", url: URL_A, text: "the only copy of this" });
+    expect(keep.ok).toBe(true);
+    const existingDraft = draftOf(h);
+
+    armed = true;
+    const payload = {
+      format: "readtrail-export", version: 1, exportedAt: 1,
+      saved: [], notes: [], pagemeta: [], drafts: [],
+      passages: [{
+        version: 1, id: MISSING_ID, url: URL_B, title: "B", text: "replacement",
+        start: null, end: null, note: "", tags: [], createdAt: 1, updatedAt: 1
+      }]
+    };
+    expect(call(h, { type: "importLibrary", payload, mode: "replace" }))
+      .toEqual({ ok: false, error: "save-storage-error" });
+
+    // Nothing was lost: the failure happened before anything was retired.
+    expect(call(h, { type: "listPassages" }).passages.map((item) => item.id)).toEqual([keep.passage.id]);
+    expect(call(h, { type: "listDrafts" }).drafts.map((item) => item.id)).toEqual([existingDraft.id]);
+  });
+
+  it("replaces the library only once the replacement is stored", () => {
+    const h = load();
+    const old = call(h, { type: "savePassage", url: URL_A, text: "the old clip" });
+    draftOf(h);
+    const payload = {
+      format: "readtrail-export", version: 1, exportedAt: 1,
+      saved: [], notes: [], pagemeta: [], drafts: [],
+      passages: [{
+        version: 1, id: MISSING_ID, url: URL_B, title: "B", text: "the new clip",
+        start: null, end: null, note: "", tags: [], createdAt: 1, updatedAt: 1
+      }]
+    };
+    expect(call(h, { type: "importLibrary", payload, mode: "replace" }).ok).toBe(true);
+    const ids = call(h, { type: "listPassages" }).passages.map((item) => item.id);
+    expect(ids).toEqual([MISSING_ID]);
+    expect(ids).not.toContain(old.passage.id);
+    expect(call(h, { type: "listDrafts" }).drafts).toHaveLength(0);
+  });
+
+  // isValidDraft says a quote is well formed, not that it is true. A payload
+  // could pair a real passage id with fabricated text, and Return would resolve
+  // the id and report the fabrication as found exactly.
+  it("refuses an imported quote whose snapshot contradicts its passage", () => {
+    const h = load();
+    const passage = {
+      version: 1, id: MISSING_ID, url: URL_B, title: "Real title", text: "what the page really said",
+      start: null, end: null, note: "", tags: [], createdAt: 1, updatedAt: 1
+    };
+    const fabricated = {
+      version: 1, id: "22222222-3333-4444-8555-666666666666", title: "Imported", tags: [],
+      blocks: [{ type: "quote", passageId: MISSING_ID, text: "what someone wishes it said", url: URL_B, title: "Real title" }],
+      createdAt: 1, updatedAt: 1
+    };
+    const payload = {
+      format: "readtrail-export", version: 1, exportedAt: 1,
+      saved: [], notes: [], pagemeta: [], passages: [passage], drafts: [fabricated]
+    };
+    const res = call(h, { type: "importLibrary", payload, mode: "merge" });
+    expect(res.ok).toBe(true);
+    expect(res.rejected).toBe(1);
+    expect(call(h, { type: "listDrafts" }).drafts).toHaveLength(0);
+    // The passage itself was fine and is kept.
+    expect(call(h, { type: "listPassages" }).passages).toHaveLength(1);
+  });
+
+  it("imports a quote whose clip is genuinely gone, marked as having no way back", () => {
+    const h = load();
+    const orphan = {
+      version: 1, id: "33333333-4444-4555-8666-777777777777", title: "Imported", tags: [],
+      blocks: [{ type: "quote", passageId: MISSING_ID, text: "a line I kept", url: URL_B, title: "B" }],
+      createdAt: 1, updatedAt: 1
+    };
+    const payload = {
+      format: "readtrail-export", version: 1, exportedAt: 1,
+      saved: [], notes: [], pagemeta: [], passages: [], drafts: [orphan]
+    };
+    expect(call(h, { type: "importLibrary", payload, mode: "merge" }).ok).toBe(true);
+    const [imported] = call(h, { type: "listDrafts" }).drafts;
+    // The reader keeps their text, and nothing can later claim it resolved.
+    expect(imported.blocks[0].text).toBe("a line I kept");
+    expect(imported.blocks[0].checked).toEqual({ quality: "missing", at: expect.any(Number), reason: "clip-gone" });
+  });
+
   it("clears drafts only when asked", () => {
     const h = load();
     draftOf(h);

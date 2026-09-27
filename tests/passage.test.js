@@ -158,6 +158,29 @@ describe("passage capture and highlights", () => {
         .toEqual({ quality: "approximate" });
     });
 
+    // The walker used to read every text node in the body, so a clip whose
+    // paragraph had been deleted could be "found" in markup nobody can see and
+    // reported as approximate, with the scroll landing on nothing.
+    it.each([
+      ["a hidden element", '<p id="gone">Nothing here.</p><div hidden>Second sentence there.</div>'],
+      ["a display:none element", '<p id="gone">Nothing here.</p><div style="display:none">Second sentence there.</div>'],
+      ["a script tag", '<p id="gone">Nothing here.</p><script type="text/plain">Second sentence there.</script>'],
+      ["an aria-hidden element", '<p id="gone">Nothing here.</p><div aria-hidden="true">Second sentence there.</div>']
+    ])("refuses to find the clip in %s", (_label, markup) => {
+      highlightSpies();
+      document.body.innerHTML = markup;
+      const broken = { version: 1, path: [99, 99], offset: 0 };
+      expect(PS.revealPassage(broken, broken, "Second sentence there.")).toEqual({ quality: "missing" });
+      expect(window.scrollTo).not.toHaveBeenCalled();
+    });
+
+    it("still finds the clip when the same words are also present but hidden", () => {
+      highlightSpies();
+      document.body.innerHTML = '<div hidden>Second sentence there.</div><p id="real">Second sentence there.</p>';
+      const broken = { version: 1, path: [99, 99], offset: 0 };
+      expect(PS.revealPassage(broken, broken, "Second sentence there.")).toEqual({ quality: "approximate" });
+    });
+
     it("clears the flash and works without the highlight API", () => {
       const { del } = highlightSpies();
       PS.clearReveal();

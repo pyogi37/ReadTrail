@@ -559,6 +559,89 @@ describe("ReadTrail Desk", () => {
     expect(document.activeElement).not.toBe(document.querySelector("#draftTitle"));
   });
 
+  // The guard above resolves Return before moving the block, so it never saw
+  // the race: the callback kept a numeric index, and by the time the answer
+  // arrived that index belonged to a different quote.
+  it("gives a delayed Return answer to the quote that asked, not the one now in its place", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [quoteBlock(), quoteBlock({ passageId: "passage-2", text: "A different clip." })] })]
+    });
+
+    // Ask on the first quote, then move it below the second before the worker
+    // answers.
+    document.querySelectorAll(".btn-return")[0].click();
+    document.querySelectorAll(".quote-block .btn-move-down")[0].click();
+    h.shift("revealPassage")({ ok: true, opened: false, quality: "exact" });
+
+    const blocks = [...document.querySelectorAll(".quote-block")];
+    const moved = blocks.find((block) => block.querySelector(".passage-text").textContent === quoteBlock().text);
+    const other = blocks.find((block) => block.querySelector(".passage-text").textContent === "A different clip.");
+    expect(moved.querySelector(".quote-verdict").hidden).toBe(false);
+    expect(moved.querySelector(".quote-verdict").dataset.quality).toBe("exact");
+    expect(other.querySelector(".quote-verdict").hidden).toBe(true);
+
+    // And the stored outcome is on the quote that was checked.
+    globalThis.ReadTrailSidePanel.draftView.flushSave();
+    const saved = h.messages.filter((m) => m.type === "updateDraft").at(-1);
+    const byId = Object.fromEntries(saved.blocks.map((b) => [b.passageId, b.checked]));
+    expect(byId["passage-1"]).toEqual({ quality: "exact", at: expect.any(Number) });
+    expect(byId["passage-2"]).toBeUndefined();
+  });
+
+  it("drops a Return answer that arrives after the reader opened another draft", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [quoteBlock()] }), draft({ id: "draft-2", title: "Other", blocks: [quoteBlock({ passageId: "passage-9" })] })]
+    });
+    document.querySelector(".btn-return").click();
+    document.querySelector('.draft-row[data-id="draft-2"] .draft-open').click();
+    h.shift("revealPassage")({ ok: true, opened: false, quality: "exact" });
+
+    // Nothing in the draft now on screen was checked, so nothing may claim it.
+    expect(document.querySelector(".quote-block .quote-verdict").hidden).toBe(true);
+    expect(document.querySelector("#draftSummary").hidden).toBe(true);
+  });
+
+  // A failure used to be recorded only while its draft was still on screen, so
+  // editing A, switching to B and watching A's save fail lost everything A held.
+  it("keeps a failed save for a draft the reader has navigated away from", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadDesk({
+        hash: "#/drafts/draft-a",
+        drafts: [draft({ id: "draft-a", title: "Draft A" }), draft({ id: "draft-b", title: "Draft B" })]
+      });
+      const title = document.querySelector("#draftTitle");
+      title.value = "Draft A edited";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+
+      // Away to B, and only then does A's save come back a failure.
+      document.querySelector('.draft-row[data-id="draft-b"] .draft-open').click();
+      h.shift("updateDraft")({ ok: false, error: "storage-full" });
+
+      // The reader is told which draft, because they are looking at another one.
+      expect(document.querySelector("#draftStatus").textContent).toContain("Draft A edited");
+      // And the index says that draft is not saved.
+      const rowA = document.querySelector('.draft-row[data-id="draft-a"]');
+      expect(rowA.dataset.unsaved).toBe("true");
+      expect(rowA.textContent).toContain("not saved");
+
+      // Reopening A retries it instead of resetting the state and stranding it.
+      const before = h.messages.filter((m) => m.type === "updateDraft").length;
+      document.querySelector('.draft-row[data-id="draft-a"] .draft-open').click();
+      const retried = h.messages.filter((m) => m.type === "updateDraft");
+      expect(retried).toHaveLength(before + 1);
+      expect(retried.at(-1).title).toBe("Draft A edited");
+
+      h.shift("updateDraft")({ ok: true, draft: { ...draft({ id: "draft-a", title: "Draft A edited" }), updatedAt: 2 } });
+      expect(document.querySelector('.draft-row[data-id="draft-a"]').dataset.unsaved).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("moves a verdict with its block rather than leaving it at a position", () => {
     const h = loadDesk({
       hash: "#/drafts/draft-1",

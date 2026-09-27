@@ -807,6 +807,13 @@
       let skipped = 0;
       let rejected = 0;
       let entries = library.passages.length + library.notes.length;
+      // Every passage that will exist once this import lands: the ones already
+      // stored, plus the ones this payload actually writes. A quote is checked
+      // against these, because `isValidDraft` alone lets a payload pair a real
+      // passage id with fabricated text, url or title, and Return would then
+      // resolve the id and bless the fabrication as found exactly.
+      const passageById = new Map();
+      for (const stored of library.passages) passageById.set(stored.id, stored);
 
       for (const item of payload.saved) {
         const { url, ...record } = item || {};
@@ -821,6 +828,7 @@
         if (existingPassages.has(item.id)) { skipped += 1; continue; }
         if (entries >= LIMITS.LIBRARY_MAX) { rejected += 1; continue; }
         writes[passageKey(item.id)] = S.clonePassage(item);
+        passageById.set(item.id, S.clonePassage(item));
         existingPassages.add(item.id);
         entries += 1;
         imported += 1;
@@ -842,12 +850,32 @@
         existingMeta.add(url);
         imported += 1;
       }
+      const importedAt = Date.now();
       for (const item of (Array.isArray(payload.drafts) ? payload.drafts : [])) {
         if (!S.isValidDraft(item)) { rejected += 1; continue; }
         if (existingDrafts.has(item.id)) { skipped += 1; continue; }
         if (draftCount >= LIMITS.DRAFTS_MAX) { rejected += 1; continue; }
-        writes[draftKey(item.id)] = S.cloneDraft(item);
-        existingDrafts.add(item.id);
+        const draft = S.cloneDraft(item);
+        let vouched = true;
+        for (const block of draft.blocks) {
+          if (block.type !== "quote") continue;
+          const passage = passageById.get(block.passageId);
+          if (!passage) {
+            // A quote whose clip is not in the library is legitimate: the
+            // reader may have deleted it. It keeps the text they saved, and is
+            // recorded as having no way back, so nothing can later claim it
+            // resolved and Return is not offered on it.
+            block.checked = { quality: "missing", at: importedAt, reason: "clip-gone" };
+            continue;
+          }
+          if (passage.text !== block.text || passage.url !== block.url || passage.title !== block.title) {
+            vouched = false;
+            break;
+          }
+        }
+        if (!vouched || !S.isValidDraft(draft)) { rejected += 1; continue; }
+        writes[draftKey(draft.id)] = draft;
+        existingDrafts.add(draft.id);
         draftCount += 1;
         imported += 1;
       }
@@ -857,12 +885,31 @@
         return;
       }
       const finish = () => reply(sendResponse, null, { imported, skipped, rejected, mode });
+
+      // Replace used to clear the library and then write. A failed write left
+      // the reader with nothing and an error naming storage. The new records go
+      // in first; only once they are stored do the old ones go, so a failure
+      // anywhere leaves the existing library intact.
+      const retireOldRecords = () => {
+        const prefixes = Object.values(KIND_PREFIXES);
+        store.get(null, (all) => {
+          if (chrome.runtime.lastError) { reply(sendResponse, ERRORS.GET_STORAGE); return; }
+          const stale = Object.keys(all || {}).filter((key) => prefixes.some((prefix) => key.startsWith(prefix))
+            && !Object.prototype.hasOwnProperty.call(writes, key));
+          if (stale.length === 0) { finish(); return; }
+          removeKeys(stale, (removeError) => reply(sendResponse, removeError, { imported, skipped, rejected, mode }));
+        });
+      };
+
       if (Object.keys(writes).length === 0) {
+        // Replacing with an empty export is still a replacement.
+        if (mode === "replace") { retireOldRecords(); return; }
         finish();
         return;
       }
       const writeAll = () => store.set(writes, () => {
         if (chrome.runtime.lastError) { reply(sendResponse, ERRORS.SAVE_STORAGE); return; }
+        if (mode === "replace") { retireOldRecords(); return; }
         finish();
       });
       if (mode === "replace") {
@@ -876,13 +923,9 @@
     };
 
     if (mode === "replace") {
-      handleClearLibrary({ kinds: Object.keys(KIND_PREFIXES) }, (cleared) => {
-        if (!cleared.ok) {
-          sendResponse(cleared);
-          return;
-        }
-        proceed({ saved: [], passages: [], notes: [], pagemeta: [], drafts: [] });
-      });
+      // An empty starting library, so nothing is treated as a duplicate and
+      // every record in the payload is written afresh.
+      proceed({ saved: [], passages: [], notes: [], pagemeta: [], drafts: [], keys: [] });
       return;
     }
     readLibrary((library, error) => {

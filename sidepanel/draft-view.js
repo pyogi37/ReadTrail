@@ -24,6 +24,11 @@
   let saveQueue = [];
   let saveWaiters = [];
   let failedSaveIds = new Set();
+  // The last snapshot of each draft that did not save. Kept per draft, because
+  // a failure used to be recorded only while its draft was still on screen: the
+  // reader could edit A, switch to B, watch A's save fail, and lose everything
+  // A held on the next reload with nothing ever retried.
+  let failedSnapshots = new Map();
   let pendingFocus = null; // { index, control } restored after a re-render
   let removed = null;      // { block, index } while the undo offer stands
   let undoTimer = null;
@@ -169,6 +174,7 @@
     resetBlockKeys(current.blocks.length);
     dirty = false;
     setSaveState("");
+    retryFailedSave(id);
     setStatus("", "status");
     renderIndex();
     renderEditor();
@@ -208,6 +214,20 @@
     else saveWaiters.push({ draftId: current ? current.id : null, callback });
   }
 
+  // Re-queues a snapshot that never reached storage. Called when the reader
+  // comes back to that draft, so a retry follows their attention rather than
+  // spinning in a loop against a storage error that is not going away.
+  function retryFailedSave(id) {
+    const snapshot = failedSnapshots.get(id);
+    if (!snapshot) return;
+    failedSnapshots.delete(id);
+    const queuedIndex = saveQueue.findIndex((job) => job.id === id);
+    if (queuedIndex >= 0) saveQueue[queuedIndex] = snapshot;
+    else saveQueue.push(snapshot);
+    setSaveState("Saving…");
+    processSaveQueue();
+  }
+
   function commit() {
     if (!current || !dirty) return;
     const snapshot = JSON.parse(JSON.stringify({ id: current.id, title: current.title, tags: current.tags, blocks: current.blocks }));
@@ -233,6 +253,7 @@
       if (res && res.ok && res.draft) {
         const hasNewer = saveQueue.some((job) => job.id === snapshot.id)
           || (current && current.id === snapshot.id && dirty);
+        failedSnapshots.delete(res.draft.id);
         const index = drafts.findIndex((draft) => draft.id === res.draft.id);
         if (!hasNewer) {
           if (index >= 0) drafts[index] = res.draft;
@@ -245,9 +266,18 @@
         renderIndex();
       } else {
         failedSaveIds.add(snapshot.id);
-        if (current && current.id === snapshot.id) dirty = true;
-        setSaveState("Not saved");
-        setStatus(saveErrorText(res), "alert");
+        failedSnapshots.set(snapshot.id, snapshot);
+        if (current && current.id === snapshot.id) {
+          dirty = true;
+          setSaveState("Not saved");
+          setStatus(saveErrorText(res), "alert");
+        } else {
+          // Say which draft, because the reader is looking at another one and
+          // "Not saved" about nothing visible is worse than silence.
+          const name = snapshot.title || "that draft";
+          setStatus(`${saveErrorText(res)} This was "${name}", which is still open in your drafts and not saved yet.`, "alert");
+        }
+        renderIndex();
       }
       if (saveQueue.length > 0) {
         processSaveQueue();
@@ -291,6 +321,10 @@
       meta.className = "item-meta";
       const quotes = draft.blocks.filter((b) => b.type === "quote").length;
       meta.textContent = quotes === 1 ? "1 quote" : `${quotes} quotes`;
+      if (failedSnapshots.has(draft.id)) {
+        meta.textContent += " · not saved";
+        li.dataset.unsaved = "true";
+      }
       open.appendChild(title);
       open.appendChild(meta);
       open.addEventListener("click", () => openDraft(draft.id));
@@ -657,14 +691,30 @@
   }
 
   function returnToClip(block, index, button, verdict) {
+    // Captured now, because an index is a position and not an identity. The
+    // reader can move this quote or open another draft while the worker is
+    // looking, and the answer must follow the quote that asked for it or be
+    // dropped. Resolving `current.blocks[index]` on the way back once handed
+    // one quote's result to whichever quote had taken its place.
+    const draftId = current ? current.id : null;
+    const key = verdictKey(index);
+    const passageId = block.passageId;
     button.disabled = true;
     showVerdict(verdict, "Looking for the passage…", "checking");
-    sendMessage({ type: "revealPassage", id: block.passageId }, (res) => {
+    sendMessage({ type: "revealPassage", id: passageId }, (res) => {
       button.disabled = false;
+      if (!current || current.id !== draftId) return;
+      const at = blockKeys.indexOf(key);
+      const target = at >= 0 ? current.blocks[at] : null;
+      if (!target || target.type !== "quote" || target.passageId !== passageId) return;
+      // The block list may have been rebuilt, which leaves the element captured
+      // above detached, so write to the one on screen now.
+      const row = els && els.blocks ? els.blocks.children[at] : null;
+      const live = (row && row.querySelector(".quote-verdict")) || verdict;
       if (!res || !res.ok) {
-        verdicts.delete(verdictKey(index));
+        verdicts.delete(key);
         const clipGone = Boolean(res && res.error === "not-found");
-        showVerdict(verdict, clipGone
+        showVerdict(live, clipGone
           ? "That clip is no longer in your library. This quote keeps the text you saved."
           : "ReadTrail could not open that page. Please try again.", "missing");
         // A gone clip is a durable fact about this quote, so it replaces
@@ -673,8 +723,8 @@
         // and told the reader their evidence was intact. A page that failed to
         // open is different: it says nothing about the quote, so the last real
         // outcome is left alone.
-        if (clipGone && current && current.blocks[index] && current.blocks[index].type === "quote") {
-          current.blocks[index].checked = { quality: "missing", at: Date.now(), reason: "clip-gone" };
+        if (clipGone) {
+          target.checked = { quality: "missing", at: Date.now(), reason: "clip-gone" };
           scheduleSave();
           renderSummary();
           // Leave no control that is now certain to fail. The row keeps
@@ -683,16 +733,14 @@
         }
         return;
       }
-      verdicts.set(verdictKey(index), { quality: res.quality, opened: Boolean(res.opened) });
+      verdicts.set(key, { quality: res.quality, opened: Boolean(res.opened) });
       // Persist what was found, so the draft can still say which quotes held
       // after the tab is closed. The tab clause is deliberately not stored: it
       // describes this moment, not the quote.
-      if (current && current.blocks[index] && current.blocks[index].type === "quote") {
-        current.blocks[index].checked = { quality: res.quality, at: Date.now() };
-        scheduleSave();
-        renderSummary();
-      }
-      showVerdict(verdict, revealText(res.quality, res.opened), res.quality);
+      target.checked = { quality: res.quality, at: Date.now() };
+      scheduleSave();
+      renderSummary();
+      showVerdict(live, revealText(res.quality, res.opened), res.quality);
     });
   }
 

@@ -604,6 +604,25 @@ function seenKey(tabId) {
   return KEYS.SEEN_PREFIX + String(tabId);
 }
 
+// Asks the tab what it is showing and remembers it only if it agrees. The
+// worker has no `tabs` permission, so a tab's URL comes from its own content
+// script, never from the caller's claim.
+function rememberSeenTabIfShowing(tabId, url) {
+  const tabs = chrome.tabs;
+  if (!tabs || typeof tabs.get !== "function" || typeof tabs.sendMessage !== "function") return;
+  try {
+    tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError || !tab || tab.incognito === true) return;
+      try {
+        tabs.sendMessage(tabId, { type: "pageInfo" }, (info) => {
+          if (chrome.runtime.lastError || !info || info.url !== url) return;
+          rememberSeenTab(tabId, url);
+        });
+      } catch (_) { /* tab gone */ }
+    });
+  } catch (_) { /* tab gone */ }
+}
+
 function rememberSeenTab(tabId, url) {
   const session = getSessionStore();
   if (!session || !S.isValidTabId(tabId) || !S.isValidPageUrl(url)) return;
@@ -719,6 +738,18 @@ function finishPendingReveal(tabId, response) {
   return true;
 }
 
+// Removes a reveal seed from a tab record without disturbing the rest of it.
+// Used on every terminal failure, so no seed outlives the answer the reader got.
+function clearRevealSeed(tabId) {
+  readTabRecord(tabId, (record) => {
+    if (!record || !S.isRecord(record.reveal)) return;
+    const next = S.cloneTabRecord(record);
+    delete next.reveal;
+    next.updatedAt = Date.now();
+    writeTabRecord(tabId, next, () => {});
+  });
+}
+
 function openTabForReveal(passage, sendResponse) {
   const tabs = chrome.tabs;
   if (!tabs || typeof tabs.create !== "function") {
@@ -743,6 +774,10 @@ function openTabForReveal(passage, sendResponse) {
         return;
       }
       const timer = setTimeout(() => {
+        // Drop the seed as well. Leaving it behind meant a reload of this tab
+        // minutes later would still jump and flash, after Return had already
+        // told the reader it could not reach the passage.
+        clearRevealSeed(tab.id);
         finishPendingReveal(tab.id, { ok: false, error: ERRORS.REVEAL_UNAVAILABLE, tabId: tab.id });
       }, REVEAL_TIMEOUT_MS);
       pendingReveals.set(tab.id, { sendResponse, timer, url: passage.url });
@@ -791,6 +826,14 @@ function handleRevealPassage(msg, sendResponse) {
               // The tab is open but unreachable (navigated away, or no content
               // script). Opening a fresh tab is the honest fallback.
               openTabForReveal(passage, sendResponse);
+              return;
+            }
+            // A content script is not trusted to name the outcome. The seeded
+            // path already checks this; this one forwarded whatever it was
+            // given, and an unknown quality reached the draft as a `checked`
+            // record that every later save then failed to validate.
+            if (!S.isRevealQuality(res.quality)) {
+              sendResponse({ ok: false, error: ERRORS.REVEAL_UNAVAILABLE, tabId: tab.id });
               return;
             }
             sendResponse({ ok: true, tabId: tab.id, opened: false, quality: res.quality });
@@ -1195,7 +1238,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (LIBRARY.isContentSender(sender) && sender.tab.incognito !== true) {
         rememberSeenTab(sender.tab.id, sender.tab.url);
       }
-      LIBRARY.handlers.savePassage(msg, sender, sendResponse);
+      LIBRARY.handlers.savePassage(msg, sender, (res) => {
+        // The side panel saves from an extension page, where there is no
+        // sender.tab, so the branch above never ran for the product's primary
+        // way to clip and every first Return opened a duplicate tab. The panel
+        // names the tab; confirm with the tab's own content script that it is
+        // still showing that page before believing it.
+        if (res && res.ok && !LIBRARY.isContentSender(sender) && S.isValidTabId(msg.tabId)) {
+          rememberSeenTabIfShowing(msg.tabId, res.passage.url);
+        }
+        sendResponse(res);
+      });
       return true;
     case "updatePassage":
       LIBRARY.handlers.updatePassage(msg, sendResponse);

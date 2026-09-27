@@ -123,9 +123,44 @@
   function rangeFromText(text) {
     const needle = normalizeText(text);
     if (needle.length === 0 || !document.body) return null;
+    // Only text the reader could actually see counts. Without this filter the
+    // walker matched inside <script>, <style>, hidden elements and anything
+    // display:none, so a clip whose paragraph had been deleted could be
+    // "found" in markup nobody can read, reported as approximate, and scrolled
+    // to with nothing to show. Return would claim a way back that does not
+    // exist.
+    const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "TITLE", "HEAD"]);
+    // A real article has thousands of text nodes sharing a handful of
+    // ancestors, so the answer per element is cached and the walk stops at the
+    // first ancestor already known to be fine.
+    const seen = new Map();
+    const visible = (element) => {
+      if (!element) return false;
+      const cached = seen.get(element);
+      if (cached !== undefined) return cached;
+      let result;
+      if (SKIP_TAGS.has(element.tagName) || element.hidden === true
+        || (element.getAttribute && element.getAttribute("aria-hidden") === "true")) {
+        result = false;
+      } else if (typeof element.checkVisibility === "function") {
+        // Covers display:none, visibility, content-visibility and the hidden
+        // attribute, on this element and its ancestors, in one call.
+        result = element.checkVisibility({ checkVisibilityCSS: true })
+          && (element === document.body || visible(element.parentElement));
+      } else {
+        const style = typeof getComputedStyle === "function" ? getComputedStyle(element) : null;
+        result = !(style && (style.display === "none" || style.visibility === "hidden"))
+          && (element === document.body || visible(element.parentElement));
+      }
+      seen.set(element, result);
+      return result;
+    };
+    const rendered = (textNode) => visible(textNode && textNode.parentElement);
     let walker = null;
     try {
-      walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+        acceptNode: (candidate) => (rendered(candidate) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT)
+      });
     } catch (_) {
       return null;
     }

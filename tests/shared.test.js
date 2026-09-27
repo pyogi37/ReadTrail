@@ -183,6 +183,11 @@ describe("shared constants and validators", () => {
     expect(S.isValidChecked({ quality: "exact", at: 10 })).toBe(true);
     expect(S.isValidChecked({ quality: "missing", at: 10, reason: "clip-gone" })).toBe(true);
     expect(S.isValidChecked({ quality: "missing", at: 10, reason: "whatever" })).toBe(false);
+    // A reason explains why a quote can no longer be checked, so beside any
+    // other outcome it contradicts itself: one record said the clip was gone
+    // while the summary counted the quote as found exactly, and held.
+    expect(S.isValidChecked({ quality: "exact", at: 10, reason: "clip-gone" })).toBe(false);
+    expect(S.isValidChecked({ quality: "approximate", at: 10, reason: "clip-gone" })).toBe(false);
     expect(S.isValidChecked({ quality: "nonsense", at: 10 })).toBe(false);
     expect(S.isValidChecked({ quality: "exact", at: -1 })).toBe(false);
 
