@@ -434,6 +434,12 @@
     return REVEAL_QUALITIES.includes(value);
   }
 
+  // Why a quote can no longer be checked at all, as opposed to what the page
+  // said. Only one cause is durable: the clip itself is gone from the library,
+  // so the quote has lost its way back for good and no future Return can
+  // change that. A page that merely failed to open is not recorded.
+  const CHECKED_REASONS = ["clip-gone"];
+
   // What Return last found for this quote. Optional, so every draft written
   // before it existed still validates, and so a quote never checked simply
   // has nothing to say.
@@ -442,7 +448,8 @@
     return isRecord(value)
       && isRevealQuality(value.quality)
       && isFiniteNumber(value.at)
-      && value.at >= 0;
+      && value.at >= 0
+      && (value.reason === undefined || CHECKED_REASONS.includes(value.reason));
   }
 
   function isValidDraftBlock(block) {
@@ -468,6 +475,9 @@
     };
     if (isValidChecked(block.checked) && block.checked !== undefined) {
       clone.checked = { quality: block.checked.quality, at: block.checked.at };
+      // Dropping the reason here would turn "you deleted the clip" back into
+      // "the page lost it" on the next read.
+      if (block.checked.reason !== undefined) clone.checked.reason = block.checked.reason;
     }
     return clone;
   }
@@ -534,6 +544,7 @@
     isValidDraftBlock,
     cloneDraftBlock,
     isValidChecked,
+    CHECKED_REASONS,
     isValidDraftBlocks,
     isValidDraft,
     cloneDraft,

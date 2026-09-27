@@ -416,7 +416,10 @@
     }
     const held = checked.filter((b) => b.checked.quality === "exact").length;
     const byWording = checked.filter((b) => b.checked.quality === "approximate").length;
-    const lost = checked.filter((b) => b.checked.quality === "missing").length;
+    // A quote whose clip was deleted is not the same as one the page lost: the
+    // first is the reader's own doing and cannot be retried.
+    const unlinked = checked.filter((b) => b.checked.quality === "missing" && b.checked.reason === "clip-gone").length;
+    const lost = checked.filter((b) => b.checked.quality === "missing" && b.checked.reason !== "clip-gone").length;
     const unchecked = quotes.length - checked.length;
 
     // Say what was actually checked. Counting checked quotes against every
@@ -426,13 +429,14 @@
     if (held > 0) parts.push(`${held} found exactly`);
     if (byWording > 0) parts.push(`${byWording} found by wording`);
     if (lost > 0) parts.push(`${lost} not found`);
+    if (unlinked > 0) parts.push(`${unlinked} no longer linked to a clip`);
     const noun = quotes.length === 1 ? "quote" : "quotes";
     let text = `${checked.length} of ${quotes.length} ${noun} checked: ${parts.join(", ")}.`;
     if (unchecked > 0) text += ` ${unchecked} not checked yet.`;
     els.summary.textContent = text;
     // Gold is what the reader kept, so it is only right when everything the
     // reader checked still holds and nothing is outstanding.
-    els.summary.dataset.state = (lost === 0 && byWording === 0 && unchecked === 0) ? "held" : "mixed";
+    els.summary.dataset.state = (lost === 0 && unlinked === 0 && byWording === 0 && unchecked === 0) ? "held" : "mixed";
     els.summary.hidden = false;
   }
 
@@ -614,12 +618,14 @@
     const row = document.createElement("div");
     row.className = "quote-actions";
 
-    const back = document.createElement("button");
-    back.type = "button";
-    back.className = "btn-small btn-return";
-    back.textContent = "Return";
-    back.addEventListener("click", () => returnToClip(block, index, back, verdict));
-    row.appendChild(back);
+    if (!(block.checked && block.checked.reason === "clip-gone")) {
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = "btn-small btn-return";
+      back.textContent = "Return";
+      back.addEventListener("click", () => returnToClip(block, index, back, verdict));
+      row.appendChild(back);
+    }
 
     const open = document.createElement("button");
     open.type = "button";
@@ -657,9 +663,24 @@
       button.disabled = false;
       if (!res || !res.ok) {
         verdicts.delete(verdictKey(index));
-        showVerdict(verdict, res && res.error === "not-found"
+        const clipGone = Boolean(res && res.error === "not-found");
+        showVerdict(verdict, clipGone
           ? "That clip is no longer in your library. This quote keeps the text you saved."
           : "ReadTrail could not open that page. Please try again.", "missing");
+        // A gone clip is a durable fact about this quote, so it replaces
+        // whatever the last successful check said. Writing nothing here left
+        // the old "found exactly" standing, and the next render read it back
+        // and told the reader their evidence was intact. A page that failed to
+        // open is different: it says nothing about the quote, so the last real
+        // outcome is left alone.
+        if (clipGone && current && current.blocks[index] && current.blocks[index].type === "quote") {
+          current.blocks[index].checked = { quality: "missing", at: Date.now(), reason: "clip-gone" };
+          scheduleSave();
+          renderSummary();
+          // Leave no control that is now certain to fail. The row keeps
+          // "Open page", which still works.
+          if (button && button.parentElement) button.remove();
+        }
         return;
       }
       verdicts.set(verdictKey(index), { quality: res.quality, opened: Boolean(res.opened) });
@@ -694,6 +715,11 @@
   // A remembered outcome describes the quote, not the tab it was found in, so
   // it never repeats the clause about which window was open.
   function rememberedText(checked) {
+    // The clip being gone is true now and stays true, so it is not dated the
+    // way an observation about a page is.
+    if (checked.reason === "clip-gone") {
+      return "The clip this came from is no longer in your library. This quote keeps the text you saved.";
+    }
     const when = agoText(checked.at);
     if (checked.quality === "exact") return `Found exactly when you last checked, ${when}.`;
     if (checked.quality === "approximate") return `Found by its wording when you last checked, ${when}. The page had changed.`;

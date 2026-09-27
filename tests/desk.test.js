@@ -355,6 +355,63 @@ describe("ReadTrail Desk", () => {
     expect(saved.blocks[0].checked).toEqual({ quality: "missing", at: expect.any(Number) });
   });
 
+  // The fix that persisted outcomes only persisted the good ones, so deleting
+  // a clip left "found exactly" on the quote and the next render read it back.
+  it("writes down a gone clip, so no later render can claim the quote still holds", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [quoteBlock({ checked: { quality: "exact", at: Date.now() - 60 * 1000 } })] })]
+    });
+    document.querySelector(".btn-return").click();
+    h.shift("revealPassage")({ ok: false, error: "not-found" });
+
+    const verdict = document.querySelector(".quote-block .quote-verdict");
+    expect(verdict.textContent).toContain("no longer in your library");
+    expect(verdict.dataset.quality).toBe("missing");
+
+    // The stored value is the thing that outlives this render, so that is what
+    // the guard asserts.
+    globalThis.ReadTrailSidePanel.draftView.flushSave();
+    const saved = h.messages.filter((m) => m.type === "updateDraft").at(-1);
+    expect(saved.blocks[0].checked).toEqual({ quality: "missing", at: expect.any(Number), reason: "clip-gone" });
+
+    // And the summary must not go on counting it as held.
+    const summary = document.querySelector("#draftSummary");
+    expect(summary.textContent).toBe("1 of 1 quote checked: 1 no longer linked to a clip.");
+    expect(summary.dataset.state).toBe("mixed");
+
+    // The defect only appeared on the next rebuild, so the shallow assertion
+    // above is not enough: force one the way a reader does.
+    document.querySelector(".quote-block .btn-insert-below").click();
+    const after = document.querySelector(".quote-block .quote-verdict");
+    expect(after.textContent).toContain("no longer in your library");
+    expect(after.textContent).not.toContain("Found exactly");
+    expect(after.dataset.quality).toBe("missing");
+    // Nothing should offer a Return that is now certain to fail.
+    expect(document.querySelector(".quote-block .btn-return")).toBeNull();
+  });
+
+  it("leaves the last real outcome standing when it is the page that would not open", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [quoteBlock({ checked: { quality: "exact", at: Date.now() - 90 * 60 * 1000 } })] })]
+    });
+    document.querySelector(".btn-return").click();
+    h.shift("revealPassage")({ ok: false, error: "reveal-unavailable" });
+
+    expect(document.querySelector(".quote-verdict").textContent).toContain("could not open that page");
+
+    // Failing to open a page says nothing about whether the quote holds, so
+    // nothing is written and the earlier true observation survives.
+    globalThis.ReadTrailSidePanel.draftView.flushSave();
+    expect(h.messages.filter((m) => m.type === "updateDraft")).toHaveLength(0);
+
+    document.querySelector(".quote-block .btn-insert-below").click();
+    const after = document.querySelector(".quote-block .quote-verdict");
+    expect(after.textContent).toContain("Found exactly when you last checked");
+    expect(document.querySelector(".quote-block .btn-return")).not.toBeNull();
+  });
+
   it("reads a remembered outcome back without repeating the tab clause", () => {
     loadDesk({
       hash: "#/drafts/draft-1",

@@ -249,8 +249,11 @@ test("Desk quotes a clip and Return reports changed and missing source text", as
   });
   expect(saved.ok).toBe(true);
 
-  // Saving from the browser UI remembers this tab. The harness saves through
-  // its extension bridge, so provide the equivalent session hint explicitly.
+  // Seed the hint that lets Return reuse this tab. Only the right-click menu
+  // writes it for real: the side panel's own Save selection sends savePassage
+  // from an extension page, where there is no sender.tab, so the worker never
+  // learns the tab and Return opens a duplicate. That is a known defect, not a
+  // harness limitation, and this line papering over it is why no test saw it.
   await ext.worker.evaluate(({ id, pageUrl }) => new Promise((resolve) => {
     chrome.storage.session.set({
       [`readtrail.seen.v1:${id}`]: { version: 1, url: pageUrl, updatedAt: Date.now() }
@@ -321,4 +324,63 @@ test("Desk quotes a clip and Return reports changed and missing source text", as
   if (reopened) await reopened.close();
 
   await desk.close();
+});
+
+// The round-three fix persisted what Return found, but only when it succeeded.
+// Deleting a clip therefore left "found exactly" on the quote, and the next
+// render read it back and told the reader their evidence was intact.
+test("a quote whose clip is deleted stops claiming it was found", async () => {
+  expect((await sendMessage(ext, { type: "clearLibrary" })).ok).toBe(true);
+  const url = articleUrl();
+  const source = await ext.context.newPage();
+  await source.goto(url);
+  await source.evaluate(() => {
+    const node = document.querySelector("#p12").firstChild;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, "Paragraph 12.".length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const tabId = await tabIdFor(ext.worker, url);
+  const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
+  expect(captured.ok).toBe(true);
+  const saved = await sendMessage(ext, {
+    type: "savePassage", url, title: captured.title, text: captured.text, start: captured.start, end: captured.end
+  });
+  expect(saved.ok).toBe(true);
+
+  const desk = await ext.context.newPage();
+  await desk.goto(deskUrl(ext.extensionId));
+  await desk.fill("#newDraftTitle", "Does the evidence hold");
+  await desk.click("#newDraftButton");
+  await desk.locator("#pageList .page-summary").click();
+  await desk.locator("#pageList .btn-quote").click();
+  await expect(desk.locator(".quote-block .passage-text")).toHaveText("Paragraph 12.");
+
+  await desk.locator(".quote-block .btn-return").click();
+  await expect(desk.locator(".quote-block .quote-verdict")).toHaveAttribute("data-quality", "exact");
+  await expect(desk.locator("#draftSummary")).toHaveText("1 of 1 quote checked: 1 found exactly.");
+
+  // The reader removes the clip. The quote keeps its text, as the Sources pane
+  // promises, but it has lost its way back for good.
+  expect((await sendMessage(ext, { type: "removePassage", id: saved.passage.id })).ok).toBe(true);
+  await desk.locator(".quote-block .btn-return").click();
+  await expect(desk.locator(".quote-block .quote-verdict"))
+    .toHaveText("That clip is no longer in your library. This quote keeps the text you saved.");
+
+  // A reload is the strongest form of the re-render that used to reverse this.
+  await desk.reload();
+  await expect(desk.locator(".quote-block .quote-verdict"))
+    .toHaveText("The clip this came from is no longer in your library. This quote keeps the text you saved.");
+  await expect(desk.locator(".quote-block .quote-verdict")).toHaveAttribute("data-quality", "missing");
+  await expect(desk.locator("#draftSummary")).toHaveText("1 of 1 quote checked: 1 no longer linked to a clip.");
+  await expect(desk.locator("#draftSummary")).toHaveAttribute("data-state", "mixed");
+  // And nothing offers a Return that is now certain to fail.
+  await expect(desk.locator(".quote-block .btn-return")).toHaveCount(0);
+  await expect(desk.locator(".quote-block .btn-open-source")).toHaveCount(1);
+
+  await desk.close();
+  await source.close();
 });

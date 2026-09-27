@@ -167,6 +167,33 @@ describe("shared constants and validators", () => {
     expect(S.isHostExcluded("https://example.com/", [])).toBe(false);
   });
 
+  // The reason a Return failed has to survive the round trip through the
+  // worker, or "you deleted the clip" reads back as "the page lost it".
+  it("accepts only a known reason on a checked outcome, and keeps it through a clone", () => {
+    const quote = (checked) => ({
+      type: "quote",
+      passageId: "b3f1c0d2-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+      text: "A clipped sentence.",
+      url: "https://example.com/a",
+      title: "A page",
+      checked
+    });
+
+    expect(S.isValidChecked(undefined)).toBe(true);
+    expect(S.isValidChecked({ quality: "exact", at: 10 })).toBe(true);
+    expect(S.isValidChecked({ quality: "missing", at: 10, reason: "clip-gone" })).toBe(true);
+    expect(S.isValidChecked({ quality: "missing", at: 10, reason: "whatever" })).toBe(false);
+    expect(S.isValidChecked({ quality: "nonsense", at: 10 })).toBe(false);
+    expect(S.isValidChecked({ quality: "exact", at: -1 })).toBe(false);
+
+    expect(S.isValidDraftBlock(quote({ quality: "missing", at: 10, reason: "clip-gone" }))).toBe(true);
+    expect(S.isValidDraftBlock(quote({ quality: "missing", at: 10, reason: "made-up" }))).toBe(false);
+
+    const cloned = S.cloneDraftBlock(quote({ quality: "missing", at: 10, reason: "clip-gone" }));
+    expect(cloned.checked).toEqual({ quality: "missing", at: 10, reason: "clip-gone" });
+    expect(S.cloneDraftBlock(quote({ quality: "exact", at: 10 })).checked).toEqual({ quality: "exact", at: 10 });
+  });
+
   it("merges settings over defaults, dropping invalid stored values and legacy flags", () => {
     const merged = S.mergeSettings({ style: "dots", size: "bad", enabled: true }, { color: "#000000" });
     expect(merged).toEqual({ ...S.DEFAULTS, style: "dots", color: "#000000" });
