@@ -129,9 +129,9 @@ function loadSidePanel({ mode = "panel" } = {}) {
 // the getPageState + getSavedResumePoint reads, settling the page-view into a
 // real state for a supported http(s) tab.
 function initTab(h, tab, opts = {}) {
-  const { excluded = false, stateResponse = { ok: true, state: makeState(false) }, savedResponse = { ok: true, record: null } } = opts;
+  const { excluded = false, incognito = false, stateResponse = { ok: true, state: makeState(false) }, savedResponse = { ok: true, record: null } } = opts;
   h.shiftQuery()([tab]);
-  h.shiftType("getTabInfo")({ ok: true, supported: true, url: tab.url, title: tab.title || "", excluded });
+  h.shiftType("getTabInfo")({ ok: true, supported: true, url: tab.url, title: tab.title || "", excluded, incognito });
   if (excluded) return;
   h.shiftType("getPageState")(stateResponse);
   if (h.pendingCount("getSavedResumePoint") > 0) {
@@ -752,6 +752,44 @@ describe("page view: excluded sites and page actions", () => {
     const h2 = loadSidePanel();
     initTab(h2, HTTP_TAB, { stateResponse: { ok: true, state: makeState(true) } });
     expect(pageActionsEl().hidden).toBe(false);
+  });
+});
+
+describe("page view: incognito", () => {
+  // The privacy policy says ReadTrail never offers to save an incognito page.
+  // The worker refuses the record either way, but offering a control that is
+  // certain to be refused made the policy overstate what the product does.
+  it("offers nothing that would write a durable record, and says why", () => {
+    const h = loadSidePanel();
+    initTab(h, HTTP_TAB, { incognito: true, stateResponse: { ok: true, state: makeState(true) } });
+
+    expect(pageActionsEl().hidden).toBe(true);
+    expect(excludeSiteButtonEl().hidden).toBe(true);
+    expect(noteFormEl().hidden).toBe(true);
+    expect(document.querySelector("#saveSection").hidden).toBe(true);
+    expect(document.querySelector("#description").textContent)
+      .toContain("Nothing is kept from an incognito window");
+  });
+
+  it("still lets the reading guide run, because its state dies with the session", () => {
+    const h = loadSidePanel();
+    initTab(h, HTTP_TAB, { incognito: true, stateResponse: { ok: true, state: makeState(false) } });
+
+    expect(statusEl().textContent).toBe("Use on this page");
+    expect(toggleEl().disabled).toBe(false);
+  });
+
+  it("restores the offers when the reader switches back to an ordinary tab", () => {
+    const h = loadSidePanel();
+    initTab(h, HTTP_TAB, { incognito: true, stateResponse: { ok: true, state: makeState(true) } });
+    expect(pageActionsEl().hidden).toBe(true);
+
+    const h2 = loadSidePanel();
+    initTab(h2, HTTP_TAB, { stateResponse: { ok: true, state: makeState(true) } });
+    expect(pageActionsEl().hidden).toBe(false);
+    expect(document.querySelector("#saveSection").hidden).toBe(false);
+    expect(document.querySelector("#description").textContent)
+      .not.toContain("Nothing is kept from an incognito window");
   });
 });
 

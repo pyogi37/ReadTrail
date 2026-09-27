@@ -9,7 +9,7 @@
   const pageControls = shared.pageControls || null;
 
   let els = null;
-  let tab = null; // { tabId, url, title, supported } or null
+  let tab = null; // { tabId, url, title, supported, excluded, incognito } or null
   let pageState = null;
   let state = "loading"; // "loading" | "unsupported" | "excluded" | "inactive" | "active" | "error"
   let changing = false;
@@ -67,6 +67,15 @@
     els.error.hidden = true;
   }
 
+  // The worker refuses a durable record from an incognito tab, and the privacy
+  // policy says ReadTrail never offers to save one. Offering a control that is
+  // certain to be refused is the same fault as leaving a Return on a clip that
+  // is gone, so the offers are withheld here and the reason is stated. The
+  // reading guide still works: its state is session-only and dies with Chrome.
+  function isIncognito() {
+    return Boolean(tab && tab.incognito);
+  }
+
   function render() {
     if (!els) return;
     els.toggle.checked = state === "active";
@@ -105,12 +114,17 @@
         els.description.textContent = "Switch tabs and back to try again.";
         break;
     }
+    if (isIncognito() && (state === "inactive" || state === "active")) {
+      els.description.textContent += " Nothing is kept from an incognito window, so there is nothing to save here.";
+    }
     renderSave();
     renderPageActions();
   }
 
   function renderPageActions() {
-    const supported = state === "inactive" || state === "active";
+    // Excluding a site is withheld too: it would durably record the host of a
+    // page read in an incognito window.
+    const supported = (state === "inactive" || state === "active") && !isIncognito();
     els.pageActions.hidden = !supported;
     els.excludeSite.hidden = !supported;
     if (!supported) {
@@ -124,7 +138,7 @@
   }
 
   function renderSave() {
-    const activePage = state === "active";
+    const activePage = state === "active" && !isIncognito();
     els.saveSection.hidden = !activePage;
 
     let controls = { kind: "none", label: "Save for later", hint: "", disabled: true };

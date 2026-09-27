@@ -10,24 +10,24 @@ Rewritten at the end of every working session. Keep under 40 lines.
 
 | Check | Result |
 |---|---|
-| `npm test` | 333 passing, 15 files |
+| `npm test` | 336 passing, 15 files |
 | `npm run test:e2e` | 8 scenarios passing |
 | `npm run package:check` | 31 files would ship |
 | `git diff --check` | clean |
 
 ## Done since 2.0.0
 
-Recorded in full in `docs/qa/runs/2026-09-27-desk-critique.md` and `...-ui-audit.md`, with the decisions in `docs/DECISIONS.md` 26 to 56. In short: one visual language across both surfaces; Return names the tab it looked in, answers on the quote it describes, and keeps what it found; destructive actions share one idiom that counts the cost, focuses the way out and closes on Escape; the draft reads as a document, with provenance promoted and plumbing concealed.
+Recorded in full in `docs/qa/runs/2026-09-27-desk-critique.md` and `...-ui-audit.md`, with the decisions in `docs/DECISIONS.md` 26 to 59. In short: one visual language across both surfaces; Return names the tab it looked in, answers on the quote it describes, and keeps what it found; destructive actions share one idiom that counts the cost, focuses the way out and closes on Escape; the draft reads as a document, with provenance promoted and plumbing concealed.
 
 **Four self-inflicted faults, each caught by measuring the running product and each fixed:** animations that never ran, a verdict appearing on a quote nobody checked, a Return that silently broke autosave, and a deleted clip whose quote went on claiming it was found. All four passed their original tests. Every replacement guard asserts a computed or stored value.
 
-**An incognito hole, found in the manual QA and fixed** (decisions 53 to 55): the incognito refusal on `savePassage` and `saveNote` was reachable only from a content script, so the side panel's own Save selection was never checked. An extension page now names a `tabId` the worker resolves. **Restart persistence also verified for the first time** in a real profile restart: durable records survive, session storage is completely empty.
+**An incognito hole, found in the manual QA and fixed** (decisions 53 to 55): the incognito refusal on `savePassage` and `saveNote` was reachable only from a content script, so the side panel's own Save selection was never checked. An extension page now names a `tabId` the worker resolves, and the panel no longer offers a save it knows will be refused, so the published policy's "never offers to save them" is now true (decisions 57 to 59). **Restart persistence also verified for the first time** in a real profile restart: durable records survive, session storage is completely empty.
 
 ## Blocked / needs owner
 
 1. **No independent review of the whole Phase A diff.** The critiques covered the Desk surface. Nobody has reviewed the worker, storage and trust-boundary changes end to end, and this session changed the trust boundary.
 2. `docs/store/PERMISSIONS.md` still labels its disclosure "(1.0)" and the AI phase "1.1" while the package is 2.0.0. Store copy the owner approves.
-3. Carried over: enable GitHub Pages from `/docs` (the privacy policy URL the store needs), approve store copy, take screenshots. `main` is pushed.
+3. Carried over: approve store copy, take screenshots. `main` is pushed; GitHub Pages is live and both URLs were checked by the owner, so the privacy policy URL for the store form is `https://pyogi37.github.io/ReadTrail/privacy-policy`.
 
 **Manual QA genuinely not done:** a real screen reader, Windows high contrast, physical 200% zoom, touch hardware, real third-party articles, and **ReadTrail turned on in incognito** — the harness cannot enable it there, so that one is a release check (decision 55). Restart persistence is now done. Every automated pass is Playwright Chromium against a local fixture. Unexercised by any critique round: library search, the tags browser, import/export, both Clear buttons, the options page.
 

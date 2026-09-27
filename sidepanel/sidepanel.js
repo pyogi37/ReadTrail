@@ -74,7 +74,8 @@
           url: info.supported ? info.url : null,
           title: info.title || "",
           supported: Boolean(info.supported),
-          excluded: Boolean(info.excluded)
+          excluded: Boolean(info.excluded),
+          incognito: Boolean(info.incognito)
         });
       });
     });
