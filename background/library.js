@@ -447,7 +447,7 @@
 
   // --- Page tags ---
 
-  function handleSetPageTags(msg, sendResponse) {
+  function handleSetPageTags(msg, sender, sendResponse) {
     const tags = S.normalizeTags(msg.tags);
     if (!S.isValidPageUrl(msg.url) || tags === null) {
       reply(sendResponse, ERRORS.INVALID_INPUT);
@@ -894,6 +894,80 @@
     });
   }
 
+  // --- Incognito: a durable record must be attributable to a tab ---
+
+  // A content script's sender carries `incognito` itself. An extension page has
+  // no `sender.tab`, so it names a tab id and the worker resolves it. Only `id`
+  // and `incognito` are ever read: without the `tabs` permission Chrome leaves
+  // `url` and `title` undefined, and decision 14 forbids depending on them.
+  function resolveTabPrivacy(tabId, callback) {
+    const tabs = chrome.tabs;
+    if (!S.isValidTabId(tabId) || !tabs || typeof tabs.get !== "function") {
+      callback(ERRORS.INVALID_SENDER);
+      return;
+    }
+    try {
+      tabs.get(tabId, (tab) => {
+        if (chrome.runtime.lastError || !tab || tab.incognito === true) {
+          callback(ERRORS.INVALID_SENDER);
+          return;
+        }
+        callback(null);
+      });
+    } catch (_) {
+      callback(ERRORS.INVALID_SENDER);
+    }
+  }
+
+  // For a write that stores something read from a page. The incognito check
+  // inside these handlers was reachable only from a content script, and the
+  // side panel's own Save selection sends from an extension page, so the
+  // product's primary save path was never checked at all. A named tab is
+  // required here: a record about a page with no tab cannot be shown to be
+  // outside an incognito window.
+  function guardPageWrite(handler) {
+    return (msg, sender, sendResponse) => {
+      if (isContentSender(sender)) {
+        if (sender.tab.incognito === true) {
+          reply(sendResponse, ERRORS.INVALID_SENDER);
+          return;
+        }
+        handler(msg, sender, sendResponse);
+        return;
+      }
+      resolveTabPrivacy(msg && msg.tabId, (error) => {
+        if (error) {
+          reply(sendResponse, error);
+          return;
+        }
+        handler(msg, sender, sendResponse);
+      });
+    };
+  }
+
+  // Tags are written by the reader, not read from a page, and the library view
+  // tags pages that are open in no tab at all, so a tab id is optional. When
+  // one is named it is still resolved and refused.
+  function guardTagWrite(handler) {
+    return (msg, sender, sendResponse) => {
+      if (isContentSender(sender) && sender.tab.incognito === true) {
+        reply(sendResponse, ERRORS.INVALID_SENDER);
+        return;
+      }
+      if (msg && msg.tabId !== undefined) {
+        resolveTabPrivacy(msg.tabId, (error) => {
+          if (error) {
+            reply(sendResponse, error);
+            return;
+          }
+          handler(msg, sender, sendResponse);
+        });
+        return;
+      }
+      handler(msg, sender, sendResponse);
+    };
+  }
+
   // --- Context menu: save the current selection from any page ---
 
   const MENU_ID = "readtrail-save-selection";
@@ -952,15 +1026,15 @@
     draftKey,
     passageKey,
     handlers: {
-      savePassage: handleSavePassage,
+      savePassage: guardPageWrite(handleSavePassage),
       updatePassage: handleUpdatePassage,
       removePassage: handleRemovePassage,
       listPassages: handleListPassages,
-      saveNote: handleSaveNote,
+      saveNote: guardPageWrite(handleSaveNote),
       updateNote: handleUpdateNote,
       removeNote: handleRemoveNote,
       listNotes: handleListNotes,
-      setPageTags: handleSetPageTags,
+      setPageTags: guardTagWrite(handleSetPageTags),
       listLibrary: handleListLibrary,
       clearLibrary: handleClearLibrary,
       removePageData: handleRemovePageData,

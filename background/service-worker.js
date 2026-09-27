@@ -1219,7 +1219,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       LIBRARY.handlers.listNotes(msg, sendResponse);
       return true;
     case "setPageTags":
-      LIBRARY.handlers.setPageTags(msg, sendResponse);
+      LIBRARY.handlers.setPageTags(msg, sender, sendResponse);
       return true;
     case "listLibrary":
       LIBRARY.handlers.listLibrary(sendResponse);

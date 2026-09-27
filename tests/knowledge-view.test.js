@@ -382,7 +382,7 @@ describe("knowledge view editing", () => {
     pageTagsInputEl().value = "later, reference";
     pageTagsFormEl().dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
     expect(h.runtimeMsgs).toContainEqual({
-      type: "setPageTags", url: HTTP_TAB.url, tags: ["later", "reference"]
+      type: "setPageTags", tabId: HTTP_TAB.id, url: HTTP_TAB.url, tags: ["later", "reference"]
     });
 
     h.shiftType("setPageTags")({ ok: true, tags: ["later", "reference"] });
@@ -766,6 +766,7 @@ describe("page view: passages, notes, exclusion", () => {
 
     expect(h.runtimeMsgs).toContainEqual({
       type: "savePassage",
+      tabId: HTTP_TAB.id,
       url: HTTP_TAB.url,
       title: HTTP_TAB.title,
       text: "Selected text",
@@ -806,7 +807,7 @@ describe("page view: passages, notes, exclusion", () => {
     noteInputEl().value = "What I learned";
     noteFormEl().dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
 
-    expect(h.runtimeMsgs).toContainEqual({ type: "saveNote", url: HTTP_TAB.url, title: HTTP_TAB.title, text: "What I learned" });
+    expect(h.runtimeMsgs).toContainEqual({ type: "saveNote", tabId: HTTP_TAB.id, url: HTTP_TAB.url, title: HTTP_TAB.title, text: "What I learned" });
     h.shiftType("saveNote")({ ok: true, note: {} });
 
     expect(noteFormEl().hidden).toBe(true);

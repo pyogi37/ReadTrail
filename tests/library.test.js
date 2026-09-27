@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loadServiceWorker, senders } from "./helpers/chrome-mock.js";
 
 const PAGE = senders.page("sidepanel/sidepanel.html");
+// The panel names the tab a save came from so the worker can refuse an
+// incognito one. Tests that are not about that guard get this tab by default.
+const PAGE_TAB = 11;
 const MISSING_ID = "11111111-2222-4333-8444-555555555555";
 const URL_A = "https://example.com/article-a";
 const URL_B = "https://news.example.org/story";
@@ -12,10 +15,16 @@ function anchor(path = [0, 1], offset = 2) {
 }
 
 function load(options = {}) {
-  return loadServiceWorker(options);
+  return loadServiceWorker({ tabs: [{ id: PAGE_TAB, url: URL_A, incognito: false }], ...options });
 }
 
+const NEEDS_TAB = ["savePassage", "saveNote"];
+
 function call(h, msg, sender = PAGE) {
+  // Supply the default tab unless the test is exercising the guard itself.
+  if (sender === PAGE && NEEDS_TAB.includes(msg.type) && !("tabId" in msg)) {
+    msg = { ...msg, tabId: PAGE_TAB };
+  }
   const done = vi.fn();
   expect(h.messageHandler(msg, sender, done)).toBe(true);
   expect(done).toHaveBeenCalledTimes(1);
@@ -65,10 +74,58 @@ describe("knowledge layer: passages", () => {
 
   it("takes the URL from the message when the extension page is itself open in a tab", () => {
     const h = load();
+    // An extension page open in a tab has a sender.tab, but it is the panel's
+    // own tab, not the page being saved, so it still names the content tab.
     const pageInTab = { ...PAGE, tab: { id: 9, url: "chrome-extension://test/sidepanel/sidepanel.html?mode=page", incognito: false } };
-    const res = call(h, { type: "savePassage", url: URL_A, text: "from page mode" }, pageInTab);
+    const res = call(h, { type: "savePassage", url: URL_A, text: "from page mode", tabId: PAGE_TAB }, pageInTab);
     expect(res.ok).toBe(true);
     expect(res.passage.url).toBe(URL_A);
+  });
+
+  // The incognito guard inside the handler only ever saw a content script's
+  // sender. The panel's Save selection sends from an extension page, so the
+  // primary way to clip was never checked at all, and a page read in an
+  // incognito window could leave a durable record of its text.
+  it("refuses a save from a panel that names an incognito tab, a dead tab, or no tab", () => {
+    const h = load({ tabs: [
+      { id: PAGE_TAB, url: URL_A, incognito: false },
+      { id: 12, url: URL_A, incognito: true }
+    ] });
+
+    const secret = { type: "savePassage", url: URL_A, text: "Read in a private window." };
+    expect(call(h, { ...secret, tabId: 12 })).toEqual({ ok: false, error: "invalid-sender" });
+    expect(call(h, { ...secret, tabId: 999 })).toEqual({ ok: false, error: "invalid-sender" });
+    expect(call(h, { ...secret, tabId: undefined })).toEqual({ ok: false, error: "invalid-sender" });
+    expect(call(h, { ...secret, tabId: "11" })).toEqual({ ok: false, error: "invalid-sender" });
+    // Nothing reached storage on any of those paths.
+    expect(Object.keys(h.localData).filter((key) => key.startsWith("readtrail.passage.v1"))).toHaveLength(0);
+
+    // The same clip from the same panel naming a normal tab is kept.
+    expect(call(h, { ...secret, tabId: PAGE_TAB }).ok).toBe(true);
+
+    // Notes carry the reader's own words about a page and are guarded alike.
+    const note = { type: "saveNote", url: URL_A, title: "A", text: "A private thought." };
+    expect(call(h, { ...note, tabId: 12 })).toEqual({ ok: false, error: "invalid-sender" });
+    expect(call(h, { ...note, tabId: undefined })).toEqual({ ok: false, error: "invalid-sender" });
+    expect(call(h, { ...note, tabId: PAGE_TAB }).ok).toBe(true);
+  });
+
+  it("lets the library tag a page that is open in no tab, but not an incognito one", () => {
+    const h = load({ tabs: [
+      { id: PAGE_TAB, url: URL_A, incognito: false },
+      { id: 12, url: URL_A, incognito: true }
+    ] });
+
+    // Tagging from the library names no tab: the page need not be open at all.
+    expect(call(h, { type: "setPageTags", url: URL_B, tags: ["later"] }).ok).toBe(true);
+    expect(h.localData[`readtrail.pagemeta.v1:${URL_B}`].tags).toEqual(["later"]);
+
+    // Tagging the tab the reader is on does name it, and an incognito tab is
+    // refused even though tags carry no page text.
+    expect(call(h, { type: "setPageTags", tabId: PAGE_TAB, url: URL_A, tags: ["reading"] }).ok).toBe(true);
+    expect(call(h, { type: "setPageTags", tabId: 12, url: URL_A, tags: ["private"] }))
+      .toEqual({ ok: false, error: "invalid-sender" });
+    expect(h.localData[`readtrail.pagemeta.v1:${URL_A}`].tags).toEqual(["reading"]);
   });
 
   it("updates note and tags, rejects unknown ids, and removes", () => {

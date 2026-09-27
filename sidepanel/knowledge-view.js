@@ -756,6 +756,7 @@
         }
         sendMessage({
           type: "savePassage",
+          tabId: tab.tabId,
           url: captured.url || tab.url,
           title: captured.title || tab.title || "",
           text: captured.text,
@@ -772,11 +773,11 @@
   }
 
   function saveNoteForTab(tab, text, callback) {
-    if (!tab || !tab.url) {
+    if (!tab || !tab.url || !Number.isInteger(tab.tabId)) {
       callback({ ok: false, error: "inactive" });
       return;
     }
-    sendMessage({ type: "saveNote", url: tab.url, title: tab.title || "", text }, (res) => {
+    sendMessage({ type: "saveNote", tabId: tab.tabId, url: tab.url, title: tab.title || "", text }, (res) => {
       if (res && res.ok) load();
       callback(res || { ok: false, error: "runtime-unavailable" });
     });
@@ -787,7 +788,11 @@
       callback({ ok: false, error: "inactive" });
       return;
     }
-    sendMessage({ type: "setPageTags", url: tab.url, tags }, (res) => {
+    // Tagging the tab the reader is on names it; tagging a page in the library
+    // does not, because that page need not be open anywhere.
+    const message = { type: "setPageTags", url: tab.url, tags };
+    if (Number.isInteger(tab.tabId)) message.tabId = tab.tabId;
+    sendMessage(message, (res) => {
       if (res && res.ok) load();
       callback(res || { ok: false, error: "runtime-unavailable" });
     });

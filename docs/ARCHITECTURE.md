@@ -42,13 +42,13 @@ All messages are `{ type, ... }` sent with `chrome.runtime.sendMessage`. Handler
 | `continueSavedResumePoint` | page | `{url}` | `{ok,tabId}` |
 | `listRecentlyClosed` | page | none | `{ok,items:[{url,title,closedAt}]}` |
 | `saveRecentlyClosed` / `dismissRecentlyClosed` | page | `{url}` | `{ok}` |
-| `savePassage` | page / content | `{url,title,text,start?,end?,tags?,note?}` (content sender's tab URL wins) | `{ok,passage}` or `library-full` |
+| `savePassage` | page / content | `{tabId,url,title,text,start?,end?,tags?,note?}` (content sender's tab URL wins; `tabId` required from a page) | `{ok,passage}`, `library-full`, or `invalid-sender` |
 | `updatePassage` | page | `{id,note?,tags?}` | `{ok,passage}` |
 | `removePassage` / `removeNote` | page | `{id}` | `{ok}` |
 | `listPassages` / `listNotes` | page / content | `{url?}` | `{ok,passages}` / `{ok,notes}` newest first |
-| `saveNote` | page | `{url,title,text,tags?,source?}` | `{ok,note}` |
+| `saveNote` | page | `{tabId,url,title,text,tags?,source?}` (`tabId` required) | `{ok,note}` or `invalid-sender` |
 | `updateNote` | page | `{id,text?,tags?}` | `{ok,note}` |
-| `setPageTags` | page | `{url,tags}` | `{ok,tags}` |
+| `setPageTags` | page | `{url,tags,tabId?}` (`tabId` when tagging the open tab) | `{ok,tags}` or `invalid-sender` |
 | `listLibrary` | page | none | `{ok,saved,passages,notes,pagemeta,counts,limit}` |
 | `clearLibrary` | page | `{kinds?:["saved","passages","notes","pagemeta"]}` | `{ok,removed}` (never touches settings) |
 | `removePageData` | page | `{url}` | `{ok,removed}` passages, notes, tags of one page |
@@ -73,6 +73,8 @@ Messages delivered to a content script with `chrome.tabs.sendMessage(tabId, ...)
 | `revealPassage` | `{start,end,text}` | `{ok,quality:"exact"|"approximate"|"missing"}` |
 
 ### Return
+
+A durable record about a page must be attributable to a tab. A content script's sender carries `incognito` itself; the side panel sends from an extension page, where there is no `sender.tab`, so it names a `tabId` and the worker resolves it with `chrome.tabs.get`, reading only `id` and `incognito`. Without the `tabs` permission Chrome leaves `url` and `title` undefined, which is why the worker never depends on them. `savePassage` and `saveNote` require the tab, because they persist something read from the page; `setPageTags` does not, because the library tags pages that are open in no tab, and a named tab is still resolved and refused.
 
 `revealPassage` reads the clip, looks for a tab previously associated with its URL (`readtrail.seen.v1:<tabId>`, written only when the reader saved a clip from that tab), asks that candidate for `pageInfo`, and reuses it only when the exact live URL still matches. Stale records are removed. With no matching tab it opens one and seeds `reveal` in the new tab's record; the original Desk request stays pending until that content script returns `completeSeededReveal`, so every path reports an honest quality. The seed is released only to the non-incognito content sender whose authoritative tab URL matches, and only after the seed-clearing write succeeds.
 

@@ -1089,9 +1089,12 @@ describe("Return worker trust and completion", () => {
   const urlA = "https://example.com/article-a";
   const urlB = "https://example.com/article-b";
 
+  // Saved the way the context menu does, from a content script whose own sender
+  // carries the incognito flag. These tests are about Return, not about the tab
+  // a panel save has to name.
   function savePassage(h) {
     const done = vi.fn();
-    h.messageHandler({ type: "savePassage", url: urlA, title: "A", text: "quoted words" }, PAGE, done);
+    h.messageHandler({ type: "savePassage", title: "A", text: "quoted words" }, senders.content(50, urlA), done);
     return done.mock.calls[0][0].passage;
   }
 

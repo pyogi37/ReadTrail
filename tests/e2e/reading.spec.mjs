@@ -151,7 +151,7 @@ test("passages: save a selection, see it in the panel, export and import round t
   const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
   expect(captured.ok).toBe(true);
   expect(captured.text).toBe("Paragraph 3.");
-  const saved = await sendMessage(ext, { type: "savePassage", url, title: captured.title, text: captured.text, start: captured.start, end: captured.end });
+  const saved = await sendMessage(ext, { type: "savePassage", tabId, url, title: captured.title, text: captured.text, start: captured.start, end: captured.end });
   expect(saved.ok).toBe(true);
   expect((await sendMessage(ext, { type: "setPageTags", url, tags: ["fixture"] })).ok).toBe(true);
 
@@ -241,6 +241,7 @@ test("Desk quotes a clip and Return reports changed and missing source text", as
   expect(captured).toEqual(expect.objectContaining({ ok: true, text: "Paragraph 30." }));
   const saved = await sendMessage(ext, {
     type: "savePassage",
+    tabId,
     url,
     title: captured.title,
     text: captured.text,
@@ -347,7 +348,7 @@ test("a quote whose clip is deleted stops claiming it was found", async () => {
   const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
   expect(captured.ok).toBe(true);
   const saved = await sendMessage(ext, {
-    type: "savePassage", url, title: captured.title, text: captured.text, start: captured.start, end: captured.end
+    type: "savePassage", tabId, url, title: captured.title, text: captured.text, start: captured.start, end: captured.end
   });
   expect(saved.ok).toBe(true);
 
@@ -383,4 +384,40 @@ test("a quote whose clip is deleted stops claiming it was found", async () => {
 
   await desk.close();
   await source.close();
+});
+
+// The worker resolves the tab a panel save names, through the real
+// chrome.tabs.get, so that an incognito page can never leave a durable record.
+// The incognito branch itself is unit-tested: a genuine incognito window needs
+// the extension enabled in incognito, which this harness cannot toggle, and
+// chrome.windows.create({incognito: true}) returns no window here.
+test("a save that cannot be tied to a live tab is refused", async () => {
+  expect((await sendMessage(ext, { type: "clearLibrary" })).ok).toBe(true);
+  // A distinct URL, so the tab this test opens is the only one that matches it
+  // and closing it really does invalidate the id.
+  const url = `${articleUrl()}?case=refusal`;
+  const page = await ext.context.newPage();
+  await page.goto(url);
+  const tabId = await tabIdFor(ext.worker, url);
+  expect(Number.isInteger(tabId)).toBe(true);
+  const clip = { url, title: "Fixture", text: "A sentence worth keeping.", start: null, end: null };
+
+  expect(await sendMessage(ext, { type: "savePassage", ...clip }))
+    .toEqual({ ok: false, error: "invalid-sender" });
+  expect(await sendMessage(ext, { type: "savePassage", tabId: 9999999, ...clip }))
+    .toEqual({ ok: false, error: "invalid-sender" });
+  expect(await sendMessage(ext, { type: "saveNote", tabId: 9999999, url, title: "Fixture", text: "A thought." }))
+    .toEqual({ ok: false, error: "invalid-sender" });
+
+  const afterRefusals = await readStorage(ext.worker, "local");
+  expect(Object.keys(afterRefusals).filter((key) => key.startsWith("readtrail.passage.v1"))).toHaveLength(0);
+  expect(Object.keys(afterRefusals).filter((key) => key.startsWith("readtrail.note.v1"))).toHaveLength(0);
+
+  // Naming the tab it really came from is kept.
+  expect((await sendMessage(ext, { type: "savePassage", tabId, ...clip })).ok).toBe(true);
+
+  // A tab that has gone stops being a valid witness for a save.
+  await page.close();
+  expect(await sendMessage(ext, { type: "savePassage", tabId, ...clip, text: "A later sentence." }))
+    .toEqual({ ok: false, error: "invalid-sender" });
 });

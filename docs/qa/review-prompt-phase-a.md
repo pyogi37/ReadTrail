@@ -37,7 +37,9 @@ Read `docs/PRODUCT-DIRECTION.md` for intent and `docs/DECISIONS.md` 20–52 for 
 
 **3. Incognito and dormancy.** Both are non-negotiable.
 
-- Can any path produce a durable record from an incognito tab? Check `savePassage`, the context menu, `revealPassage` and the recently-closed flow.
+- One hole here was found and fixed after this prompt was first written (decisions 53 to 55): the incognito refusal in `handleSavePassage` and `handleSaveNote` was reachable only from a content script, so the side panel's own Save selection bypassed it entirely. An extension page now names a `tabId` that the worker resolves with `chrome.tabs.get`. **Verify the new guard rather than rediscovering the old hole**, and look for the same shape elsewhere: any check written as `fromContent && sender.tab.…` is unreachable for the panel.
+- Can any *other* path produce a durable record from an incognito tab? Check the context menu, `revealPassage`, `persistResumePoint` and the recently-closed flow.
+- `setPageTags` deliberately does not require a tab, because the library tags pages that are open nowhere. Is that the right line, and can it leak an incognito URL?
 - Exactly two reader-initiated actions may read a dormant page: `capturePassage` and `revealPassage`. Is there now a third, or a path that reads a page without an explicit reader action?
 
 **4. Per-tab isolation.** Session state is keyed `readtrail.tab.v1:<tabId>`. Phase A added `readtrail.seen.v1:<tabId>`.
