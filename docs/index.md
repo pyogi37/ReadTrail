@@ -1,3 +1,7 @@
+---
+title: ReadTrail
+---
+
 # ReadTrail
 
 A privacy-first reading companion for Chrome. Follow the line you are reading, pause at an exact place, and return later. Everything stays on your device.

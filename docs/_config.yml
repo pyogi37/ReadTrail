@@ -1,13 +1,21 @@
 title: ReadTrail
 description: A privacy-first reading companion for Chrome
 theme: jekyll-theme-minimal
+# The site is index.md and privacy-policy.md. Everything else in docs/ is a
+# working document: readable in the repository, but not part of the site.
+# Anything added to docs/ in future is published unless it is named here.
 exclude:
   - sprints/
   - qa/
   - store/
   - images/
+  - proposals/
   - STATUS.md
   - ARCHITECTURE.md
   - DECISIONS.md
   - AI-WORKFLOW.md
   - PRODUCT-VISION.md
+  - PRODUCT-DIRECTION.md
+  - RELEASE-CHECKLIST.md
+  - HANDOFF-2026-09-13.md
+  - HANDOFF-2026-09-18.md

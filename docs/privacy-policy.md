@@ -1,3 +1,7 @@
+---
+title: Privacy policy
+---
+
 # ReadTrail Privacy Policy
 
 _Last updated: 2026-09-27. Describes ReadTrail as it currently behaves; the release it ships with is named in the changelog._
