@@ -42,3 +42,27 @@ One finding is real but arguable: the verdict block matches a "coloured side bor
 No overlay was produced. Injection was attempted and refused by the extension's content security policy, which blocks both remote and inline scripts; the fallback was direct instrumentation inside the page's own origin.
 
 Still untested by anyone: a real screen reader, Windows high contrast, physical 200% zoom, touch hardware, Chrome restart persistence, an incognito window, and real third-party articles. These remain the manual release checks and no automated pass substitutes for them.
+
+---
+
+## Round three
+
+Run after the second round of fixes, same protocol, two isolated assessments.
+
+**Score: 19/40, back where it started.** The composition of that number changed: aesthetics rose from 2 to 3 and help from 1 to 2, both earned, while visibility of status, error prevention and error recovery each fell from 2 to 1. The second round had bought polish with correctness.
+
+**Confirmed landed by measurement:** the verdict no longer bleeds onto an unchecked quote; the semantic heading announces its first line only; a route restore no longer takes focus; one solid accent control on the whole screen; Return's three outcomes correct across four conditions; animations run and reduced motion suppresses them; no native dialog anywhere; zero console errors; zero horizontal overflow; zero controls under 24px; zero unnamed controls in Chrome's own accessibility tree; a visible focus indicator at all 24 tab stops.
+
+**Found, all introduced in this session, all fixed:**
+
+- **Every Return silently broke the draft it reported on.** Persisting the outcome made the quote fail the worker's provenance signature, so every autosave afterwards was rejected and the reader lost everything typed next, under a message that named the wrong cause. The guard now signs provenance alone.
+- **The Desk rebuilt the editor after its own saves**, because a storage change fires in the page that caused it. The caret left the block being typed in, and the undo offer was destroyed about 650ms into the twelve seconds it promised.
+- **Undo could destroy a block**, clamping its insert index before dropping the placeholder, and mistaking an empty block the reader already had for its own.
+- **The confirmation destroyed on one keypress**, focusing the destructive button with no Escape, where the native dialog it replaced did the opposite.
+- **A fully transparent "Remove block" was still the topmost hit target**, hidden with opacity alone.
+- **The summary counted checked quotes against every quote**, claiming something about quotes nobody examined, in gold.
+
+**Not measured since these fixes.** A fourth round should establish the current score; the 19 above predates them.
+
+**Assessment B's own corrections, worth recording** because they are the same discipline this project asks of itself: it retracted three of its own findings after re-measuring, having first reported invisible action rows, missing animation starts, and unnamed controls, each an artifact of how it measured rather than a fault in the product.
+
