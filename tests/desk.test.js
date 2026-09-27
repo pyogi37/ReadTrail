@@ -412,6 +412,45 @@ describe("ReadTrail Desk", () => {
     expect(document.activeElement.value).toBe("second");
   });
 
+  it("restores the last block of a draft in place of the placeholder, not beside it", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "" }, quoteBlock()] })]
+    });
+    document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+    document.querySelector("#draftUndo").click();
+
+    // The index was clamped before the empty placeholder was dropped, so the
+    // restored block landed past the end of an empty list and one of the two
+    // blocks was lost for good.
+    const kinds = [...document.querySelectorAll(".draft-block")].map((b) => (b.classList.contains("quote-block") ? "quote" : "text"));
+    expect(kinds).toEqual(["text", "quote"]);
+    void h;
+  });
+
+  it("keeps the caret and the undo offer when its own save comes back", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "one" }, { type: "text", text: "two" }] })]
+    });
+    document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+    expect(document.querySelector("#draftUndo").parentElement.id).toBe("draftBlocks");
+
+    // A storage change fires in the page that caused it, so the Desk reloads
+    // after its own save. Rebuilding then took the caret out of the block the
+    // reader was typing in and wiped the undo offer out of the DOM.
+    const area = document.querySelector(".block-text");
+    area.focus();
+    vi.useFakeTimers();
+    h.emitStorage({ "readtrail.draft.v1:draft-1": { newValue: {} } });
+    vi.advanceTimersByTime(200);
+    vi.useRealTimers();
+    h.shift("listDrafts")({ ok: true, drafts: [draft({ blocks: [{ type: "text", text: "one" }] })] });
+
+    expect(document.activeElement).toBe(area);
+    expect(document.querySelector("#draftUndo")).not.toBeNull();
+  });
+
   it("focuses the way out of a draft removal, and closes it on Escape", () => {
     const h = loadDesk({ drafts: [draft({ blocks: [quoteBlock()] })] });
     document.querySelector(".btn-remove-draft").click();

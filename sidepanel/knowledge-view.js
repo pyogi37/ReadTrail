@@ -814,7 +814,7 @@
   function onClearKnowledge() {
     askFirst(els.clearButton.parentElement, {
       label: "Confirm clearing all page content",
-      text: `Clear every passage, note and page tag? That is ${usedEntries()} items, and it cannot be undone. Saved reading positions and your settings stay.`,
+      text: `Clear every passage, note and page tag? That is ${usedEntries()} ${usedEntries() === 1 ? "item" : "items"}, and it cannot be undone. Saved reading positions and your settings stay.`,
       confirmLabel: "Clear page content",
       onCancel: () => els.clearButton.focus(),
       onConfirm: clearKnowledge

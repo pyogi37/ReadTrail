@@ -115,6 +115,12 @@
     }, 150);
   }
 
+  function sameDraftContent(a, b) {
+    return a.title === b.title
+      && JSON.stringify(a.tags) === JSON.stringify(b.tags)
+      && JSON.stringify(a.blocks) === JSON.stringify(b.blocks);
+  }
+
   function load(callback) {
     sendMessage({ type: "listDrafts" }, (res) => {
       if (!res || !res.ok || !Array.isArray(res.drafts)) {
@@ -123,14 +129,20 @@
         return;
       }
       drafts = res.drafts;
+      let rebuildEditor = true;
       if (current) {
         const fresh = drafts.find((d) => d.id === current.id);
-        // Keep the reader's in-progress edits; only adopt a record we do not
-        // already have open.
-        if (!fresh) current = null;
+        if (!fresh) {
+          current = null;
+        } else if (dirty || sameDraftContent(fresh, current)) {
+          // Either this page is mid-edit, or the change that woke us is the
+          // one we just wrote. Rebuilding here would take the caret out of the
+          // block the reader is typing in.
+          rebuildEditor = false;
+        }
       }
       renderIndex();
-      renderEditor();
+      if (rebuildEditor) renderEditor();
       if (callback) callback(true);
     });
   }
@@ -431,6 +443,7 @@
       frag.appendChild(block.type === "quote" ? quoteBlockNode(block, index) : textBlockNode(block, index));
     });
     els.blocks.appendChild(frag);
+    placeUndo();
     renderSummary();
     restoreFocus();
   }
@@ -742,9 +755,14 @@
     const [removedKey] = blockKeys.splice(index, 1);
     verdicts.delete(removedKey);
     current.blocks.splice(index, 1);
+    // Emptying the list inserts somewhere to write. Remember that we did, so
+    // undo can drop it again without mistaking an empty block the reader
+    // already had for one of ours.
+    let placeholderAdded = false;
     if (current.blocks.length === 0) {
       current.blocks.push({ type: "text", text: "" });
       blockKeys.push(newBlockKey());
+      placeholderAdded = true;
     }
     pendingFocus = { index: Math.max(0, index - 1), control: null };
     renderBlocks();
@@ -752,26 +770,31 @@
       ? "Quote removed from this draft. The clip it came from is still in your library."
       : "Block removed.";
     announce(note);
-    offerUndo(block, index, note);
+    offerUndo(block, index, note, placeholderAdded);
     scheduleSave();
+  }
+
+  // The way back belongs in the gap the block left, but the block list is
+  // rebuilt often, so it is placed from state on every render rather than
+  // moved once and hoped for.
+  function placeUndo() {
+    if (!els || !els.undo) return;
+    if (!removed) return;
+    const at = Math.min(removed.index, els.blocks.children.length);
+    const neighbour = els.blocks.children[at] || null;
+    els.blocks.insertBefore(els.undo, neighbour);
+    els.undo.hidden = false;
   }
 
   // A removal is the only destructive action in the editor and it autosaves
   // within 400ms, so the way back has to be offered immediately and has to be
   // visible: the live region alone tells a sighted reader nothing.
-  function offerUndo(block, index, note) {
+  function offerUndo(block, index, note, placeholderAdded) {
     if (!block || !els) return;
-    removed = { block, index };
+    removed = { block, index, placeholderAdded: Boolean(placeholderAdded) };
     if (undoTimer !== null) clearTimeout(undoTimer);
     setStatus(note, "status");
-    els.undo.hidden = false;
-    // Put the way back where the block was, not at the top of a document the
-    // reader may be a thousand pixels down.
-    const at = Math.min(index, els.blocks.children.length - 1);
-    const neighbour = els.blocks.children[at];
-    if (neighbour && neighbour.parentNode) {
-      neighbour.parentNode.insertBefore(els.undo, neighbour);
-    }
+    placeUndo();
     els.undo.focus();
     undoTimer = setTimeout(() => {
       undoTimer = null;
@@ -788,20 +811,21 @@
 
   function undoRemove() {
     if (!removed || !current) return;
-    const { block, index } = removed;
+    const { block, index, placeholderAdded } = removed;
     removed = null;
     if (undoTimer !== null) {
       clearTimeout(undoTimer);
       undoTimer = null;
     }
     retireUndo();
-    const at = Math.min(index, current.blocks.length);
-    // Removing the last block inserts an empty one to write in; drop it again
-    // rather than leaving a stray blank above the restored block.
-    if (current.blocks.length === 1 && current.blocks[0].type === "text" && current.blocks[0].text === "") {
+    // Drop the placeholder only if we are the ones who added it, and do it
+    // before the index is clamped, or the restored block is appended past the
+    // end of an empty list and the placeholder is what survives.
+    if (placeholderAdded && current.blocks.length === 1) {
       current.blocks = [];
       blockKeys = [];
     }
+    const at = Math.min(index, current.blocks.length);
     current.blocks.splice(at, 0, block);
     blockKeys.splice(at, 0, newBlockKey());
     pendingFocus = { index: at, control: null };
