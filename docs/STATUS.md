@@ -10,14 +10,14 @@ Rewritten at the end of every working session. Keep under 40 lines.
 
 | Check | Result |
 |---|---|
-| `npm test` | 352 passing, 15 files |
-| `npm run test:e2e` | 8 scenarios passing |
+| `npm test` | 364 passing, 15 files |
+| `npm run test:e2e` | 9 scenarios passing |
 | `npm run package:check` | 31 files would ship |
 | `git diff --check` | clean |
 
 ## Done since 2.0.0
 
-Recorded in full in `docs/qa/runs/2026-09-27-desk-critique.md` and `...-ui-audit.md`, with the decisions in `docs/DECISIONS.md` 26 to 68. In short: one visual language across both surfaces; Return names the tab it looked in, answers on the quote it describes, and keeps what it found; destructive actions share one idiom that counts the cost, focuses the way out and closes on Escape; the draft reads as a document, with provenance promoted and plumbing concealed.
+Recorded in full in `docs/qa/runs/2026-09-27-desk-critique.md` and `...-ui-audit.md`, with the decisions in `docs/DECISIONS.md` 26 to 75. In short: one visual language across both surfaces; Return names the tab it looked in, answers on the quote it describes, and keeps what it found; destructive actions share one idiom that counts the cost, focuses the way out and closes on Escape; the draft reads as a document, with provenance promoted and plumbing concealed.
 
 **Four self-inflicted faults, each caught by measuring the running product and each fixed:** animations that never ran, a verdict appearing on a quote nobody checked, a Return that silently broke autosave, and a deleted clip whose quote went on claiming it was found. All four passed their original tests. Every replacement guard asserts a computed or stored value.
 
@@ -35,6 +35,7 @@ Recorded in full in `docs/qa/runs/2026-09-27-desk-critique.md` and `...-ui-audit
 
 Decided with the owner after round four, in this order:
 
-1. **Redesign the quote block's controls.** This is the deliberate pass the flat score calls for, not another round of patches. Return is 56px beside a 91px Remove; six chips compete in one block; `.btn-remove-block` and `.btn-insert-below` compute identically and Remove has no confirmation. Decision 52.
-2. Then the remaining round-four critique findings: non-modal confirmations and focus after destruction, the heading block holding prose out of view, the dead `.draft-title-input` CSS, and the 11px label scale.
-3. Do the manual QA above. Do not start Phase B. Do not tag or submit a release without the owner.
+1. ~~Redesign the quote block's controls.~~ **Done** (decisions 69 to 75): Return leads the block, the plumbing sits behind one options control, shortcuts are taught where they are used, and the pre-commit review caught a latent undo defect that could write one draft's quote into another.
+2. **Run a fifth critique** to measure whether the structural scores moved. Flexibility has been 1 for four rounds; this change targets it and aesthetics directly, and no score should be claimed until one is measured.
+3. Then the remaining round-four findings: non-modal confirmations and focus after a confirmed destruction, the heading block holding prose out of view, the dead `.draft-title-input` CSS, and the 11px label scale elsewhere on the Desk.
+4. Do the manual QA above. Do not start Phase B. Do not tag or submit a release without the owner.

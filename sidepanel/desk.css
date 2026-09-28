@@ -291,6 +291,7 @@ html {
 }
 
 .draft-block {
+  position: relative;
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--rule);
@@ -335,12 +336,93 @@ html {
   color: var(--muted);
 }
 
-.quote-actions,
-.block-actions {
+/* Where it came from and the way back to it, on one line. */
+.quote-source {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 9px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 9px 0 0 12px;
+}
+
+.quote-source .quote-cite {
+  flex: 1 1 14rem;
+  min-width: 0;
+  margin: 0;
+  /* A title with no spaces, a slug or a URL, would otherwise be an unbreakable
+     box wider than the block at phone widths. */
+  overflow-wrap: anywhere;
+}
+
+/* The source title is the link to the page, which is what a citation is. The
+   underline is quiet at rest so the title still reads as provenance first. */
+.quote-source-link {
+  /* It is now the only way to open the page, so it clears the 24px target
+     outright instead of leaning on the exemption for links in running text.
+     The negative margin keeps the line where it was. */
+  display: inline-block;
+  margin: -4px 0;
+  padding: 4px 0;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: rgba(244, 241, 239, 0.32);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--motion);
+}
+
+.quote-source-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.quote-source-link:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.quote-source-arrow {
+  margin-left: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Return is the reason a quote exists, and it was 56px of 11px type beside a
+   91px "Remove quote". It is now the one framed control the block carries at
+   rest, outlined in the gold of the quote's own rule because it is that
+   quote's way back. It leads by what surrounds it, not by volume: the solid
+   accent stays one control per surface. */
+.quote-block .btn-return {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 5px 13px 5px 10px;
+  border: 1px solid rgba(241, 198, 108, 0.5);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.quote-block .btn-return:hover:not(:disabled) {
+  border-color: var(--saved-border);
+  background: rgba(241, 198, 108, 0.09);
+}
+
+.quote-block .btn-return .return-glyph {
+  color: var(--saved-text);
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* The passage and the reader's own text keep clear of the options corner. */
+.quote-block .passage-text,
+.block-text {
+  padding-right: 34px;
 }
 
 .item-confirm {
@@ -537,34 +619,115 @@ html {
   line-height: 1.5;
 }
 
-/* A quote block carried six controls and a text block four, all of them on,
-   always. Two of the six are the product's verbs; the rest is list plumbing,
-   and the plumbing outnumbered the product two to one in every block. Return
-   and Open page stay; the plumbing appears when the block is touched or
-   focused, which is how a document editor behaves. */
-.block-actions {
-  opacity: 0;
-  /* Opacity alone left a fully transparent "Remove block" as the topmost hit
-     target at its own coordinates. Visibility takes it out of hit testing and
-     out of the accessibility tree while it is concealed. The row keeps its
-     height, so revealing it shifts nothing. */
-  visibility: hidden;
-  transition: opacity var(--motion);
+/* A quote block carried six equal chips and a text block four. The plumbing
+   now lives behind one quiet control per block. It is always present and
+   always hit-testable, so it can be found without hovering, which the old
+   reveal-on-hover row could not; it simply brightens when the block is in
+   use. */
+.block-options-toggle {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity var(--motion), background var(--motion), border-color var(--motion), color var(--motion);
 }
 
-.draft-block:hover .block-actions,
-.draft-block:focus-within .block-actions {
+.draft-block:hover .block-options-toggle,
+.draft-block:focus-within .block-options-toggle,
+.block-options-toggle[aria-expanded="true"] {
   opacity: 1;
-  visibility: visible;
 }
 
-/* Where there is no hover to reveal them, and in the stacked layout where a
-   reserved empty row is most of what you see, they stay. */
-@media (hover: none), (max-width: 959px) {
-  .block-actions {
+.block-options-toggle:hover,
+.block-options-toggle[aria-expanded="true"] {
+  border-color: var(--rule);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+@media (hover: none) {
+  .block-options-toggle {
     opacity: 1;
-    visibility: visible;
   }
+}
+
+.block-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+
+.block-options.just-opened {
+  animation: readtrail-settle var(--motion-dur) var(--ease-out);
+}
+
+.block-options button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+/* Each shortcut is taught where it is used. It lived only inside a help panel
+   that was closed on load. */
+.block-options kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Remove ends the row, set apart and in the colour that means it. It used to
+   compute to exactly the colour, border and background of the control beside
+   it. */
+.block-options .btn-remove-block {
+  margin-left: auto;
+  border-color: rgba(228, 98, 92, 0.4);
+  color: var(--error-text);
+}
+
+.block-options .btn-remove-block:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--error-surface);
+  color: var(--error-text);
+}
+
+/* On a narrow screen or a touch device the shortcuts are noise, and the row
+   wrapped into a staircase of chips of three different widths, each alone on
+   its line. Without the hints the buttons pair up and fill their lines. */
+@media (max-width: 520px), (hover: none) {
+  .block-options kbd {
+    display: none;
+  }
+
+  .block-options button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}
+
+.draft-undo-slot {
+  list-style: none;
 }
 
 /* How much of the argument still stands, before the reader sends it

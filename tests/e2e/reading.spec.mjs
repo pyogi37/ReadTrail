@@ -418,3 +418,84 @@ test("a save that cannot be tied to a live tab is refused", async () => {
   expect(await sendMessage(ext, { type: "savePassage", tabId, ...clip, text: "A later sentence." }))
     .toEqual({ ok: false, error: "invalid-sender" });
 });
+
+// The quote block's controls were redesigned around Return. Every assertion
+// here is on what the browser computed and hit-tests, because a stylesheet
+// that merely contains a rule proves nothing (decision 34). Verified to fail
+// when Remove is put back to computing exactly like the control beside it,
+// which is the defect the fourth critique measured.
+test("a quote block leads with Return and keeps its plumbing behind one control", async () => {
+  expect((await sendMessage(ext, { type: "clearLibrary" })).ok).toBe(true);
+  const url = `${articleUrl()}?case=controls`;
+  const source = await ext.context.newPage();
+  await source.goto(url);
+  await source.evaluate(() => {
+    const node = document.querySelector("#p20").firstChild;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, "Paragraph 20.".length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const tabId = await tabIdFor(ext.worker, url);
+  const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
+  expect((await sendMessage(ext, {
+    type: "savePassage", tabId, url, title: captured.title, text: captured.text, start: captured.start, end: captured.end
+  })).ok).toBe(true);
+
+  const desk = await ext.context.newPage();
+  await desk.setViewportSize({ width: 1280, height: 900 });
+  await desk.goto(deskUrl(ext.extensionId));
+  await desk.fill("#newDraftTitle", "Controls");
+  await desk.click("#newDraftButton");
+  await desk.locator("#pageList .page-summary").click();
+  await desk.locator("#pageList .btn-quote").click();
+  await expect(desk.locator(".quote-block .passage-text")).toHaveText("Paragraph 20.");
+  await desk.mouse.move(1270, 890);
+  await desk.evaluate(() => document.activeElement && document.activeElement.blur());
+
+  // At rest: the source, Return, and one control, each visible and each the
+  // topmost thing at its own centre. Nothing concealed may be a target.
+  const offered = await desk.locator(".quote-block").evaluate((block) => [...block.querySelectorAll("a[href], button")]
+    .filter((el) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return hit === el || el.contains(hit);
+    })
+    .map((el) => {
+      const r = el.getBoundingClientRect();
+      return { cls: el.classList[0], w: r.width, h: r.height };
+    }));
+  expect(offered.map((item) => item.cls)).toEqual(["quote-source-link", "btn-return", "block-options-toggle"]);
+  for (const item of offered) {
+    expect(item.w).toBeGreaterThanOrEqual(24);
+    expect(item.h).toBeGreaterThanOrEqual(24);
+  }
+  expect(offered[1].h).toBeGreaterThanOrEqual(32);
+  const closedDisplay = await desk.locator(".quote-block .block-options").evaluate((row) => getComputedStyle(row).display);
+  expect(closedDisplay).toBe("none");
+
+  // Open it with a real click. Remove must not compute like its neighbours.
+  await desk.locator(".quote-block .block-options-toggle").click();
+  await expect(desk.locator(".quote-block .block-options")).toBeVisible();
+  const colours = await desk.locator(".quote-block .block-options").evaluate((row) => ({
+    add: getComputedStyle(row.querySelector(".btn-insert-below")).color,
+    remove: getComputedStyle(row.querySelector(".btn-remove-block")).color,
+    addBorder: getComputedStyle(row.querySelector(".btn-insert-below")).borderTopColor,
+    removeBorder: getComputedStyle(row.querySelector(".btn-remove-block")).borderTopColor
+  }));
+  expect(colours.remove).not.toBe(colours.add);
+  expect(colours.removeBorder).not.toBe(colours.addBorder);
+
+  // Escape from inside the row closes it and hands focus back to the control.
+  await desk.locator(".quote-block .btn-insert-below").focus();
+  await desk.keyboard.press("Escape");
+  await expect(desk.locator(".quote-block .block-options")).toBeHidden();
+  await expect(desk.locator(".quote-block .block-options-toggle")).toBeFocused();
+  await expect(desk.locator(".quote-block .block-options-toggle")).toHaveAttribute("aria-expanded", "false");
+
+  await desk.close();
+  await source.close();
+});

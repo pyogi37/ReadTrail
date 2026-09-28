@@ -307,7 +307,8 @@ describe("ReadTrail Desk", () => {
 
     // The way back belongs where the block was, not at the top of a document
     // the reader may be a thousand pixels down.
-    expect(undo.parentElement.id).toBe("draftBlocks");
+    expect(undo.parentElement.tagName).toBe("LI");
+    expect(undo.parentElement.parentElement.id).toBe("draftBlocks");
     expect(document.activeElement).toBe(undo);
 
     undo.click();
@@ -454,6 +455,212 @@ describe("ReadTrail Desk", () => {
     expect(summary.dataset.state).toBe("mixed");
   });
 
+  // A quote block carried six equal chips; Return, the reason a quote exists,
+  // was the smallest of them. At rest it now offers its source, its way back,
+  // and one control for everything else.
+  it("offers only the source, Return, and one options control on a quote at rest", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock(), { type: "text", text: "mine" }] })] });
+    const quote = document.querySelector(".quote-block");
+    const offered = [...quote.querySelectorAll("a[href], button")].filter((el) => !el.closest("[hidden]"));
+    expect(offered.map((el) => el.className)).toEqual([
+      "quote-source-link btn-open-source",
+      "btn-return",
+      "block-options-toggle"
+    ]);
+
+    // The source title is a real link to the page, so it behaves like one.
+    const link = quote.querySelector(".quote-source-link");
+    expect(link.getAttribute("href")).toBe(quoteBlock().url);
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toContain("noopener");
+    expect(link.textContent).toContain("opens the page in a new tab");
+
+    // Two quotes of one page were two buttons both named "Return".
+    expect(quote.querySelector(".btn-return").getAttribute("aria-label"))
+      .toBe("Return to the passage quoted in block 1 of 2");
+  });
+
+  it("opens one block's options at a time, and Escape hands focus back", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock(), { type: "text", text: "mine" }] })] });
+    const [firstToggle, secondToggle] = document.querySelectorAll(".block-options-toggle");
+    const rowOf = (toggle) => document.getElementById(toggle.getAttribute("aria-controls"));
+    expect(firstToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(rowOf(firstToggle).hidden).toBe(true);
+
+    firstToggle.click();
+    expect(firstToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(rowOf(firstToggle).hidden).toBe(false);
+    // Each action says its shortcut where it is used, and exposes it to
+    // assistive technology too.
+    expect(rowOf(firstToggle).querySelector(".btn-move-down").getAttribute("aria-keyshortcuts")).toBe("Alt+ArrowDown");
+    expect(rowOf(firstToggle).querySelector(".btn-move-down kbd").textContent).toBe("Alt ↓");
+    // Each visible label begins its accessible name, so voice control can
+    // match what the reader sees.
+    expect(rowOf(firstToggle).querySelector(".btn-move-down").getAttribute("aria-label").startsWith("Move down")).toBe(true);
+
+    secondToggle.click();
+    expect(firstToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(rowOf(firstToggle).hidden).toBe(true);
+    expect(rowOf(secondToggle).hidden).toBe(false);
+
+    const inside = rowOf(secondToggle).querySelector(".btn-insert-below");
+    inside.focus();
+    inside.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(rowOf(secondToggle).hidden).toBe(true);
+    expect(document.activeElement).toBe(secondToggle);
+  });
+
+  it("keeps the options open on a moved block so the same move can be pressed again", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "a" }, { type: "text", text: "b" }, { type: "text", text: "c" }] })]
+    });
+    const third = document.querySelectorAll(".draft-block")[2];
+    third.querySelector(".block-options-toggle").click();
+    third.querySelector(".btn-move-up").click();
+
+    const moved = document.querySelectorAll(".draft-block")[1];
+    expect(moved.querySelector(".block-text").value).toBe("c");
+    expect(moved.querySelector(".block-options").hidden).toBe(false);
+    expect(document.activeElement).toBe(moved.querySelector(".btn-move-up"));
+  });
+
+  // A quote has no textarea, so a keyboard move asked for one, found nothing,
+  // and left focus on the page.
+  it("keeps focus on Return when a quote is moved from the keyboard", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [{ type: "text", text: "intro" }, quoteBlock()] })] });
+    const back = document.querySelector(".btn-return");
+    back.focus();
+    back.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", altKey: true, bubbles: true, cancelable: true }));
+
+    const first = document.querySelectorAll(".draft-block")[0];
+    expect(first.classList.contains("quote-block")).toBe(true);
+    expect(document.activeElement).toBe(first.querySelector(".btn-return"));
+  });
+
+  it("adds text below a quote from the keyboard, once", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
+    const back = document.querySelector(".btn-return");
+    back.focus();
+    back.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
+    const blocks = document.querySelectorAll(".draft-block");
+    expect(blocks).toHaveLength(2);
+    expect(blocks[1].classList.contains("text-block")).toBe(true);
+    expect(document.activeElement).toBe(blocks[1].querySelector(".block-text"));
+  });
+
+  it("puts Remove last in the row and marks it as the destructive one", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
+    const row = document.querySelector(".block-options");
+    const buttons = [...row.querySelectorAll("button")];
+    expect(buttons.at(-1).classList.contains("btn-remove-block")).toBe(true);
+    expect(buttons.at(-1).classList.contains("btn-danger")).toBe(true);
+    expect(buttons.slice(0, -1).every((button) => button.classList.contains("btn-ghost"))).toBe(true);
+    expect(buttons.at(-1).getAttribute("aria-label")).toBe("Remove quote in block 1 of 1");
+  });
+
+  // When the offer expired while it held focus, the reader was dropped to the
+  // top of the page with nothing said.
+  it("lands focus beside the gap when the undo offer expires", () => {
+    vi.useFakeTimers();
+    try {
+      loadDesk({
+        hash: "#/drafts/draft-1",
+        drafts: [draft({ blocks: [{ type: "text", text: "a" }, { type: "text", text: "b" }, { type: "text", text: "c" }] })]
+      });
+      document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+      const undo = document.querySelector("#draftUndo");
+      expect(document.activeElement).toBe(undo);
+
+      vi.advanceTimersByTime(13000);
+      expect(undo.hidden).toBe(true);
+      expect(document.querySelector(".draft-undo-slot")).toBeNull();
+      expect(document.activeElement).toBe(document.querySelectorAll(".draft-block")[1].querySelector(".block-options-toggle"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The offer belonged to no draft in particular, so leaving the draft carried
+  // it into the next one, where pressing it restored the old draft's block.
+  it("withdraws the undo offer when the reader opens another draft", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-a",
+      drafts: [
+        draft({ id: "draft-a", title: "Draft A", blocks: [{ type: "text", text: "a1" }, quoteBlock()] }),
+        draft({ id: "draft-b", title: "Draft B", blocks: [{ type: "text", text: "b1" }] })
+      ]
+    });
+    document.querySelector(".quote-block .btn-remove-block").click();
+    const undo = document.querySelector("#draftUndo");
+    expect(undo.hidden).toBe(false);
+
+    document.querySelector('.draft-row[data-id="draft-b"] .draft-open').click();
+    expect(undo.hidden).toBe(true);
+    expect(document.querySelector(".draft-undo-slot")).toBeNull();
+
+    // Even a press that somehow reached it must not write A's quote into B.
+    undo.click();
+    expect(document.querySelectorAll(".quote-block")).toHaveLength(0);
+    globalThis.ReadTrailSidePanel.draftView.flushSave();
+    const writesToB = h.messages.filter((m) => m.type === "updateDraft" && m.id === "draft-b");
+    expect(writesToB.every((m) => m.blocks.every((b) => b.type !== "quote"))).toBe(true);
+  });
+
+  // On a link, Ctrl or Command with Enter opens it in a background tab. The
+  // source title became a link, so the block must leave that gesture alone.
+  it("leaves Ctrl and Enter on the source link to the browser", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
+    const link = document.querySelector(".quote-source-link");
+    link.focus();
+    const event = new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true });
+    link.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(1);
+  });
+
+  // A disclosure animates when it is opened, never when a render recreates it
+  // already open, or every Move press drops the row in again.
+  it("animates the options row on opening only, not on the rebuild a move causes", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "a" }, { type: "text", text: "b" }] })]
+    });
+    const second = document.querySelectorAll(".draft-block")[1];
+    second.querySelector(".block-options-toggle").click();
+    expect(second.querySelector(".block-options").classList.contains("just-opened")).toBe(true);
+
+    second.querySelector(".btn-move-up").click();
+    const moved = document.querySelectorAll(".draft-block")[0];
+    expect(moved.querySelector(".block-options").hidden).toBe(false);
+    expect(moved.querySelector(".block-options").classList.contains("just-opened")).toBe(false);
+  });
+
+  it("keeps focus in the open row when a keyboard move reaches an edge", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "a" }, { type: "text", text: "b" }] })]
+    });
+    const second = document.querySelectorAll(".draft-block")[1];
+    second.querySelector(".block-options-toggle").click();
+    const up = second.querySelector(".btn-move-up");
+    up.focus();
+    up.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", altKey: true, bubbles: true, cancelable: true }));
+
+    // Now first, so Move up is disabled; focus takes the inverse rather than
+    // falling out of the row to the writing area.
+    const moved = document.querySelectorAll(".draft-block")[0];
+    expect(moved.querySelector(".block-text").value).toBe("b");
+    expect(document.activeElement).toBe(moved.querySelector(".btn-move-down"));
+  });
+
+  it("returns focus to Return, not the citation link, when a quote is restored", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [{ type: "text", text: "a" }, quoteBlock()] })] });
+    document.querySelector(".quote-block .btn-remove-block").click();
+    document.querySelector("#draftUndo").click();
+    expect(document.activeElement).toBe(document.querySelector(".quote-block .btn-return"));
+  });
+
   it("moves a block with Alt and an arrow, keeping the caret in it", () => {
     loadDesk({
       hash: "#/drafts/draft-1",
@@ -491,7 +698,10 @@ describe("ReadTrail Desk", () => {
       drafts: [draft({ blocks: [{ type: "text", text: "one" }, { type: "text", text: "two" }] })]
     });
     document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
-    expect(document.querySelector("#draftUndo").parentElement.id).toBe("draftBlocks");
+    // It sits in the gap the block left, inside a list item: a bare button
+    // in an <ol> is a list child a screen reader cannot count as an item.
+    expect(document.querySelector("#draftUndo").parentElement.tagName).toBe("LI");
+    expect(document.querySelector("#draftUndo").parentElement.parentElement.id).toBe("draftBlocks");
 
     // A storage change fires in the page that caused it, so the Desk reloads
     // after its own save. Rebuilding then took the caret out of the block the

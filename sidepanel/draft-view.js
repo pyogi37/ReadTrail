@@ -32,6 +32,11 @@
   let pendingFocus = null; // { index, control } restored after a re-render
   let removed = null;      // { block, index } while the undo offer stands
   let undoTimer = null;
+  let undoSlot = null;     // the list item the undo offer sits in
+  // Which block's options are open, by its stable key. Held here and rendered
+  // from state, because the block list is rebuilt on every move and anything
+  // kept only in the DOM would be wiped by the next render.
+  let openOptionsKey = null;
   let reloadTimer = null;
   let statusTimer = null;
   // A verdict is evidence about one press on one block. The same clip can be
@@ -164,14 +169,19 @@
         load(() => openDraft(id, { ...options, reloaded: true }));
         return;
       }
+      withdrawUndo();
       current = null;
       renderIndex();
       renderEditor();
       setStatus("That draft no longer exists. Choose one from the list, or start a new question.", "alert");
       return;
     }
+    // An undo offer is about a block in the draft being left. Carried over, it
+    // appeared in the next draft and restored the old draft's block into it.
+    withdrawUndo();
     current = JSON.parse(JSON.stringify(draft));
     resetBlockKeys(current.blocks.length);
+    openOptionsKey = null;
     dirty = false;
     setSaveState("");
     retryFailedSave(id);
@@ -185,6 +195,7 @@
   function closeDraft(options = {}) {
     flushSave();
     stashCurrent();
+    withdrawUndo();
     current = null;
     renderIndex();
     renderEditor();
@@ -486,17 +497,57 @@
     restoreFocus();
   }
 
+  // The rendered block at a position. The list can also hold the undo slot, so
+  // counting raw children put focus, and a Return answer, on the wrong block
+  // whenever an undo was on offer above it.
+  function blockNode(index) {
+    if (!els || !els.blocks) return null;
+    let seen = -1;
+    for (const child of els.blocks.children) {
+      if (!child.classList.contains("draft-block")) continue;
+      seen += 1;
+      if (seen === index) return child;
+    }
+    return null;
+  }
+
   function restoreFocus() {
     if (!pendingFocus) return;
     const { index, control } = pendingFocus;
     pendingFocus = null;
-    const item = els.blocks.children[index];
+    const item = blockNode(index);
     if (!item) return;
     // The whole list was rebuilt; mark just this one so the reader can see
     // which block moved or arrived.
     item.classList.add("just-changed");
-    const target = control ? item.querySelector(control) : item.querySelector("textarea, button");
+    // A quote block has no textarea, so a keyboard move asked for one and found
+    // nothing, and focus fell to the page. Fall back to the block's first
+    // control rather than losing the reader's place.
+    // The fallback prefers what the block is for: the writing area, then
+    // Return. The citation link opens a page, so landing there by default
+    // turned the next Enter into a new tab.
+    const target = (control && item.querySelector(`${control}:not(:disabled)`))
+      || item.querySelector("textarea")
+      || item.querySelector(".btn-return:not(:disabled)")
+      || item.querySelector("a[href], button:not(:disabled)");
     if (target && typeof target.focus === "function") target.focus();
+  }
+
+  // The control a keyboard move should come back to, so Alt+Up pressed on
+  // Return leaves the reader on Return in the block's new place.
+  const RETURNABLE = ["btn-return", "btn-open-source", "block-options-toggle",
+    "btn-move-up", "btn-move-down", "btn-insert-below", "btn-remove-block"];
+  function controlSelector(element) {
+    if (!element || !element.classList) return null;
+    const name = RETURNABLE.find((cls) => element.classList.contains(cls));
+    return name ? `.${name}` : null;
+  }
+
+  const ON_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || "");
+  function shortcutLabel(kind) {
+    if (kind === "up") return "Alt ↑";
+    if (kind === "down") return "Alt ↓";
+    return ON_MAC ? "⌘ ↵" : "Ctrl ↵";
   }
 
   function blockLabel(block, index) {
@@ -504,59 +555,126 @@
     return block.type === "quote" ? `${position}, quote from ${block.title || hostOf(block.url)}` : `${position}, your text`;
   }
 
+  // Moves and inserts from any control in a block, so the shortcuts the options
+  // row advertises are true wherever focus is. A textarea handles and stops its
+  // own keys, so nothing it owns arrives here.
   function bindBlockKeys(node, index) {
     node.addEventListener("keydown", (event) => {
-      if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
-      event.preventDefault();
-      moveBlock(index, event.key === "ArrowUp" ? -1 : 1, true);
+      if (event.defaultPrevented) return;
+      if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+        event.preventDefault();
+        moveBlock(index, event.key === "ArrowUp" ? -1 : 1, true, controlSelector(event.target));
+        return;
+      }
+      // On a link, Ctrl or Command with Enter opens it in a background tab.
+      // The source title is a link now, and that gesture belongs to the reader.
+      if (event.target && event.target.closest && event.target.closest("a[href]")) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        insertTextBlock(index + 1);
+      }
     });
   }
 
-  function blockActions(block, index) {
-    const actions = document.createElement("div");
-    actions.className = "block-actions";
+  // One quiet control per block holds the list plumbing. A quote block used to
+  // carry six equal chips and a text block four, so the product's two verbs
+  // were outnumbered by reordering, and "Remove" computed identically to the
+  // control beside it. The row opens on request, names each shortcut so it can
+  // be learned where it is used, and keeps Remove apart in the colour that
+  // means it. Each visible label starts its accessible name, so a reader who
+  // says "Move up" to voice control is heard.
+  function blockOptions(block, index) {
+    const key = blockKeys[index];
+    const total = current.blocks.length;
+    const position = `block ${index + 1} of ${total}`;
+    const rowId = `block-options-${key}`;
+    const open = openOptionsKey === key;
+    const subject = block.type === "quote" ? `the quote in ${position}` : position;
 
-    // Without a per-block name a screen reader hears "Move up, button" once
-    // per block with nothing telling them apart.
-    const position = `block ${index + 1} of ${current.blocks.length}`;
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "block-options-toggle";
+    toggle.setAttribute("aria-label", `Options for ${subject}`);
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-controls", rowId);
+    const glyph = document.createElement("span");
+    glyph.setAttribute("aria-hidden", "true");
+    glyph.textContent = "⋯";
+    toggle.appendChild(glyph);
 
-    const up = document.createElement("button");
-    up.type = "button";
-    up.className = "btn-ghost btn-small btn-move-up";
-    up.textContent = "Move up";
-    up.setAttribute("aria-label", `Move ${position} up`);
+    const row = document.createElement("div");
+    row.className = "block-options";
+    row.id = rowId;
+    row.setAttribute("role", "group");
+    row.setAttribute("aria-label", `Options for ${subject}`);
+    row.hidden = !open;
+
+    const action = (className, label, name, shortcut, keys, onClick) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = className;
+      button.setAttribute("aria-label", name);
+      const text = document.createElement("span");
+      text.textContent = label;
+      button.appendChild(text);
+      if (shortcut) {
+        const kbd = document.createElement("kbd");
+        kbd.setAttribute("aria-hidden", "true");
+        kbd.textContent = shortcut;
+        button.appendChild(kbd);
+        button.setAttribute("aria-keyshortcuts", keys);
+      }
+      button.addEventListener("click", onClick);
+      row.appendChild(button);
+      return button;
+    };
+
+    const up = action("btn-ghost btn-move-up", "Move up", `Move up, ${position}`,
+      shortcutLabel("up"), "Alt+ArrowUp", () => moveBlock(index, -1));
     up.disabled = index === 0;
-    up.addEventListener("click", () => moveBlock(index, -1));
+    const down = action("btn-ghost btn-move-down", "Move down", `Move down, ${position}`,
+      shortcutLabel("down"), "Alt+ArrowDown", () => moveBlock(index, 1));
+    down.disabled = index === total - 1;
+    action("btn-ghost btn-insert-below", "Add text below", `Add text below ${position}`,
+      shortcutLabel("insert"), "Control+Enter Meta+Enter", () => insertTextBlock(index + 1));
+    action("btn-danger btn-remove-block",
+      block.type === "quote" ? "Remove quote" : "Remove block",
+      block.type === "quote" ? `Remove quote in ${position}` : `Remove block ${index + 1} of ${total}`,
+      null, null, () => removeBlock(index));
 
-    const down = document.createElement("button");
-    down.type = "button";
-    down.className = "btn-ghost btn-small btn-move-down";
-    down.textContent = "Move down";
-    down.setAttribute("aria-label", `Move ${position} down`);
-    down.disabled = index === current.blocks.length - 1;
-    down.addEventListener("click", () => moveBlock(index, 1));
-
-    const insert = document.createElement("button");
-    insert.type = "button";
-    insert.className = "btn-ghost btn-small btn-insert-below";
-    insert.textContent = "Insert text below";
-    insert.setAttribute("aria-label", `Insert a text block below ${position}`);
-    insert.addEventListener("click", () => insertTextBlock(index + 1));
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "btn-danger btn-small btn-remove-block";
-    remove.textContent = block.type === "quote" ? "Remove quote" : "Remove block";
-    remove.setAttribute("aria-label", block.type === "quote"
-      ? `Remove the quote in ${position}`
-      : `Remove ${position}`);
-    remove.addEventListener("click", () => removeBlock(index));
-
-    actions.appendChild(up);
-    actions.appendChild(down);
-    actions.appendChild(insert);
-    actions.appendChild(remove);
-    return actions;
+    const close = (returnFocus) => {
+      if (openOptionsKey === key) openOptionsKey = null;
+      toggle.setAttribute("aria-expanded", "false");
+      row.hidden = true;
+      if (returnFocus) toggle.focus();
+    };
+    toggle.addEventListener("click", () => {
+      if (openOptionsKey === key) {
+        close(false);
+        return;
+      }
+      // One block's options at a time: a column of open rows is the clutter
+      // this replaced.
+      for (const other of els.blocks.querySelectorAll('.block-options-toggle[aria-expanded="true"]')) {
+        other.setAttribute("aria-expanded", "false");
+        const otherRow = document.getElementById(other.getAttribute("aria-controls"));
+        if (otherRow) otherRow.hidden = true;
+      }
+      openOptionsKey = key;
+      toggle.setAttribute("aria-expanded", "true");
+      // Set here and never during a render, so a row rebuilt already open by a
+      // move does not drop in again on every press.
+      row.classList.add("just-opened");
+      row.hidden = false;
+    });
+    const onEscape = (event) => {
+      if (event.key !== "Escape" || row.hidden) return;
+      event.preventDefault();
+      close(true);
+    };
+    toggle.addEventListener("keydown", onEscape);
+    row.addEventListener("keydown", onEscape);
+    return { toggle, row };
   }
 
   function textBlockNode(block, index) {
@@ -582,14 +700,19 @@
     };
     // The only accelerators on this surface. Placing a quote used to mean
     // pressing "Move up" once per position with the mouse.
+    // The textarea owns these keys. Its handler rebuilds the list, and the same
+    // event still bubbling to the block would move or insert a second time, so
+    // the owner stops it rather than the block guessing where it came from.
     area.addEventListener("keydown", (event) => {
       if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         event.preventDefault();
+        event.stopPropagation();
         moveBlock(index, event.key === "ArrowUp" ? -1 : 1, true);
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
+        event.stopPropagation();
         insertTextBlock(index + 1);
       }
     });
@@ -601,7 +724,10 @@
     syncHeading();
     li.appendChild(semanticHeading);
     li.appendChild(area);
-    li.appendChild(blockActions(block, index));
+    const { toggle, row } = blockOptions(block, index);
+    li.appendChild(toggle);
+    li.appendChild(row);
+    bindBlockKeys(li, index);
     return li;
   }
 
@@ -616,17 +742,6 @@
     quote.className = "passage-text";
     quote.textContent = block.text;
     li.appendChild(quote);
-
-    const cite = document.createElement("p");
-    cite.className = "quote-cite";
-    cite.textContent = block.title || hostOf(block.url);
-    if (block.title && hostOf(block.url)) {
-      const host = document.createElement("span");
-      host.className = "quote-cite-host";
-      host.textContent = ` · ${hostOf(block.url)}`;
-      cite.appendChild(host);
-    }
-    li.appendChild(cite);
 
     // Return's answer belongs on the quote it is about, not in a line above
     // the whole document where it is off-screen in any real draft.
@@ -647,34 +762,65 @@
     } else {
       verdict.hidden = true;
     }
-    li.appendChild(verdict);
 
-    const row = document.createElement("div");
-    row.className = "quote-actions";
+    // Where it came from and the way back to it, together. The source title is
+    // the link to the page, which is what a citation is; that took a chip away.
+    // Return is then the one framed button a quote carries, so it leads the
+    // block by what surrounds it rather than by being louder.
+    const source = document.createElement("div");
+    source.className = "quote-source";
+    const cite = document.createElement("p");
+    cite.className = "quote-cite";
+    const label = block.title || hostOf(block.url);
+    if (/^https?:\/\//i.test(block.url)) {
+      const link = document.createElement("a");
+      link.className = "quote-source-link btn-open-source";
+      link.href = block.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.appendChild(document.createTextNode(label));
+      const arrow = document.createElement("span");
+      arrow.className = "quote-source-arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "↗";
+      link.appendChild(arrow);
+      const hint = document.createElement("span");
+      hint.className = "visually-hidden";
+      hint.textContent = " (opens the page in a new tab)";
+      link.appendChild(hint);
+      cite.appendChild(link);
+    } else {
+      cite.appendChild(document.createTextNode(label));
+    }
+    if (block.title && hostOf(block.url)) {
+      const host = document.createElement("span");
+      host.className = "quote-cite-host";
+      host.textContent = ` · ${hostOf(block.url)}`;
+      cite.appendChild(host);
+    }
+    source.appendChild(cite);
 
     if (!(block.checked && block.checked.reason === "clip-gone")) {
       const back = document.createElement("button");
       back.type = "button";
-      back.className = "btn-small btn-return";
-      back.textContent = "Return";
+      back.className = "btn-return";
+      // Two quotes of one page used to be two buttons both named "Return".
+      back.setAttribute("aria-label", `Return to the passage quoted in block ${index + 1} of ${current.blocks.length}`);
+      const mark = document.createElement("span");
+      mark.className = "return-glyph";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = "↩";
+      back.appendChild(mark);
+      back.appendChild(document.createTextNode("Return"));
       back.addEventListener("click", () => returnToClip(block, index, back, verdict));
-      row.appendChild(back);
+      source.appendChild(back);
     }
+    li.appendChild(source);
+    li.appendChild(verdict);
 
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "btn-ghost btn-small btn-open-source";
-    open.textContent = "Open page";
-    open.addEventListener("click", () => {
-      try {
-        chrome.tabs.create({ url: block.url });
-      } catch (_) {
-        setStatus("That page could not be opened.", "alert");
-      }
-    });
-    row.appendChild(open);
+    const { toggle, row } = blockOptions(block, index);
+    li.appendChild(toggle);
     li.appendChild(row);
-    li.appendChild(blockActions(block, index));
     // A quote block has no textarea, so without this the only block class that
     // always lands at the end had no keyboard move.
     bindBlockKeys(li, index);
@@ -709,7 +855,7 @@
       if (!target || target.type !== "quote" || target.passageId !== passageId) return;
       // The block list may have been rebuilt, which leaves the element captured
       // above detached, so write to the one on screen now.
-      const row = els && els.blocks ? els.blocks.children[at] : null;
+      const row = blockNode(at);
       const live = (row && row.querySelector(".quote-verdict")) || verdict;
       if (!res || !res.ok) {
         verdicts.delete(key);
@@ -792,16 +938,31 @@
 
   // --- Block operations ---
 
-  function moveBlock(index, delta, movedByKeyboard = false) {
+  function moveBlock(index, delta, movedByKeyboard = false, focusControl = null) {
     const target = index + delta;
     if (target < 0 || target >= current.blocks.length) return;
     const [movedKey] = blockKeys.splice(index, 1);
     blockKeys.splice(target, 0, movedKey);
     const [block] = current.blocks.splice(index, 1);
     current.blocks.splice(target, 0, block);
-    // The control for repeating the same move is disabled at an edge, so put
-    // focus on the enabled inverse control after the block is rebuilt.
-    pendingFocus = { index: target, control: movedByKeyboard ? "textarea" : (delta < 0 ? ".btn-move-down" : ".btn-move-up") };
+    const atEdge = delta < 0 ? target === 0 : target === current.blocks.length - 1;
+    let control;
+    if (movedByKeyboard) {
+      control = focusControl || "textarea";
+      // The control that made the move is disabled at an edge, and focus would
+      // otherwise fall out of the open row to the block's first control.
+      if (atEdge && control === ".btn-move-up") control = ".btn-move-down";
+      else if (atEdge && control === ".btn-move-down") control = ".btn-move-up";
+    } else {
+      // A move made from the options row keeps that row open on the block it
+      // moved, so the same control can be pressed again. At an edge that
+      // control is disabled, so focus goes to its inverse instead.
+      openOptionsKey = movedKey;
+      const same = delta < 0 ? ".btn-move-up" : ".btn-move-down";
+      const inverse = delta < 0 ? ".btn-move-down" : ".btn-move-up";
+      control = atEdge ? inverse : same;
+    }
+    pendingFocus = { index: target, control };
     renderBlocks();
     announce(`Moved to position ${target + 1} of ${current.blocks.length}.`);
     scheduleSave();
@@ -819,6 +980,8 @@
     }
     current.blocks.splice(index, 0, { type: "text", text: "" });
     blockKeys.splice(index, 0, newBlockKey());
+    // The reader is writing now, so the options they came from close.
+    openOptionsKey = null;
     pendingFocus = { index, control: "textarea" };
     renderBlocks();
     scheduleSave();
@@ -828,6 +991,7 @@
     const block = current.blocks[index];
     const [removedKey] = blockKeys.splice(index, 1);
     verdicts.delete(removedKey);
+    if (openOptionsKey === removedKey) openOptionsKey = null;
     current.blocks.splice(index, 1);
     // Emptying the list inserts somewhere to write. Remember that we did, so
     // undo can drop it again without mistaking an empty block the reader
@@ -854,9 +1018,15 @@
   function placeUndo() {
     if (!els || !els.undo) return;
     if (!removed) return;
-    const at = Math.min(removed.index, els.blocks.children.length);
-    const neighbour = els.blocks.children[at] || null;
-    els.blocks.insertBefore(els.undo, neighbour);
+    // A list may only contain list items. The offer used to sit in the <ol> as
+    // a bare button, so a screen reader walking the list met a non-item.
+    if (!undoSlot) {
+      undoSlot = document.createElement("li");
+      undoSlot.className = "draft-undo-slot";
+    }
+    undoSlot.appendChild(els.undo);
+    const at = Math.min(removed.index, current ? current.blocks.length : 0);
+    els.blocks.insertBefore(undoSlot, blockNode(at));
     els.undo.hidden = false;
   }
 
@@ -872,15 +1042,39 @@
     els.undo.focus();
     undoTimer = setTimeout(() => {
       undoTimer = null;
+      const index = removed ? removed.index : 0;
       removed = null;
-      retireUndo();
+      // Hiding the offer while it held focus dropped the reader to the top of
+      // the page, with nothing said. Land them beside the gap instead.
+      if (retireUndo()) focusNear(index);
     }, UNDO_WINDOW_MS);
   }
 
+  // Ends the offer outright, for when the draft it belongs to is left.
+  function withdrawUndo() {
+    if (undoTimer !== null) {
+      clearTimeout(undoTimer);
+      undoTimer = null;
+    }
+    removed = null;
+    retireUndo();
+  }
+
+  // Returns whether the offer held focus when it was withdrawn.
   function retireUndo() {
-    if (!els || !els.undo) return;
+    if (!els || !els.undo) return false;
+    const hadFocus = document.activeElement === els.undo;
     els.undo.hidden = true;
     if (els.undoHome && els.undo.parentNode !== els.undoHome) els.undoHome.appendChild(els.undo);
+    if (undoSlot && undoSlot.parentNode) undoSlot.parentNode.removeChild(undoSlot);
+    return hadFocus;
+  }
+
+  function focusNear(index) {
+    const count = current ? current.blocks.length : 0;
+    const node = blockNode(Math.min(index, count - 1)) || blockNode(index - 1);
+    const target = (node && node.querySelector(".block-options-toggle")) || (els && els.append);
+    if (target && typeof target.focus === "function") target.focus();
   }
 
   function undoRemove() {
