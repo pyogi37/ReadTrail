@@ -1,21 +1,21 @@
 # Chrome Web Store: Permission Justifications
 
-Paste these into the "Privacy practices" tab of the developer dashboard. Keep them in sync with `manifest.json` and `PRIVACY.md`.
+Paste these into the "Privacy practices" tab of the developer dashboard. Keep them in sync with `manifest.json` and `PRIVACY.md`. Written for 2.0.0, the first submitted release.
 
 ## Single purpose
 
-ReadTrail helps people read long pages in the browser: it follows the current line, lets the reader pause at an exact place, and remembers that place for pages the reader chooses to save.
+ReadTrail is a reading companion that stays on the reader's device: it follows the line the reader is on, lets them pause at an exact place and return to pages they chose to save, and lets them keep passages, notes and their own writing alongside the sources those passages came from.
 
 ## Permission justifications
 
 **storage**
-Stores the reader's appearance preferences and the pages they explicitly saved (URL, title, and a structural reading position) in `chrome.storage.local` on the device. Temporary per-tab reading state lives in `chrome.storage.session` and is erased when Chrome closes. Nothing is synced or transmitted.
+Stores the reader's appearance preferences; the pages they explicitly saved (URL, title, and a structural reading position); passages, notes and tags they explicitly saved; and drafts they write, each quote inside a draft carrying the passage, source and position it came from. All of it in `chrome.storage.local` on the device. Temporary per-tab reading state, and the tab id a clip was taken from, live in `chrome.storage.session` and are erased when Chrome closes. Nothing is synced or transmitted.
 
 **activeTab**
 Used by the side panel to identify the URL and title of the tab the reader is currently looking at, so the panel can show and control ReadTrail for that page. No page content is read through this permission.
 
 **sidePanel**
-ReadTrail's only user interface is a Chrome side panel with the current-page controls, saved pages, and the "recently closed" list. Clicking the toolbar icon opens it.
+ReadTrail's current-page controls and library live in a Chrome side panel, opened from the toolbar icon. The panel can also open the Desk, a full browser tab for writing drafts beside the sources they draw on.
 
 **contextMenus**
 Adds one item, "Save selection to ReadTrail", so a reader can keep a passage from a page they are reading. The selection is stored only when the reader chooses this item.
@@ -25,17 +25,17 @@ The reading guide must be able to run on whichever page the reader decides to us
 
 ## Remote code
 
-None. All JavaScript ships inside the package. There is no eval, no remote script loading, and no network request in version 1.0.
+None. All JavaScript ships inside the package. There is no eval, no remote script loading, and no network request in 2.0.0.
 
-## Data usage disclosure (1.0)
+## Data usage disclosure (2.0.0)
 
 - Personally identifiable information: not collected.
 - Health, financial, authentication information: not collected.
 - Personal communications: not collected.
 - Location: not collected.
-- Web history: **not collected**. A page URL is stored on the device only for a page the reader explicitly acts on: a tab they turned ReadTrail on for, a page they saved, a page they clipped from, or the tab that clip is open in (the last two are session-only and erased when Chrome closes). No list of visited pages is built, and nothing is ever transmitted.
+- Web history: **not collected**. A page URL is stored on the device only for a page the reader explicitly acts on: a tab they turned ReadTrail on for, a page they saved, a page they clipped a passage from, or the tab that clip is open in. The tab-of-origin record is session-only and erased when the tab closes or Chrome does. No list of visited pages is built, and nothing is ever transmitted.
 - User activity: not collected. Click and pointer events are used live to draw the guide and are not logged.
-- Website content: **stored on the device only when the reader explicitly saves a passage**. Never transmitted.
+- Website content: **stored on the device only when the reader explicitly saves a passage, writes a note, or writes a draft**. A draft's quotes carry the passage text the reader already saved; nothing further is read from the page to build them. Never transmitted.
 
 Certifications: data is not sold, not used for purposes unrelated to the single purpose, and not used for creditworthiness or lending.
 
