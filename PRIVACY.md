@@ -1,6 +1,6 @@
 # ReadTrail Privacy Policy
 
-_Last updated: 2026-09-27. Describes ReadTrail as it currently behaves; the release it ships with is named in the changelog._
+_Last updated: 2026-10-09. Describes ReadTrail as it currently behaves; the release it ships with is named in the changelog._
 
 ReadTrail is a Chrome extension that helps you follow the current line while reading, pause at an exact place, and return to pages you deliberately save. It is built local-first: everything it stores stays in your Chrome profile on your device.
 
@@ -38,7 +38,9 @@ The reading position never contains page text. It stores a path of child-node in
 ## Deleting your data
 
 - Remove one saved page, passage, or note from the side panel.
-- **Clear all** removes every saved page (and, when you choose, passages and notes) from this device.
+- Under **Import, export, and clear**, in the side panel and on the Desk, two controls each ask you to confirm first:
+  - **Clear saved places** removes every saved page: its URL, title, and reading position. Passages, notes, tags, drafts, and settings stay.
+  - **Clear page content** removes every saved passage, note, and page tag. Saved pages, drafts, and settings stay. A draft keeps the text of any passage quoted into it; remove the draft on the Desk to delete that text.
 - Reset to defaults in Settings restores default preferences.
 - Uninstalling ReadTrail removes everything it stored.
 

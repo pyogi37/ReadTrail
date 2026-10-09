@@ -4,6 +4,10 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 
 ## [Unreleased]
 
+### Fixed
+
+- The privacy policy described a **Clear all** button that no reader can reach. It now names the two controls the side panel and the Desk actually show, **Clear saved places** and **Clear page content**, and says exactly what each removes and keeps, including that neither removes drafts or the passage text quoted in them.
+
 ### Planned
 
 - Optional AI actions (summaries, tag and connection suggestions) using the reader's own Anthropic API key. Off unless a key is added.
