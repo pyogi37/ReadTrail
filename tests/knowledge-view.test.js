@@ -242,7 +242,9 @@ if (typeof globalThis.URL.revokeObjectURL !== "function") {
 
 
 describe("motion", () => {
-  const css = readSource("sidepanel/sidepanel.css");
+  // A Windows checkout with core.autocrlf has CRLF line endings; the block
+  // below is found by its "}\n}" ending.
+  const css = readSource("sidepanel/sidepanel.css").replace(/\r\n/g, "\n");
 
   // The reader's setting has to switch off animations, not only transitions.
   // The blanket rule used to cover transitions alone, so any animation added
