@@ -28,7 +28,7 @@ Recorded in full in `docs/qa/runs/2026-09-27-desk-critique.md` and `...-ui-audit
 1. ~~No independent review of the whole Phase A diff.~~ **Done.** Codex reviewed `b49e2da`: eight findings, four P1, plus confirmation of decision 50. All verified here, all fixed, none retracted. Decisions 60 to 68.
 2. `docs/store/PERMISSIONS.md` still labels its disclosure "(1.0)" and the AI phase "1.1" while the package is 2.0.0. Store copy the owner approves.
 3. Carried over: approve store copy, take screenshots. `main` is pushed; GitHub Pages is live and both URLs were checked by the owner, so the privacy policy URL for the store form is `https://pyogi37.github.io/ReadTrail/privacy-policy`.
-4. Both privacy files described an unreachable **Clear all**; they now name **Clear saved places** and **Clear page content** and what each keeps (drafts survive both). Committed at the owner's request, not pushed. `docs/store/LISTING.md`'s "clear everything" is still inaccurate and is store copy for the owner.
+4. Both privacy files described an unreachable **Clear all**; they now name **Clear saved places** and **Clear page content** and what each keeps (drafts survive both). Pushed and live on Pages. `docs/store/LISTING.md` no longer promises "clear everything"; it names the two clears, at the owner's request.
 
 **Manual QA genuinely not done:** a real screen reader, Windows high contrast, physical 200% zoom, touch hardware, real third-party articles. Restart persistence is done, and the owner has run the incognito check the harness cannot (decision 55), so both of those are closed. Every automated pass is Playwright Chromium against a local fixture. Unexercised by any critique round: library search, the tags browser, import/export, both Clear buttons, the options page.
 
