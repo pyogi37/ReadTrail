@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -12,6 +12,7 @@ const sources = [
   "shared/validators.js",
   "sidepanel/search-index.js",
   "sidepanel/export-import.js",
+  "sidepanel/draft-markdown.js",
   "sidepanel/knowledge-view.js",
   "sidepanel/draft-view.js",
   "sidepanel/desk.js"
@@ -905,5 +906,108 @@ describe("ReadTrail Desk", () => {
     expect(document.querySelector("#sourcesPane").getAttribute("aria-labelledby")).toBe("sourcesTab");
     expect(document.querySelector("#draftPane").getAttribute("role")).toBe("tabpanel");
     expect(document.querySelector("#draftPane").getAttribute("aria-labelledby")).toBe("draftTab");
+  });
+
+  // --- Taking the draft out (Sprint 009) ---
+
+  // Microtasks only: a timer here lets the hashchange listeners of earlier
+  // Desk instances in this file fire first and re-open the draft, which
+  // clears the status line that the assertion is about.
+  const settle = async () => {
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  };
+  const withClipboard = (impl) => {
+    const writeText = vi.fn(impl);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    return writeText;
+  };
+  const withoutClipboard = () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  };
+  // A failed assertion must not leave a stub clipboard for the tests after it.
+  afterEach(withoutClipboard);
+
+  it("copies the draft on screen as Markdown, unsaved edits included, and says so", async () => {
+    const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock(), { type: "text", text: "mine" }] })] });
+    const writeText = withClipboard(() => Promise.resolve());
+    const area = document.querySelector(".block-text");
+    area.value = "Edited, not yet saved.";
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+    const sent = h.messages.length;
+
+    document.querySelector("#draftCopyMarkdown").click();
+    await settle();
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const markdown = writeText.mock.calls[0][0];
+    expect(markdown.startsWith("# Working question\n\n> A useful piece of evidence.\n>\n> — Source page [1]\n\nEdited, not yet saved.\n\n## Sources\n")).toBe(true);
+    const status = document.querySelector("#draftStatus");
+    expect(status.textContent).toBe("Copied the draft as Markdown.");
+    expect(status.getAttribute("role")).toBe("status");
+    // Nothing is read from a page or written anywhere to produce the text.
+    expect(h.messages.length).toBe(sent);
+    withoutClipboard();
+  });
+
+  it("says so with an alert, and names the download, when the clipboard is missing or refuses", async () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock()] })] });
+    const status = document.querySelector("#draftStatus");
+
+    withoutClipboard();
+    document.querySelector("#draftCopyMarkdown").click();
+    await settle();
+    expect(status.getAttribute("role")).toBe("alert");
+    expect(status.textContent).toContain("Download .md");
+
+    withClipboard(() => Promise.reject(new Error("denied")));
+    document.querySelector("#draftCopyMarkdown").click();
+    await settle();
+    expect(status.getAttribute("role")).toBe("alert");
+    expect(status.textContent).toContain("Could not copy");
+    expect(status.textContent).toContain("Download .md");
+    withoutClipboard();
+  });
+
+  it("downloads the draft as a Markdown file named from its title", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ title: "Do passkeys work across ecosystems?", blocks: [quoteBlock()] })] });
+    if (typeof URL.createObjectURL !== "function") URL.createObjectURL = () => "blob:stub";
+    if (typeof URL.revokeObjectURL !== "function") URL.revokeObjectURL = () => {};
+    const blobs = [];
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      blobs.push(blob);
+      return "blob:mock-url";
+    });
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const downloads = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function () {
+      downloads.push({ download: this.download, href: this.href });
+    });
+
+    document.querySelector("#draftDownloadMarkdown").click();
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(blobs[0].type).toBe("text/markdown");
+    expect(downloads).toEqual([{ download: "do-passkeys-work-across-ecosystems.md", href: "blob:mock-url" }]);
+    expect(document.querySelector("#draftStatus").textContent).toBe("Asked Chrome to save do-passkeys-work-across-ecosystems.md to your downloads.");
+    click.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it("offers Copy with source in a quote's options, before Remove, and not in a text block's", async () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock(), { type: "text", text: "mine" }] })] });
+    const writeText = withClipboard(() => Promise.resolve());
+    const [quoteRow, textRow] = document.querySelectorAll(".block-options");
+    const classes = (row) => [...row.querySelectorAll("button")].map((b) => b.className.split(" ").at(-1));
+    expect(classes(quoteRow)).toEqual(["btn-move-up", "btn-move-down", "btn-insert-below", "btn-copy-quote", "btn-remove-block"]);
+    expect(classes(textRow)).toEqual(["btn-move-up", "btn-move-down", "btn-insert-below", "btn-remove-block"]);
+    const copy = quoteRow.querySelector(".btn-copy-quote");
+    expect(copy.getAttribute("aria-label")).toBe("Copy the quote in block 1 of 2 with its source");
+
+    copy.click();
+    await settle();
+
+    expect(writeText).toHaveBeenCalledWith("> A useful piece of evidence.\n>\n> — Source page. https://example.com/source\n");
+    expect(document.querySelector("#draftStatus").textContent).toBe("Copied the quote with its source.");
+    withoutClipboard();
   });
 });

@@ -48,6 +48,9 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 - **QA-4.5 Never.** Set Never, repeat. Expected: nothing saved, nothing listed.
 - **QA-4.6 Incognito.** Allow the extension in incognito, activate a page there, close it. Expected: never listed, never saved.
 - **QA-4.7 Open desk.** Choose Open desk. Expected: the full-page Desk opens with Sources and Draft panes; below 960 pixels, the pane switcher shows one at a time.
+- **QA-4.8 Copy as Markdown.** Open a draft with two quotes of one page and one of another, type a line without waiting for "Saved", press Copy as Markdown, paste into a Markdown editor and into Google Docs. Expected: the status line says "Copied the draft as Markdown."; the pasted text has the typed line, each quote as a blockquote ending in its source and `[n]`, a Sources list with exactly two entries, and the two quotes of one page share a number. Docs renders the heading and blockquotes.
+- **QA-4.9 Download .md.** Press Download .md on a draft titled "Do passkeys work across ecosystems?". Expected: `do-passkeys-work-across-ecosystems.md` lands in the downloads folder with the same text as QA-4.8, and the status line names the file.
+- **QA-4.10 Copy with source.** Open a quote's options (⋯). Expected: Copy with source sits before Remove; pressing it copies the blockquote with the source title and URL on its last line, and the quote at rest still shows only its source, Return and ⋯.
 - **QA-4.8 Keyboard.** Tab through the panel. Expected: visible focus on every control; toggle and buttons work with Space or Enter.
 - **QA-4.9 Reduced motion.** Enable reduced motion in the OS. Expected: no transitions in the panel.
 

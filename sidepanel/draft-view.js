@@ -80,12 +80,10 @@
     }
   }
 
+  // One rule for naming a page by its host, so a citation on the Desk and in
+  // an export agree. draft-markdown.js loads before this file in the Desk.
   function hostOf(url) {
-    try {
-      return new URL(url).hostname || "";
-    } catch (_) {
-      return "";
-    }
+    return NS.draftMarkdown ? NS.draftMarkdown.hostOf(url) : "";
   }
 
   function setStatus(message, role) {
@@ -637,6 +635,12 @@
     down.disabled = index === total - 1;
     action("btn-ghost btn-insert-below", "Add text below", `Add text below ${position}`,
       shortcutLabel("insert"), "Control+Enter Meta+Enter", () => insertTextBlock(index + 1));
+    // Taking one quote somewhere else is plumbing, not one of the two verbs
+    // a quote offers at rest, so it lives here with the rest (decision 69).
+    if (block.type === "quote") {
+      action("btn-ghost btn-copy-quote", "Copy with source", `Copy the quote in ${position} with its source`,
+        null, null, () => copyQuote(block));
+    }
     action("btn-danger btn-remove-block",
       block.type === "quote" ? "Remove quote" : "Remove block",
       block.type === "quote" ? `Remove quote in ${position}` : `Remove block ${index + 1} of ${total}`,
@@ -1108,6 +1112,56 @@
     els.live.textContent = message;
   }
 
+  // --- Taking the draft out ---
+
+  // The clipboard is the one place a Desk action can fail for reasons the
+  // reader cannot see: a focus rule, a policy, a browser without the API.
+  // Each outcome is said plainly, and a failure always names the way that
+  // does not depend on the clipboard.
+  function copyText(text, doneMessage) {
+    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : null;
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      setStatus("Copying is not available here. Download .md gives you the same text as a file.", "alert");
+      return Promise.resolve(false);
+    }
+    return clipboard.writeText(text).then(
+      () => {
+        setStatus(doneMessage, "status");
+        return true;
+      },
+      () => {
+        setStatus("Could not copy to the clipboard. Download .md gives you the same text as a file.", "alert");
+        return false;
+      }
+    );
+  }
+
+  // Both exports act on the draft as it stands on screen, unsaved edits
+  // included, because that is the document the reader is looking at.
+  function copyDraftMarkdown() {
+    if (!current || !NS.draftMarkdown) return Promise.resolve(false);
+    return copyText(NS.draftMarkdown.draftToMarkdown(current), "Copied the draft as Markdown.");
+  }
+
+  function downloadDraftMarkdown() {
+    if (!current || !NS.draftMarkdown || !NS.exportImport) return;
+    const markdown = NS.draftMarkdown.draftToMarkdown(current);
+    const fileName = NS.draftMarkdown.fileNameFor(current.title);
+    try {
+      NS.exportImport.downloadText(markdown, fileName, "text/markdown");
+      // Chrome owns what happens next: it may ask where to save, or the reader
+      // may cancel. The product saw only the request, so that is what it says.
+      setStatus(`Asked Chrome to save ${fileName} to your downloads.`, "status");
+    } catch (_) {
+      setStatus("Could not start the download. Copy as Markdown gives you the same text.", "alert");
+    }
+  }
+
+  function copyQuote(block) {
+    if (!NS.draftMarkdown) return Promise.resolve(false);
+    return copyText(NS.draftMarkdown.quoteToMarkdown(block), "Copied the quote with its source.");
+  }
+
   // --- Quoting a clip from the Sources pane ---
 
   function quoteInto(passageId, callback) {
@@ -1173,6 +1227,8 @@
       saveState: $("draftSaveState"),
       live: $("draftLive"),
       close: $("closeDraftButton"),
+      copyMarkdown: $("draftCopyMarkdown"),
+      downloadMarkdown: $("draftDownloadMarkdown"),
       append: $("draftAppend"),
       summary: $("draftSummary"),
       undo: $("draftUndo"),
@@ -1195,6 +1251,8 @@
       scheduleSave();
     });
     els.close.addEventListener("click", closeDraft);
+    els.copyMarkdown.addEventListener("click", copyDraftMarkdown);
+    els.downloadMarkdown.addEventListener("click", downloadDraftMarkdown);
     els.append.addEventListener("click", appendTextBlock);
     els.undo.addEventListener("click", undoRemove);
     window.addEventListener("pagehide", flushSave);

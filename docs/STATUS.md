@@ -2,40 +2,38 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** 2.0 Phase A ("Draft and Return"), version 2.0.0. The Desk has been through **four** rounds of design critique. Measured: **19 → 21 → 19 → 20 out of 40**. Round four's P0 is fixed; five of its findings are open and belong to the next piece of work. Phase A has still had **no single independent review of the whole diff**: see "Blocked".
-- **Read first:** `docs/PRODUCT-DIRECTION.md`, then `docs/DECISIONS.md` items 20 to 52.
-- **Last commit:** see `git log -1`. `main` is pushed to `origin` and in sync; no tag has been cut.
+- **Current phase:** 2.1, Sprint 009 "Get the draft out" (`docs/sprints/SPRINT-009.md`). The 2.1 direction was agreed with the owner on 2026-10-09 and is written in `docs/PRODUCT-DIRECTION-2.1.md`: the draft leaves the Desk, then the Desk behaves like one document, then PDFs become clippable. Decisions 76 to 84. Version string is still 2.0.0; no tag has been cut.
+- **Read first:** `docs/PRODUCT-DIRECTION-2.1.md`, then `docs/sprints/SPRINT-009.md`, then `docs/DECISIONS.md` items 69 to 84.
+- **Last commit:** see `git log -1`. `main` was in sync with `origin` at the start of this session; the Sprint 009 commit is local until the owner pushes.
 
 ## Verified by the lead, clean tree
 
 | Check | Result |
 |---|---|
-| `npm test` | 364 passing, 15 files |
+| `npm test` | 379 passing, 16 files |
 | `npm run test:e2e` | 9 scenarios passing |
-| `npm run package:check` | 31 files would ship |
+| `npm run package:check` | 32 files would ship |
 | `git diff --check` | clean |
 
-## Done since 2.0.0
+## Done this session
 
-Recorded in full in `docs/qa/runs/2026-09-27-desk-critique.md` and `...-ui-audit.md`, with the decisions in `docs/DECISIONS.md` 26 to 75. In short: one visual language across both surfaces; Return names the tab it looked in, answers on the quote it describes, and keeps what it found; destructive actions share one idiom that counts the cost, focuses the way out and closes on Escape; the draft reads as a document, with provenance promoted and plumbing concealed.
+Sprint 009 step 1 is implemented and green: `sidepanel/draft-markdown.js` (pure Markdown rendering of a draft or one quote, file naming), **Copy as Markdown** and **Download .md** beside Close on the open draft, **Copy with source** in a quote's options row before Remove, and a generalised text download in `export-import.js`. Unit coverage in `tests/draft-markdown.test.js` and four Desk tests. No permission, message, page read, or storage write was added. CHANGELOG, manual QA (QA-4.8 to 4.10), decisions, and this file updated.
 
-**Four self-inflicted faults, each caught by measuring the running product and each fixed:** animations that never ran, a verdict appearing on a quote nobody checked, a Return that silently broke autosave, and a deleted clip whose quote went on claiming it was found. All four passed their original tests. Every replacement guard asserts a computed or stored value.
-
-**An incognito hole, found in the manual QA and fixed** (decisions 53 to 55): the incognito refusal on `savePassage` and `saveNote` was reachable only from a content script, so the side panel's own Save selection was never checked. An extension page now names a `tabId` the worker resolves, and the panel no longer offers a save it knows will be refused, so the published policy's "never offers to save them" is now true (decisions 57 to 59). **Restart persistence also verified for the first time** in a real profile restart: durable records survive, session storage is completely empty.
+One harness defect found and recorded (decision 84): leaked `hashchange` listeners across Desk instances in `tests/desk.test.js`. Not a product defect.
 
 ## Blocked / needs owner
 
-1. ~~No independent review of the whole Phase A diff.~~ **Done.** Codex reviewed `b49e2da`: eight findings, four P1, plus confirmation of decision 50. All verified here, all fixed, none retracted. Decisions 60 to 68.
-2. `docs/store/PERMISSIONS.md` still labels its disclosure "(1.0)" and the AI phase "1.1" while the package is 2.0.0. Store copy the owner approves.
-3. Carried over: approve store copy, take screenshots. `main` is pushed; GitHub Pages is live and both URLs were checked by the owner, so the privacy policy URL for the store form is `https://pyogi37.github.io/ReadTrail/privacy-policy`.
-
-**Manual QA genuinely not done:** a real screen reader, Windows high contrast, physical 200% zoom, touch hardware, real third-party articles. Restart persistence is done, and the owner has run the incognito check the harness cannot (decision 55), so both of those are closed. Every automated pass is Playwright Chromium against a local fixture. Unexercised by any critique round: library search, the tags browser, import/export, both Clear buttons, the options page.
+1. **Codex review of the Sprint 009 diff** against `docs/sprints/SPRINT-009.md` acceptance criteria. Prompt is in the session handoff; the lead fixes confirmed defects.
+2. **Manual QA-4.8 to 4.10 in a real Chrome:** the clipboard and the downloads folder cannot be exercised by the JSDOM or Playwright suites. Paste into Google Docs once to confirm the blockquotes render.
+3. Carried over: store copy approval and `docs/store/PERMISSIONS.md` still says "(1.0)" and "1.1"; the fifth design critique has not been run; manual QA with a screen reader, high contrast, 200% zoom, touch, and real third-party articles is still not done.
+4. **Real readers.** Nobody outside the project has used ReadTrail on a real page. Direction 2.1 section 6 asks the owner to put it in front of two or three students or writers for twenty minutes each, and asks the lead to log the north-star journey on three real reads under `docs/qa/runs/`.
 
 ## Next task
 
-Decided with the owner after round four, in this order:
+In this order, each its own sprint doc and each reviewed before the next begins:
 
-1. ~~Redesign the quote block's controls.~~ **Done** (decisions 69 to 75): Return leads the block, the plumbing sits behind one options control, shortcuts are taught where they are used, and the pre-commit review caught a latent undo defect that could write one draft's quote into another.
-2. **Run a fifth critique** to measure whether the structural scores moved. Flexibility has been 1 for four rounds; this change targets it and aesthetics directly, and no score should be claimed until one is measured.
-3. Then the remaining round-four findings: non-modal confirmations and focus after a confirmed destruction, the heading block holding prose out of view, the dead `.draft-title-input` CSS, and the 11px label scale elsewhere on the Desk.
-4. Do the manual QA above. Do not start Phase B. Do not tag or submit a release without the owner.
+1. Codex review of Sprint 009; fix what it confirms; owner runs QA-4.8 to 4.10.
+2. Sprint 010: the Desk as one document (direction 3.2), then the fifth critique. Flexibility must move or the editor is redesigned again.
+3. Sprint 011: PDF text clips through the context menu (direction 3.3), after verifying in a real Chrome that the viewer fires the menu with selection text.
+4. Capture shortcut and tag autocomplete; first-run and empty states.
+5. Do not start 1.1 AI, images, or anything touching permissions or network without the owner. Do not tag or push without the owner.

@@ -202,6 +202,14 @@ html {
   gap: 8px;
 }
 
+.draft-title-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .new-draft-row input,
 .draft-title-input {
   min-width: 0;

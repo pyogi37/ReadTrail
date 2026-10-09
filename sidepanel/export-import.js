@@ -12,16 +12,15 @@
     return `readtrail-export-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
   }
 
-  // Triggers a download of the payload from an extension page. Extension
+  // Triggers a download of a text file from an extension page. Extension
   // pages may download blobs without the downloads permission.
-  function downloadPayload(payload, doc) {
+  function downloadText(text, fileName, type, doc) {
     const document_ = doc || document;
-    const json = JSON.stringify(payload, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const link = document_.createElement("a");
     link.href = url;
-    link.download = fileNameFor(new Date(payload && payload.exportedAt ? payload.exportedAt : Date.now()));
+    link.download = fileName;
     link.rel = "noopener";
     document_.body.appendChild(link);
     link.click();
@@ -30,6 +29,11 @@
       try { URL.revokeObjectURL(url); } catch (_) { /* already revoked */ }
     }, 1000);
     return link.download;
+  }
+
+  function downloadPayload(payload, doc) {
+    const at = payload && payload.exportedAt ? payload.exportedAt : Date.now();
+    return downloadText(JSON.stringify(payload, null, 2), fileNameFor(new Date(at)), "application/json", doc);
   }
 
   // Reads a File chosen by the reader and parses it. Resolves with the parsed
@@ -57,5 +61,5 @@
     });
   }
 
-  NS.exportImport = Object.freeze({ fileNameFor, downloadPayload, readPayloadFile });
+  NS.exportImport = Object.freeze({ fileNameFor, downloadText, downloadPayload, readPayloadFile });
 })();

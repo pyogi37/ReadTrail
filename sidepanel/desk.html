@@ -28,7 +28,7 @@
       <li><strong>Quote a clip into it.</strong> Expand a page on the left and press <strong>Quote</strong>. The quote keeps the passage, its page and its exact position.</li>
       <li><strong>Return to the source.</strong> Every quote has a <strong>Return</strong> button that takes you back to the paragraph and tells you what it found: exactly, by its wording because the page changed, or not at all. The source's title opens the page itself.</li>
     </ol>
-    <p class="desk-help-keys"><strong>Keys.</strong> Each block's options button (<span aria-hidden="true">⋯</span>) holds Move, Add text and Remove, with their keys beside them. From anywhere in a block, Alt with Up or Down moves it and Control or Command with Enter adds text below it. Escape closes a block's options, or a confirmation, while you are in it.</p>
+    <p class="desk-help-keys"><strong>Keys.</strong> Each block's options button (<span aria-hidden="true">⋯</span>) holds Move and Add text with their keys beside them, Copy with source on a quote, and Remove. Copy as Markdown and Download .md take the whole draft out, with every quote attributed and every source listed once. From anywhere in a block, Alt with Up or Down moves it and Control or Command with Enter adds text below it. Escape closes a block's options, or a confirmation, while you are in it.</p>
   </details>
 
   <nav class="desk-switcher" role="tablist" aria-label="Desk panes">
@@ -117,7 +117,11 @@
             <div class="draft-title-row">
               <label class="visually-hidden" for="draftTitle">Draft title</label>
               <input type="text" id="draftTitle" class="draft-title-input" maxlength="512">
-              <button type="button" id="closeDraftButton" class="btn-ghost btn-small">Close</button>
+              <div class="draft-title-actions">
+                <button type="button" id="draftCopyMarkdown" class="btn-ghost btn-small">Copy as Markdown</button>
+                <button type="button" id="draftDownloadMarkdown" class="btn-ghost btn-small">Download .md</button>
+                <button type="button" id="closeDraftButton" class="btn-ghost btn-small">Close</button>
+              </div>
             </div>
             <div class="draft-status-row">
               <p class="status-message draft-status" id="draftStatus" role="status" aria-live="polite" tabindex="-1" hidden></p>
@@ -144,6 +148,7 @@
   <script src="../shared/validators.js"></script>
   <script src="search-index.js"></script>
   <script src="export-import.js"></script>
+  <script src="draft-markdown.js"></script>
   <script src="knowledge-view.js"></script>
   <script src="draft-view.js"></script>
   <script src="desk.js"></script>

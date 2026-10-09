@@ -4,6 +4,12 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 
 ## [Unreleased]
 
+### Added
+
+- **Copy as Markdown** and **Download .md** on the open draft. The title becomes the heading, your text passes through as you wrote it, each quote becomes a blockquote naming its source, and a Sources list at the end gives every page once with its title and address. Two quotes of one page share a number.
+- **Copy with source** in a quote's options, for dropping one quotation into whatever you are writing elsewhere.
+- Nothing new is read or stored to produce either. If the clipboard is unavailable, ReadTrail says so and points to the download.
+
 ### Planned
 
 - Optional AI actions (summaries, tag and connection suggestions) using the reader's own Anthropic API key. Off unless a key is added.
