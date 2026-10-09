@@ -10,9 +10,9 @@ Rewritten at the end of every working session. Keep under 40 lines.
 
 | Check | Result |
 |---|---|
-| `npm test` | 343 passing, 15 files |
+| `npm test` | 340 passing, 14 files |
 | `npm run test:e2e` | 9 scenarios passing |
-| `npm run package:check` | 30 files would ship |
+| `npm run package:check` | 29 files would ship |
 | `git diff --check` | clean |
 
 ## Done since 2.0.0

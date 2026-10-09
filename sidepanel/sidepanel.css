@@ -956,27 +956,6 @@ input[type="search"]:focus-visible {
   background: rgba(255, 255, 255, 0.03);
 }
 
-.connections summary {
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.connections-heading {
-  margin: 6px 0 2px;
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.connections-list {
-  list-style: none;
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-}
-
 .transfer-row {
   display: flex;
   flex-wrap: wrap;

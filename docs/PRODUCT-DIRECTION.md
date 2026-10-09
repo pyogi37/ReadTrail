@@ -136,7 +136,7 @@ Return is browser-native because the URL is the unit of provenance, the tab is t
 Removed in Phase B, with tests retired in the same commit:
 
 - ~~`sidepanel/library-view.js` and the hidden `#librarySection` markup, dead since Phase 4.~~ Removed 2026-10-09, ahead of Phase B, at the owner's request (decision 77).
-- `sidepanel/connections.js`: automatic relations by shared tag and domain, never surfaced. Quotation backlinks replace it, consistent with decision 19.
+- ~~`sidepanel/connections.js`: automatic relations by shared tag and domain, never surfaced. Quotation backlinks replace it, consistent with decision 19.~~ Removed 2026-10-09, ahead of Phase B, at the owner's request (decision 78).
 - The three `confirm()` calls, replaced by the inline confirmation rows already written.
 
 Deferred with a reason:

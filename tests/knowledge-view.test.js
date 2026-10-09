@@ -10,7 +10,6 @@ const constantsSrc = readSource("shared/constants.js");
 const validatorsSrc = readSource("shared/validators.js");
 const pageControlsSrc = readSource("shared/page-controls.js");
 const searchIndexSrc = readSource("sidepanel/search-index.js");
-const connectionsSrc = readSource("sidepanel/connections.js");
 const exportImportSrc = readSource("sidepanel/export-import.js");
 const knowledgeViewSrc = readSource("sidepanel/knowledge-view.js");
 const pageViewSrc = readSource("sidepanel/page-view.js");
@@ -81,7 +80,6 @@ function loadSidePanel({ mode = "panel" } = {}) {
   window.eval(validatorsSrc);
   window.eval(pageControlsSrc);
   window.eval(searchIndexSrc);
-  window.eval(connectionsSrc);
   window.eval(exportImportSrc);
   window.eval(knowledgeViewSrc);
   window.eval(pageViewSrc);
@@ -644,12 +642,6 @@ describe("knowledge view tags", () => {
     [...tagBrowserEl().querySelectorAll(".tag-filter")].find((button) => button.textContent === "research 1").click();
     expect(tagBrowserEl().querySelectorAll(".tag-page-list .page-card")).toHaveLength(1);
     expect(tagBrowserEl().querySelector(".tag-page-list").textContent).toContain("a.example.com");
-  });
-
-  it("does not surface the deferred automatic-connections UI", () => {
-    const h = loadSidePanel();
-    setupLibrary(h, { passages: [makePassage({ id: "p1" })] });
-    expect(findPassage("p1").querySelector("details.connections")).toBeNull();
   });
 });
 
