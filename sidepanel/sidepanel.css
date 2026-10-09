@@ -152,7 +152,6 @@ body {
 }
 
 .section-hint,
-.privacy-note,
 .local-note {
   font-size: 12px;
   color: var(--muted);
@@ -161,7 +160,6 @@ body {
 
 .page-section,
 .recent-section,
-.library-section,
 .first-use {
   padding-bottom: 14px;
   margin-bottom: 14px;
@@ -334,9 +332,7 @@ body {
   margin-bottom: 0;
 }
 
-.error,
-.error-message,
-.load-error {
+.error {
   margin-top: 8px;
   padding: 8px 10px;
   border-radius: 6px;
@@ -397,18 +393,11 @@ body {
   gap: 8px;
 }
 
-.saved-item,
 .recent-item {
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--surface-raised);
   border: 1px solid var(--rule);
-}
-
-.item-main {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .item-text {
@@ -489,8 +478,7 @@ body {
   background: var(--danger-bg-hover);
 }
 
-.item-confirm,
-.clear-confirm {
+.item-confirm {
   margin-top: 8px;
   padding: 8px 10px;
   border-radius: 8px;
@@ -498,10 +486,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.clear-confirm {
-  margin-bottom: 10px;
 }
 
 .confirm-text {
@@ -524,7 +508,6 @@ body {
   color: var(--error-text);
 }
 
-.loading,
 .empty-text {
   font-size: 12px;
   color: var(--muted);
@@ -651,8 +634,7 @@ button:focus-visible {
 /* A message that appears in place is easy to miss if it simply blinks in. */
 .status-message,
 .item-status,
-.error,
-.error-message {
+.error {
   animation: readtrail-settle var(--motion-fast) var(--ease-out);
 }
 

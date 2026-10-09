@@ -13,10 +13,9 @@
   const mode = params.get("mode") === "page" ? "page" : "panel";
 
   const pageView = NS.pageView;
-  const libraryView = NS.libraryView;
   const recentView = NS.recentView;
   const knowledgeView = NS.knowledgeView;
-  const LIBRARY_PREFIXES = ["readtrail.passage.v1:", "readtrail.note.v1:", "readtrail.pagemeta.v1:"];
+  const LIBRARY_PREFIXES = [KEYS.SAVED_PREFIX, "readtrail.passage.v1:", "readtrail.note.v1:", "readtrail.pagemeta.v1:"];
 
   function hasChrome() {
     return typeof chrome !== "undefined" && chrome.runtime && typeof chrome.runtime.sendMessage === "function";
@@ -89,9 +88,7 @@
       if (changes[KEYS.RECENT] && recentView) recentView.reload();
     } else if (areaName === "local") {
       const keys = Object.keys(changes);
-      const touchedSaved = keys.some((key) => key.startsWith(KEYS.SAVED_PREFIX));
-      if (touchedSaved && libraryView) libraryView.reload(true);
-      const touchedLibrary = touchedSaved || keys.some((key) => LIBRARY_PREFIXES.some((prefix) => key.startsWith(prefix)));
+      const touchedLibrary = keys.some((key) => LIBRARY_PREFIXES.some((prefix) => key.startsWith(prefix)));
       if (touchedLibrary && knowledgeView) knowledgeView.scheduleReload();
       if (changes.settings && pageView && mode === "panel") syncTab();
     }
@@ -127,7 +124,6 @@
     }
     if (recentView) recentView.init();
     if (knowledgeView) knowledgeView.init();
-    if (libraryView) libraryView.init();
 
     if (openOptions) {
       openOptions.addEventListener("click", () => {

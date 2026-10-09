@@ -10,7 +10,6 @@ const constantsSrc = readSource("shared/constants.js");
 const validatorsSrc = readSource("shared/validators.js");
 const pageControlsSrc = readSource("shared/page-controls.js");
 const pageViewSrc = readSource("sidepanel/page-view.js");
-const libraryViewSrc = readSource("sidepanel/library-view.js");
 const recentViewSrc = readSource("sidepanel/recent-view.js");
 const sidepanelSrc = readSource("sidepanel/sidepanel.js");
 
@@ -22,12 +21,12 @@ const strippedHtml = html.replace(/<script[^>]*src="[^"]+"[^>]*><\/script>\s*/g,
 const makeState = (active, extra = {}) => ({ version: 1, active, mode: "following", position: null, ...extra });
 const HTTP_TAB = { id: 7, url: "https://example.com/article", title: "An Article" };
 
-// Loads sidepanel.html and evaluates the shell + three views with a deferring
+// Loads sidepanel.html and evaluates the shell + two views with a deferring
 // chrome mock. Every async callback (tabs.query, runtime.sendMessage,
 // tabs.sendMessage) is captured so tests can drive and order the
-// conversations exactly. Because the shell, page-view, library-view, and
-// recent-view all talk to chrome.runtime.sendMessage concurrently, callbacks
-// are keyed by message `type` (FIFO per type) rather than by call index.
+// conversations exactly. Because the shell, page-view, and recent-view all
+// talk to chrome.runtime.sendMessage concurrently, callbacks are keyed by
+// message `type` (FIFO per type) rather than by call index.
 function loadSidePanel({ mode = "panel" } = {}) {
   // IIFEs guard on `globalThis.ReadTrailShared`/`ReadTrailSidePanel` already
   // being set, so each load must clear them first to force re-registration.
@@ -81,7 +80,6 @@ function loadSidePanel({ mode = "panel" } = {}) {
   window.eval(validatorsSrc);
   window.eval(pageControlsSrc);
   window.eval(pageViewSrc);
-  window.eval(libraryViewSrc);
   window.eval(recentViewSrc);
   window.eval(sidepanelSrc);
 
@@ -145,16 +143,6 @@ const saveStatusEl = () => document.querySelector("#saveStatus");
 const restoreNoteEl = () => document.querySelector("#restoreNote");
 const errorEl = () => document.querySelector("#error");
 const localNoteEl = () => document.querySelector("#localNote");
-const savedListEl = () => document.querySelector("#savedList");
-const clearAllButtonEl = () => document.querySelector("#clearAllButton");
-const clearConfirmEl = () => document.querySelector("#clearConfirm");
-const clearConfirmYesEl = () => document.querySelector("#clearConfirmYes");
-const clearConfirmCancelEl = () => document.querySelector("#clearConfirmCancel");
-const statusMessageEl = () => document.querySelector("#statusMessage");
-const errorMessageEl = () => document.querySelector("#errorMessage");
-const loadingStateEl = () => document.querySelector("#loadingState");
-const emptyStateEl = () => document.querySelector("#emptyState");
-const loadErrorStateEl = () => document.querySelector("#loadErrorState");
 const recentSectionEl = () => document.querySelector("#recentSection");
 const pageTitleEl = () => document.querySelector("#pageTitle");
 const openInTabEl = () => document.querySelector("#openInTab");
@@ -509,266 +497,6 @@ describe("ReadTrail side panel save lifecycle", () => {
   });
 });
 
-describe("ReadTrail side panel saved pages (library)", () => {
-  const URL_A = "https://example.com/article-a";
-  const URL_B = "https://example.com/article-b";
-  const makeItem = (url, title, savedAt) => ({ url, version: 1, title, position: {}, savedAt });
-  const okList = (items = []) => ({ ok: true, items });
-
-  function listItems() {
-    return [...document.querySelectorAll(".saved-item")];
-  }
-  function findItem(url) {
-    return listItems().find((li) => li.dataset.url === url);
-  }
-  function buttonsFor(url) {
-    const li = findItem(url);
-    return {
-      li,
-      continue: li.querySelector(".btn-continue"),
-      remove: li.querySelector(".btn-remove"),
-      confirmYes: li.querySelector(".item-confirm .btn-danger-solid"),
-      confirmRow: li.querySelector(".item-confirm"),
-      status: li.querySelector(".item-status")
-    };
-  }
-
-  it("shows a loading state before the saved pages are read and disables Clear all", () => {
-    const h = loadSidePanel();
-    expect(loadingStateEl().hidden).toBe(false);
-    expect(savedListEl().hidden).toBe(true);
-    expect(emptyStateEl().hidden).toBe(true);
-    expect(clearAllButtonEl().disabled).toBe(true);
-    expect(h.runtimeMsgs.filter((m) => m.type === "listSavedResumePoints")).toEqual([{ type: "listSavedResumePoints" }]);
-  });
-
-  it("loads and renders saved pages with the enforced empty state when there are none", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([]));
-
-    expect(emptyStateEl().hidden).toBe(false);
-    expect(savedListEl().hidden).toBe(true);
-    expect(loadingStateEl().hidden).toBe(true);
-    expect(clearAllButtonEl().disabled).toBe(true);
-    expect(listItems()).toEqual([]);
-  });
-
-  it("renders each item with title, derived domain, saved time, Continue and Remove", () => {
-    const h = loadSidePanel();
-    const savedAt = Date.UTC(2026, 0, 5, 12, 30);
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", savedAt)]));
-
-    const b = buttonsFor(URL_A);
-    expect(b.li).toBeTruthy();
-    expect(b.li.textContent).toContain("An article");
-    expect(b.li.textContent).toContain("example.com");
-    expect(b.li.textContent).toContain("2026");
-    expect(b.continue.textContent).toBe("Continue reading");
-    expect(b.remove.textContent).toBe("Remove");
-    expect(clearAllButtonEl().disabled).toBe(false);
-  });
-
-  it("renders titles and domains safely without injecting URLs as HTML", () => {
-    const h = loadSidePanel();
-    const evil = '<img src=x onerror="globalThis.__pwned = true">';
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, evil + " Title", 1000)]));
-
-    const li = findItem(URL_A);
-    expect(li.querySelector("img")).toBeNull();
-    expect(li.textContent).toContain(evil);
-    expect(globalThis.__pwned).toBeUndefined();
-  });
-
-  it("sorts newest saved first even when the response is unordered", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([
-      makeItem(URL_B, "Older B", 100),
-      makeItem(URL_A, "Newer A", 999)
-    ]));
-
-    const urls = listItems().map((li) => li.dataset.url);
-    expect(urls).toEqual([URL_A, URL_B]);
-  });
-
-  it("ignores malformed items safely while keeping valid ones", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([
-      makeItem(URL_A, "Valid A", 100),
-      { url: URL_B }, // missing title/savedAt
-      "not-an-object",
-      null,
-      { url: "https://[broken", title: "Bad", savedAt: 200 },
-      { url: "https://example.com/c", title: "  Padded Title  ", savedAt: 300 }
-    ]));
-
-    const urls = listItems().map((li) => li.dataset.url);
-    expect(urls).toEqual(["https://example.com/c", URL_A]);
-    expect(findItem("https://example.com/c").textContent).toContain("Padded Title");
-  });
-
-  it("shows a clear error state when listing fails", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(null); // messaging/receiver failure
-    expect(loadErrorStateEl().hidden).toBe(false);
-    expect(savedListEl().hidden).toBe(true);
-    expect(emptyStateEl().hidden).toBe(true);
-  });
-
-  it("continues reading by asking the service worker and never navigates itself", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    buttonsFor(URL_A).continue.click();
-    expect(h.runtimeMsgs.filter((m) => m.type === "continueSavedResumePoint")).toEqual([
-      { type: "continueSavedResumePoint", url: URL_A }
-    ]);
-
-    h.shiftType("continueSavedResumePoint")({ ok: true, tabId: 5 });
-    expect(buttonsFor(URL_A).status.textContent).toContain("Opened in a new tab");
-    expect(findItem(URL_A)).toBeTruthy(); // item retained
-    expect(h.chrome.tabs.create).not.toHaveBeenCalled();
-  });
-
-  it("guards the continue request while it is in flight", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    buttonsFor(URL_A).continue.click();
-    buttonsFor(URL_A).continue.click();
-
-    expect(h.runtimeMsgs.filter((m) => m.type === "continueSavedResumePoint")).toHaveLength(1);
-    const inFlight = buttonsFor(URL_A);
-    expect(inFlight.continue.disabled).toBe(true);
-    expect(inFlight.remove.disabled).toBe(true);
-    expect(inFlight.continue.textContent).toBe("Opening…");
-
-    h.shiftType("continueSavedResumePoint")({ ok: true, tabId: 5 });
-    expect(buttonsFor(URL_A).continue.disabled).toBe(false);
-    expect(buttonsFor(URL_A).remove.disabled).toBe(false);
-  });
-
-  it("reflects continue failures visibly without deleting the saved item", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    buttonsFor(URL_A).continue.click();
-    h.shiftType("continueSavedResumePoint")({ ok: false, error: "no-saved-record" });
-
-    expect(buttonsFor(URL_A).status.getAttribute("role")).toBe("alert");
-    expect(buttonsFor(URL_A).status.textContent).toContain("Could not open");
-    expect(findItem(URL_A)).toBeTruthy();
-  });
-
-  it("requires a deliberate confirmation before it removes an item", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    buttonsFor(URL_A).remove.click();
-    expect(h.runtimeMsgs.filter((m) => m.type === "removeSavedResumePoint")).toHaveLength(0);
-    expect(buttonsFor(URL_A).confirmRow.hidden).toBe(false);
-
-    buttonsFor(URL_A).confirmYes.click();
-    expect(h.runtimeMsgs.filter((m) => m.type === "removeSavedResumePoint")).toEqual([
-      { type: "removeSavedResumePoint", url: URL_A }
-    ]);
-  });
-
-  it("removes an item and reloads from the service worker only after success", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([
-      makeItem(URL_A, "An article", 100),
-      makeItem(URL_B, "Another", 200)
-    ]));
-
-    buttonsFor(URL_A).remove.click();
-    buttonsFor(URL_A).confirmYes.click();
-
-    h.shiftType("removeSavedResumePoint")({ ok: true });
-    expect(h.pendingCount("listSavedResumePoints")).toBe(1); // silent reload was sent
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_B, "Another", 200)]));
-
-    expect(findItem(URL_A)).toBeUndefined();
-    expect(findItem(URL_B)).toBeTruthy();
-  });
-
-  it("cancels item removal without sending a message", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    buttonsFor(URL_A).remove.click();
-    buttonsFor(URL_A).confirmRow.querySelector(".btn-ghost").click();
-
-    expect(buttonsFor(URL_A).confirmRow.hidden).toBe(true);
-    expect(h.runtimeMsgs.filter((m) => m.type === "removeSavedResumePoint")).toHaveLength(0);
-    expect(findItem(URL_A)).toBeTruthy();
-  });
-
-  it("keeps the item and shows an error when removal fails", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    buttonsFor(URL_A).remove.click();
-    buttonsFor(URL_A).confirmYes.click();
-    h.shiftType("removeSavedResumePoint")({ ok: false, error: "remove-storage-error" });
-
-    const b = buttonsFor(URL_A);
-    expect(findItem(URL_A)).toBeTruthy();
-    expect(b.status.getAttribute("role")).toBe("alert");
-    expect(b.status.textContent).toContain("Could not remove");
-  });
-
-  it("requires explicit confirmation before clearing all", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    clearAllButtonEl().click();
-    expect(clearConfirmEl().hidden).toBe(false);
-    expect(h.runtimeMsgs.filter((m) => m.type === "clearSavedResumePoints")).toHaveLength(0);
-  });
-
-  it("cancels clear-all without sending a message", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    clearAllButtonEl().click();
-    clearConfirmCancelEl().click();
-
-    expect(clearConfirmEl().hidden).toBe(true);
-    expect(h.runtimeMsgs.filter((m) => m.type === "clearSavedResumePoints")).toHaveLength(0);
-    expect(findItem(URL_A)).toBeTruthy();
-  });
-
-  it("clears all and reloads only after success", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    clearAllButtonEl().click();
-    clearConfirmYesEl().click();
-    expect(h.runtimeMsgs.filter((m) => m.type === "clearSavedResumePoints")).toEqual([{ type: "clearSavedResumePoints" }]);
-
-    h.shiftType("clearSavedResumePoints")({ ok: true });
-    expect(h.pendingCount("listSavedResumePoints")).toBe(1);
-    expect(statusMessageEl().textContent).toContain("removed");
-    h.shiftType("listSavedResumePoints")(okList([]));
-
-    expect(emptyStateEl().hidden).toBe(false);
-    expect(listItems()).toEqual([]);
-  });
-
-  it("shows an error and keeps items when clear-all fails", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")(okList([makeItem(URL_A, "An article", 100)]));
-
-    clearAllButtonEl().click();
-    clearConfirmYesEl().click();
-    h.shiftType("clearSavedResumePoints")({ ok: false, error: "clear-storage-error" });
-
-    expect(errorMessageEl().textContent).toContain("Could not clear");
-    expect(clearConfirmEl().hidden).toBe(true);
-    expect(findItem(URL_A)).toBeTruthy();
-  });
-});
-
 describe("ReadTrail side panel recently closed", () => {
   const URL_A = "https://example.com/article-a";
   const makeRecentItem = (url, title, closedAt) => ({ url, tabId: 1, title, closedAt });
@@ -897,15 +625,6 @@ describe("ReadTrail side panel shell and tab tracking", () => {
 
     h.emitChanged({ [h.KEYS.TAB_PREFIX + String(HTTP_TAB.id)]: { newValue: {} } }, "session");
     expect(h.pendingCount("getPageState")).toBe(before + 1);
-  });
-
-  it("reloads the saved list on a local storage change touching a saved record", () => {
-    const h = loadSidePanel();
-    h.shiftType("listSavedResumePoints")({ ok: true, items: [] });
-    const before = h.pendingCount("listSavedResumePoints");
-
-    h.emitChanged({ [h.KEYS.SAVED_PREFIX + "https://example.com/article"]: { newValue: {} } }, "local");
-    expect(h.pendingCount("listSavedResumePoints")).toBe(before + 1);
   });
 
   it("reloads the recently-closed list on a session storage change to the recent key", () => {
