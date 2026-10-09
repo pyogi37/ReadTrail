@@ -63,7 +63,8 @@ describe("draftToMarkdown", () => {
   });
 
   it("passes the reader's text through byte for byte, except that a # section steps under the title", () => {
-    const prose = "Keep *this* exactly.\n\n- even a list\n   with odd   spacing";
+    // A CRLF typed or pasted into a text block is the reader's byte too.
+    const prose = "Keep *this* exactly.\r\n\n- even a list\n   with odd   spacing";
     const out = md.draftToMarkdown(draft({ blocks: [
       { type: "text", text: "# Findings" },
       { type: "text", text: prose },
@@ -125,12 +126,16 @@ describe("fileNameFor", () => {
     expect(out).toContain("1. Part one Part two. https://example.com/source");
   });
 
-  it("falls back to draft.md and never exceeds sixty characters of slug", () => {
+  it("falls back to draft.md and keeps the whole name, extension included, within sixty characters", () => {
     expect(md.fileNameFor("")).toBe("draft.md");
     expect(md.fileNameFor("???")).toBe("draft.md");
     expect(md.fileNameFor(undefined)).toBe("draft.md");
     const long = md.fileNameFor("word ".repeat(40));
-    expect(long.length).toBeLessThanOrEqual(63);
+    expect(long.length).toBeLessThanOrEqual(60);
+    expect(long.endsWith(".md")).toBe(true);
     expect(long.endsWith("-.md")).toBe(false);
+    // Exactly at the boundary: 57 letters fill the stem, and nothing is cut.
+    expect(md.fileNameFor("a".repeat(57))).toBe(`${"a".repeat(57)}.md`);
+    expect(md.fileNameFor("a".repeat(58))).toBe(`${"a".repeat(57)}.md`);
   });
 });

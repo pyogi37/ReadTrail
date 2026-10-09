@@ -55,7 +55,7 @@
   // title, and the title is the document's "# " heading here, so the section
   // steps down one level to keep meaning the same thing.
   function textBlockMarkdown(text) {
-    const value = normalizeLines(text);
+    const value = String(text == null ? "" : text);
     if (!value.trim()) return "";
     return value.startsWith("# ") ? `#${value}` : value;
   }
@@ -100,7 +100,11 @@
   // A file name a reader can recognise in a downloads folder: the title,
   // lower-cased and hyphenated. Letters and digits of every script are kept,
   // so a Hindi or Chinese title stays a name rather than collapsing to
-  // "draft"; Latin accents are folded so "Résumé" becomes "resume".
+  // "draft"; Latin accents are folded so "Résumé" becomes "resume". The
+  // whole name, extension included, stays within sixty characters.
+  const FILE_NAME_MAX = 60;
+  const FILE_EXTENSION = ".md";
+
   function fileNameFor(title) {
     const slug = String(title == null ? "" : title)
       .normalize("NFKD")
@@ -110,9 +114,9 @@
       // Latin accents were already folded above.
       .replace(/[^\p{L}\p{N}\p{M}]+/gu, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 60)
+      .slice(0, FILE_NAME_MAX - FILE_EXTENSION.length)
       .replace(/-+$/, "");
-    return `${slug || "draft"}.md`;
+    return `${slug || "draft"}${FILE_EXTENSION}`;
   }
 
   NS.draftMarkdown = Object.freeze({ draftToMarkdown, quoteToMarkdown, fileNameFor, hostOf });

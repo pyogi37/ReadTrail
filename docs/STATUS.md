@@ -23,7 +23,7 @@ One harness defect found and recorded (decision 84): leaked `hashchange` listene
 
 ## Blocked / needs owner
 
-1. **Codex review of the Sprint 009 diff** against `docs/sprints/SPRINT-009.md` acceptance criteria. Prompt is in the session handoff; the lead fixes confirmed defects.
+1. ~~Codex review of `9fb76a2..6d80528`: two findings.~~ **Both fixed** with regression coverage: text blocks now pass through byte for byte, CRLF included (criterion 2), and the whole file name stays within sixty characters, extension included (criterion 5).
 2. **Manual QA-4.8 to 4.10 in a real Chrome:** the clipboard and the downloads folder cannot be exercised by the JSDOM or Playwright suites. Paste into Google Docs once to confirm the blockquotes render.
 3. Carried over: store copy approval and `docs/store/PERMISSIONS.md` still says "(1.0)" and "1.1"; the fifth design critique has not been run; manual QA with a screen reader, high contrast, 200% zoom, touch, and real third-party articles is still not done.
 4. **Real readers.** Nobody outside the project has used ReadTrail on a real page. Direction 2.1 section 6 asks the owner to put it in front of two or three students or writers for twenty minutes each, and asks the lead to log the north-star journey on three real reads under `docs/qa/runs/`.
@@ -32,7 +32,7 @@ One harness defect found and recorded (decision 84): leaked `hashchange` listene
 
 In this order, each its own sprint doc and each reviewed before the next begins:
 
-1. Codex review of Sprint 009; fix what it confirms; owner runs QA-4.8 to 4.10.
+1. Owner runs QA-4.8 to 4.10 in a real Chrome.
 2. Sprint 010: the Desk as one document (direction 3.2), then the fifth critique. Flexibility must move or the editor is redesigned again.
 3. Sprint 011: PDF text clips through the context menu (direction 3.3), after verifying in a real Chrome that the viewer fires the menu with selection text.
 4. Capture shortcut and tag autocomplete; first-run and empty states.
