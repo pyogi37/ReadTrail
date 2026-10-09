@@ -37,7 +37,7 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 - **QA-3.5 Continue while open elsewhere.** With the URL already open in a dormant tab C, choose Continue reading. Expected: a new tab D opens active; C stays dormant.
 - **QA-3.6 Direct navigation stays dormant.** Type the saved URL in a new tab. Expected: dormant.
 - **QA-3.7 Restore quality.** Save on a page, then change it (append a paragraph via DevTools or use a page whose banner differs), reload via Continue. Expected: the panel shows the restore note when the anchor could not be matched exactly.
-- **QA-3.8 Remove and Clear all.** Remove one page (confirm), then Clear all (confirm). Expected: list updates; Settings unchanged.
+- **QA-3.8 Remove and clear saved places.** Remove saved place on one page (confirm), then Clear saved places under Import, export, and clear (confirm). Expected: a page with only a saved place leaves Library → Pages; a page with passages, notes, or tags stays, without "saved place"; drafts and Settings unchanged.
 
 ## QA-4 Side panel and recently closed
 
@@ -58,7 +58,7 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 - **QA-5.3 Note and page tags.** Add a note and two tags to the current page. Expected: the note and tags appear under the same page after closing and reopening the panel; no item-level tag control appears.
 - **QA-5.4 Search.** Search a word from a page title, passage, note, and page tag. Expected: every result is a page card; multiple matches from one page never create duplicate result rows.
 - **QA-5.5 Tags view.** Add the same page tag to two pages. Expected: Library → Tags shows the tag with a count of 2; selecting it shows both matching pages.
-- **QA-5.6 Export and import.** Export, Clear all, Import in replace mode. Expected: identical library.
+- **QA-5.6 Export and import.** Export, then Clear saved places and Clear page content (confirm each). Expected: Library → Pages is empty; drafts on the Desk are unchanged. Import the file in replace mode. Expected: identical library.
 - **QA-5.7 Full library.** Not practical manually; covered by tests.
 
 ## QA-6 Settings and exclusions
