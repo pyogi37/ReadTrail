@@ -14,3 +14,6 @@ Claude outputs/
 
 # /brag launch-video runs: rendered video, frames, and working files
 brag-output*/
+
+# graphify knowledge-graph output (rebuilt locally; see docs/AI-WORKFLOW.md)
+graphify-out/

@@ -28,6 +28,24 @@
 - **impeccable** (`pbakaus/impeccable`): a design-language skill for Claude Code, Codex, and Gemini with `/craft`, `/audit`, `/polish`, `/normalize` passes and a 58-rule anti-pattern detector. Use `/audit` then `/polish` on `sidepanel/` and `options/` once they exist, and `/normalize` to keep spacing, radii, and type sizes consistent. Install per its README (owner action; third-party code is not pulled in by agents).
 - **Motion**: the Framer Motion skills found online target React. ReadTrail is plain JS, so motion stays CSS-only: 150 to 250 ms ease-out transitions for state changes, no layout-shifting animation, everything behind `prefers-reduced-motion`. The `frontend-design-review` Codex skill already covers motion review; no extra skill is needed.
 
+## Ponytail and graphify (owner-installed, 2026-10-09)
+
+Two third-party skills the owner chose. Agents never pull third-party code in; the owner installs, agents use.
+
+| Skill | Source | What it is for here |
+|---|---|---|
+| **Ponytail** | `DietrichGebert/ponytail` (MIT; Claude Code plugin with two lifecycle hooks, needs `node`) | Always-on "write only what the task needs" ladder: does it need to exist, is it already in the codebase, does the platform do it, only then the minimum plus one small test. This is ReadTrail's no-dependency rule made operational. `/ponytail-review` runs beside `/code-review` before each commit; `/ponytail-audit` once per sprint on the whole repo; `/ponytail-debt` collects deferred `shortcut:` comments into a ledger before a release. |
+| **graphify** | `Graphify-Labs/graphify` (MIT; Python 3.10+, CLI `graphify`, PyPI name `graphifyy`) | A local knowledge graph of the repo and its docs. Replaces reading directories into context: `/graphify query "..."` and `/graphify path A B` before a Grep sweep; `/graphify . --update` after each sprint lands. Output lives in `graphify-out/`, which is git-ignored and rebuilt locally. The post-commit hook (`graphify hook install`) is an owner decision; it is not installed by agents. |
+
+What is installed, project-scoped (done 2026-10-09 at the owner's request). `.claude/skills/` is git-ignored on purpose, so the skill files stay local and each machine installs them with the commands below; the rules, hooks and docs are committed.
+
+- Ponytail's six skills under `.claude/skills/ponytail*`, installed with `npx -y skills add DietrichGebert/ponytail --agent claude-code`. Its compact ruleset is `docs/PONYTAIL.md`, imported by `CLAUDE.md`, so it is the default for every agent that reads a rules file. Default level is full. The optional plugin (`/plugin marketplace add DietrichGebert/ponytail`, then `/plugin install ponytail@ponytail`, two separate prompts in the Code tab) adds the two lifecycle hooks that print the current level; it is not required for the rules or the commands.
+- graphify under `.claude/skills/graphify`, installed with `pipx install graphifyy` then `graphify install --project` (Python 3.14, pipx bin folder on the user PATH). It also wrote a `## graphify` section to `CLAUDE.md` and two `PreToolUse` hooks in `.claude/settings.json` that remind the agent to query the graph before grepping or reading source. The hooks add context only; they block nothing. The code graph is built with `graphify update .` (no model needed); `/graphify . --update` in a session adds the docs.
+
+Not installed: graphify's post-commit hook and merge driver (owner decision), and the ponytail plugin's hooks.
+
+Rules of use: Ponytail's ladder never cuts trust-boundary validation, incognito handling, accessibility, or the `prefers-reduced-motion` paths, which is also what AGENTS.md already requires. A `shortcut:` comment is a deferred decision and belongs in `docs/DECISIONS.md` if it changes behavior. graphify reads the repo only; it never runs against a reader's data or a page.
+
 ## Token rules
 
 1. One phase per session. Start from `docs/STATUS.md` and `git log -3`, not the whole repo.
