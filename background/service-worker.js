@@ -1280,9 +1280,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "clearLibrary":
       LIBRARY.handlers.clearLibrary(msg, sendResponse);
       return true;
-    case "removePageData":
-      LIBRARY.handlers.removePageData(msg, sendResponse);
-      return true;
     case "saveDraft":
       LIBRARY.handlers.saveDraft(msg, sendResponse);
       return true;

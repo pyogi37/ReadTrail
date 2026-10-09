@@ -233,16 +233,16 @@ describe("knowledge layer: library, clear, export, import", () => {
     expect(call(h, { type: "clearLibrary", kinds: ["settings"] })).toEqual({ ok: false, error: "invalid-input" });
   });
 
-  it("removes only one page's passages, notes, and tags", () => {
+  // No surface has sent it since the old saved-pages list went (decision 79).
+  it("no longer accepts removePageData and removes nothing", () => {
     const h = load();
     seed(h);
-    call(h, { type: "savePassage", url: URL_B, text: "passage b" });
-    expect(call(h, { type: "removePageData", url: URL_A })).toEqual({ ok: true, removed: 2 });
+    const done = vi.fn();
+    expect(h.messageHandler({ type: "removePageData", url: URL_A }, PAGE, done)).toBe(false);
+    expect(done).not.toHaveBeenCalled();
     const lib = call(h, { type: "listLibrary" });
-    expect(lib.passages.map((p) => p.url)).toEqual([URL_B]);
-    expect(lib.notes.map((n) => n.url)).toEqual([URL_B]);
-    expect(lib.pagemeta).toEqual([]);
-    expect(lib.saved).toHaveLength(1); // saved pages are removed separately
+    expect(lib.counts).toEqual({ passages: 1, notes: 1, saved: 1, drafts: 0 });
+    expect(lib.pagemeta).toHaveLength(1);
   });
 
   it("round-trips export then import in replace mode and skips duplicates in merge mode", () => {
