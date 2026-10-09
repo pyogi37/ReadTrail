@@ -11,3 +11,6 @@ Claude outputs/
 .agents/
 .claude/skills/
 .impeccable/
+
+# /brag launch-video runs: rendered video, frames, and working files
+brag-output*/
