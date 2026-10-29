@@ -1393,6 +1393,54 @@ describe("ReadTrail Desk", () => {
     expect(areas().map((a) => a.value)).toEqual(["A", "X", "C", "B"]);
   });
 
+  // Round five's P0: the worker refuses a quote the stored draft no longer has,
+  // so a removal saved before its Undo made that Undo, and every save after
+  // it, fail.
+  it("keeps a removed quote in storage while its undo is on offer, and lets it go when the offer ends", () => {
+    vi.useFakeTimers();
+    try {
+      const blocks = [{ type: "text", text: "Before" }, quoteBlock(), { type: "text", text: "After" }];
+      const h = loadDesk({ hash: "#/drafts/draft-1", passages: [passage()], drafts: [draft({ blocks })] });
+      document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+      expect(document.querySelectorAll(".quote-block")).toHaveLength(0);
+      vi.advanceTimersByTime(400);
+      const saves = () => h.messages.filter((m) => m.type === "updateDraft");
+      expect(saves()).toHaveLength(1);
+      expect(saves()[0].blocks.map((b) => b.type)).toEqual(["text", "quote", "text"]);
+      h.shift("updateDraft")({ ok: true, draft: draft({ blocks: saves()[0].blocks, updatedAt: 200 }) });
+
+      // The drafts list counts what the reader sees, not the copy kept for Undo.
+      expect(document.querySelector('.draft-row[data-id="draft-1"] .item-meta').textContent).toBe("0 quotes");
+
+      vi.advanceTimersByTime(12000 + 400);
+      expect(saves()).toHaveLength(2);
+      expect(saves()[1].blocks.map((b) => b.type)).toEqual(["text", "text"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("saves a quote's removal when the reader leaves the draft while its undo is on offer", () => {
+    vi.useFakeTimers();
+    try {
+      const first = draft({ id: "draft-a", title: "Draft A", blocks: [{ type: "text", text: "Before" }, quoteBlock()] });
+      const second = draft({ id: "draft-b", title: "Draft B" });
+      const h = loadDesk({ hash: "#/drafts/draft-a", passages: [passage()], drafts: [first, second] });
+      document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+      vi.advanceTimersByTime(400);
+      const saves = () => h.messages.filter((m) => m.type === "updateDraft");
+      h.shift("updateDraft")({ ok: true, draft: { ...first, updatedAt: 200 } });
+
+      document.querySelector('.draft-row[data-id="draft-b"] .draft-open').click();
+      expect(saves()).toHaveLength(2);
+      expect(saves()[1]).toEqual(expect.objectContaining({ id: "draft-a" }));
+      expect(saves()[1].blocks.map((b) => b.type)).toEqual(["text"]);
+      expect(document.querySelector("#draftUndo").hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("styles the handle with a 24px target, no touch scrolling, hidden from hit testing at rest, and no motion of its own", () => {
     const css = readSource("sidepanel/desk.css").replace(/\r\n/g, "\n");
     const rule = (selector) => {

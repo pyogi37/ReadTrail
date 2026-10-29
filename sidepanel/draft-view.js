@@ -159,6 +159,10 @@
   }
 
   function openDraft(id, options = {}) {
+    // An undo offer is about a block in the draft being left. Carried over, it
+    // appeared in the next draft and restored the old draft's block into it.
+    // Withdrawn before the flush, so a removal it held is saved with the rest.
+    withdrawUndo();
     flushSave();
     stashCurrent();
     clearVerdicts();
@@ -170,16 +174,12 @@
         load(() => openDraft(id, { ...options, reloaded: true }));
         return;
       }
-      withdrawUndo();
       current = null;
       renderIndex();
       renderEditor();
       setStatus("That draft no longer exists. Choose one from the list, or start a new question.", "alert");
       return;
     }
-    // An undo offer is about a block in the draft being left. Carried over, it
-    // appeared in the next draft and restored the old draft's block into it.
-    withdrawUndo();
     current = JSON.parse(JSON.stringify(draft));
     resetBlockKeys(current.blocks.length);
     openOptionsKey = null;
@@ -194,9 +194,9 @@
   }
 
   function closeDraft(options = {}) {
+    withdrawUndo();
     flushSave();
     stashCurrent();
-    withdrawUndo();
     current = null;
     renderIndex();
     renderEditor();
@@ -240,9 +240,19 @@
     processSaveQueue();
   }
 
+  // The worker accepts only quotes already in the stored draft, so a quote
+  // whose removal reached storage could never come back by Undo, and every
+  // save after the attempt was refused. Storage keeps it until the offer ends.
+  function blocksToSave() {
+    if (!removed || removed.block.type !== "quote") return current.blocks;
+    const blocks = current.blocks.slice();
+    blocks.splice(Math.min(removed.index, blocks.length), 0, removed.block);
+    return blocks;
+  }
+
   function commit() {
     if (!current || !dirty) return;
-    const snapshot = JSON.parse(JSON.stringify({ id: current.id, title: current.title, tags: current.tags, blocks: current.blocks }));
+    const snapshot = JSON.parse(JSON.stringify({ id: current.id, title: current.title, tags: current.tags, blocks: blocksToSave() }));
     dirty = false;
     const queuedIndex = saveQueue.findIndex((job) => job.id === snapshot.id);
     if (queuedIndex >= 0) saveQueue[queuedIndex] = snapshot;
@@ -313,6 +323,13 @@
 
   // --- The drafts index ---
 
+  // The open draft is counted as the reader sees it: its saved copy can still
+  // hold a removed quote while that quote's undo is on offer.
+  function quotesShown(draft) {
+    const shown = current && current.id === draft.id ? current : draft;
+    return shown.blocks.filter((b) => b.type === "quote").length;
+  }
+
   function renderIndex() {
     if (!els) return;
     els.list.textContent = "";
@@ -331,7 +348,7 @@
       title.textContent = draft.title;
       const meta = document.createElement("span");
       meta.className = "item-meta";
-      const quotes = draft.blocks.filter((b) => b.type === "quote").length;
+      const quotes = quotesShown(draft);
       meta.textContent = quotes === 1 ? "1 quote" : `${quotes} quotes`;
       if (failedSnapshots.has(draft.id)) {
         meta.textContent += " · not saved";
@@ -364,7 +381,7 @@
     box.setAttribute("aria-label", `Confirm removing ${draft.title}`);
     const text = document.createElement("span");
     text.className = "confirm-text";
-    const quotes = draft.blocks.filter((b) => b.type === "quote").length;
+    const quotes = quotesShown(draft);
     text.textContent = quotes > 0
       ? `Remove "${draft.title}"? Its ${quotes === 1 ? "quote goes" : "quotes go"} with it. The clips they came from stay.`
       : `Remove "${draft.title}"?`;
@@ -1114,7 +1131,8 @@
 
   // A removal is the only destructive action in the editor and it autosaves
   // within 400ms, so the way back has to be offered immediately and has to be
-  // visible: the live region alone tells a sighted reader nothing.
+  // visible: the live region alone tells a sighted reader nothing. A removed
+  // quote reaches storage only when the offer ends (blocksToSave).
   function offerUndo(block, index, note, placeholderAdded) {
     if (!block || !els) return;
     removed = { block, index, placeholderAdded: Boolean(placeholderAdded) };
@@ -1125,11 +1143,18 @@
     undoTimer = setTimeout(() => {
       undoTimer = null;
       const index = removed ? removed.index : 0;
-      removed = null;
+      settleRemoval();
       // Hiding the offer while it held focus dropped the reader to the top of
       // the page, with nothing said. Land them beside the gap instead.
       if (retireUndo()) focusNear(index);
     }, UNDO_WINDOW_MS);
+  }
+
+  // The offer is over without an undo, so a removed quote now leaves storage too.
+  function settleRemoval() {
+    const quote = Boolean(removed && removed.block.type === "quote");
+    removed = null;
+    if (quote && current) scheduleSave();
   }
 
   // Ends the offer outright, for when the draft it belongs to is left.
@@ -1138,7 +1163,7 @@
       clearTimeout(undoTimer);
       undoTimer = null;
     }
-    removed = null;
+    settleRemoval();
     retireUndo();
   }
 
@@ -1450,7 +1475,10 @@
     els.downloadMarkdown.addEventListener("click", downloadDraftMarkdown);
     els.append.addEventListener("click", appendTextBlock);
     els.undo.addEventListener("click", undoRemove);
-    window.addEventListener("pagehide", flushSave);
+    window.addEventListener("pagehide", () => {
+      withdrawUndo();
+      flushSave();
+    });
 
     load(callback);
   }

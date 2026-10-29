@@ -112,3 +112,24 @@ The two assessments contradicted each other here and both were right about diffe
 
 **Still untested by anyone:** a real screen reader, Windows high contrast, physical 200% zoom, touch hardware, Chrome restart persistence, an incognito window, real third-party articles. Unexercised by any round: library search, the tags browser, import/export, both Clear buttons, the options page, and the panel surface beyond a detector scan.
 
+## Round five, 2026-10-09
+
+Measured before Sprints 009 and 010 landed, so its scores describe the Desk as of `aaefe94`; the critique that measures Sprint 010 is a separate round. Brought into `main` on 2026-10-29 from the uncommitted log in the privacy task's worktree.
+
+Same protocol: two isolated parallel sub-agents, both barred from `.impeccable/critique/`, `docs/qa/runs/`, `docs/STATUS.md` and `docs/DECISIONS.md`. Measured in headless Chromium against the unpacked extension at `aaefe94`. Snapshot persisted at `.impeccable/critique/2026-10-09T16-20-32Z__sidepanel-desk-html.md`.
+
+**Score: 23/40.** Assessment A reached 26 alone; the synthesis took one point each from visibility of status, user control and error recovery for defects only Assessment B measured. Five rounds read **19 → 21 → 19 → 20 → 23**. The structural scores moved for the first time: flexibility 1 → 2, recognition 2 → 3, help 2 → 3, all traceable to the quote-block redesign (decisions 69 to 75). Aesthetics stays at 2.
+
+**Found, not yet fixed:**
+
+- **P0.** Undoing a removed quote after its 400ms autosave makes every later save fail: the worker accepts only quotes already in the stored draft (`background/library.js:490-511`), the UI blames the title (`sidepanel/draft-view.js:308`), and later typing is lost on reload. Reproduced twice; cause confirmed in code.
+- **P1.** "Replace instead of merge" imports without confirmation and removes every draft and clip not in the file; the status reports only what was imported, and the box stays ticked.
+- **P1.** Five untrue statements: a draft summary still claiming "found exactly" after its clips are cleared; Return highlighting the first of two identical sentences; Return on an excluded site reporting a failure that did not happen; save errors naming the wrong limit; the export message (and the privacy policy's Export section) omitting drafts.
+- **P1.** Quote with no draft open writes its message into the hidden editor, so nothing is shown or announced.
+- **P1.** At 960px and wider both panes share one scroll, so a quote pulls Sources away; at 390px focus lands on `<body>` after quoting.
+
+**Confirmed working by measurement:** Return across intact, moved, rewritten, deleted and closed-tab sources; Escape and focus return in every confirmation and options row; Alt+↑/↓ and Ctrl+Enter; merge import counts match storage; "Clear saved places" removes only saved places; removing a draft keeps its clips; autosave in 482ms surviving reload; 67 of 67 controls named; zero console errors; no horizontal overflow at 1280 to 320; reduced motion fully honoured.
+
+**Detector:** `desk.html` clean. `sidepanel.html`'s 14 low-contrast findings are decision 30's false positive again (`#fdf4f4` is the 7% accent gradient over white). It missed the browser-default placeholder grey at 3.22 to 3.60:1. **No overlay exists**: `script-src 'self'` refused both injection paths.
+
+**Exercised for the first time:** library search, the Tags view, export, merge and replace import, and both Clear buttons. Still untested: a real screen reader, forced colours, touch hardware, the real side panel's right-click capture, headed Chrome.

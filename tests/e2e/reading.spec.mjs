@@ -625,3 +625,65 @@ test("the Desk reads as one document: Enter, Backspace, Up and Down over a quote
   await desk.close();
   await source.close();
 });
+
+// Round five's P0. The worker accepts only quotes already in the stored draft,
+// so undoing a removal after its autosave used to put back a quote no save
+// could carry, and every save after it failed.
+test("undoing a removed quote after its autosave keeps every later save", async () => {
+  expect((await sendMessage(ext, { type: "clearLibrary" })).ok).toBe(true);
+  const url = `${articleUrl()}?case=undo`;
+  const source = await ext.context.newPage();
+  await source.goto(url);
+  await source.evaluate(() => {
+    const node = document.querySelector("#p21").firstChild;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, "Paragraph 21.".length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const tabId = await tabIdFor(ext.worker, url);
+  const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
+  expect((await sendMessage(ext, {
+    type: "savePassage", tabId, url, title: captured.title, text: captured.text, start: captured.start, end: captured.end
+  })).ok).toBe(true);
+
+  const desk = await ext.context.newPage();
+  await desk.setViewportSize({ width: 1280, height: 900 });
+  await desk.goto(deskUrl(ext.extensionId));
+  await desk.fill("#newDraftTitle", "Undo after save");
+  await desk.click("#newDraftButton");
+  await desk.locator("#pageList .page-summary").click();
+  await desk.locator("#pageList .btn-quote").click();
+  await expect(desk.locator(".quote-block")).toHaveCount(1);
+  const saveState = desk.locator("#draftSaveState");
+  const stored = async () => {
+    const local = await readStorage(ext.worker, "local");
+    return Object.values(local).find((record) => record && record.title === "Undo after save");
+  };
+
+  await desk.locator(".quote-block .block-options-toggle").click();
+  await desk.locator(".quote-block .btn-remove-block").click();
+  await expect(desk.locator(".quote-block")).toHaveCount(0);
+  await expect(saveState).toHaveText("Saved");
+  await desk.locator("#draftUndo").click();
+  await expect(desk.locator(".quote-block")).toHaveCount(1);
+
+  await desk.locator(".block-text").first().fill("Written after the undo.");
+  await expect(saveState).toHaveText("Saved");
+  await expect(desk.locator("#draftStatus")).not.toHaveAttribute("role", "alert");
+  const kept = await stored();
+  expect(kept.blocks.map((block) => block.type)).toEqual(["text", "quote"]);
+  expect(kept.blocks[0].text).toBe("Written after the undo.");
+
+  // A removal nobody undoes still reaches storage, here by leaving the page
+  // while the offer stands.
+  await desk.locator(".quote-block .block-options-toggle").click();
+  await desk.locator(".quote-block .btn-remove-block").click();
+  await desk.reload();
+  await expect.poll(async () => (await stored()).blocks.map((block) => block.type)).toEqual(["text"]);
+
+  await desk.close();
+  await source.close();
+});
