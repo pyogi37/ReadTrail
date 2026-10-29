@@ -42,6 +42,7 @@
   let openOptionsKey = null;
   let reloadTimer = null;
   let statusTimer = null;
+  let saveAlertDraftId = null; // the draft whose failed save the status alert reports
   // A verdict is evidence about one press on one block. The same clip can be
   // quoted more than once, so a verdict cannot be keyed by its passage: doing
   // that put an answer on a quote nobody checked, which asserts a fact the
@@ -91,6 +92,7 @@
 
   function setStatus(message, role) {
     if (!els) return;
+    saveAlertDraftId = null;
     if (statusTimer !== null) {
       clearTimeout(statusTimer);
       statusTimer = null;
@@ -282,6 +284,9 @@
           if (index >= 0) drafts[index] = res.draft;
           else drafts.unshift(res.draft);
         }
+        // The alert a failed save of this draft put up is now wrong; any
+        // message shown since has replaced it and reset the id.
+        if (saveAlertDraftId === res.draft.id) setStatus("", "status");
         if (current && current.id === res.draft.id) {
           current.updatedAt = res.draft.updatedAt;
           if (!dirty && !saveQueue.some((job) => job.id === current.id)) setSaveState("Saved");
@@ -293,13 +298,14 @@
         if (current && current.id === snapshot.id) {
           dirty = true;
           setSaveState("Not saved");
-          setStatus(saveErrorText(res), "alert");
+          setStatus(saveErrorText(res, snapshot), "alert");
         } else {
           // Say which draft, because the reader is looking at another one and
           // "Not saved" about nothing visible is worse than silence.
           const name = snapshot.title || "that draft";
-          setStatus(`${saveErrorText(res)} This was "${name}", which is still open in your drafts and not saved yet.`, "alert");
+          setStatus(`${saveErrorText(res, snapshot)} This was "${name}", which is still open in your drafts and not saved yet.`, "alert");
         }
+        saveAlertDraftId = snapshot.id;
         renderIndex();
       }
       if (saveQueue.length > 0) {
@@ -313,11 +319,15 @@
     });
   }
 
-  function saveErrorText(res) {
+  function saveErrorText(res, draft) {
     const code = res && res.error;
     if (code === "draft-full") return "This draft is full. Remove a block before adding more.";
     if (code === "storage-full") return "Your local storage is nearly full. Remove some clips or drafts first.";
-    if (code === "invalid-input") return "That could not be saved. A draft needs a title, and each block is limited to 4,000 characters.";
+    if (code === "invalid-input") {
+      return draft && !String(draft.title || "").trim()
+        ? "This draft needs a title before it can be saved."
+        : "That could not be saved.";
+    }
     if (code === "not-found") return "This draft no longer exists.";
     return "That could not be saved. Please try again.";
   }
