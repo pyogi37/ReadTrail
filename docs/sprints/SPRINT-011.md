@@ -2,7 +2,7 @@
 
 ## Status
 
-Ordered by the owner 2026-10-29, straight from critique round six (`docs/qa/runs/2026-09-27-desk-critique.md`, round six; decision 101). It runs as two cloud routines on `sprint-011/*` branches; the lead merges, writes the docs, runs both reviews and pushes `main`. PDF clips (direction 3.3), planned as Sprint 011, move to Sprint 012.
+Ordered by the owner 2026-10-29, straight from critique round six (`docs/qa/runs/2026-09-27-desk-critique.md`, round six; decision 101). It ran as two cloud sessions (the routines stayed paused) on `sprint-011/*` branches; the lead merged, wrote the docs, ran both reviews and pushed `main`. **Done 2026-10-29:** both parts merged, decisions 102 to 105; 406 unit tests and 15 e2e scenarios pass. PDF clips (direction 3.3), planned as Sprint 011, move to Sprint 012.
 
 ## Goal
 

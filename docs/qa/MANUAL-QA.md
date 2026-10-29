@@ -87,6 +87,12 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 - **QA-8.7 Right-click save.** Select a sentence, right-click, choose Save selection to ReadTrail. Expected: the sentence flashes where it is and the page does not scroll. Then select text inside an embedded frame and save. Expected: the toolbar icon shows "!" for that tab, its tooltip says a selection inside a frame cannot be saved, and the icon returns to normal after about eight seconds.
 - **QA-8.8 Reduced motion.** Enable reduced motion in the OS and drag a block. Expected: nothing about lifting, the drop line or landing animates.
 
+## QA-9 Prose text blocks and Desk messages (Sprint 011)
+
+- **QA-9.1 Prose blocks.** In Chrome 123 or later, open a draft with one short line, a six-sentence paragraph, a quote and more text. Expected: the short block is one line tall; the paragraph shows whole with no inner scrollbar and grows as you type; text blocks have no box and sit close; the quote keeps its frame with more space either side; the focused block shows a clear focus ring.
+- **QA-9.2 Screen reader, no draft open.** With NVDA or VoiceOver and no draft open, press Quote on a clip. Expected: "Open a draft first, then quote a clip into it." is shown above the empty state and announced.
+- **QA-9.3 Narrow Quote.** At a 390px-wide Desk, open a draft, switch to Sources and press Quote. Expected: the Draft pane shows and focus is on the new quote's Return.
+
 ## Run template
 
 ```

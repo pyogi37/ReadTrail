@@ -11,6 +11,7 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 - Nothing new is read or stored to produce either. If the clipboard is unavailable, ReadTrail says so and points to the download.
 - **The Desk reads as one document.** Enter at the end of your text starts the next block. Backspace in an empty block removes it and takes you to the end of the text above. Up at the start and Down at the end move into the neighbouring block, stepping over quotes, which hold no caret. Alt with an arrow and the options row still move blocks from the keyboard.
 - **Drag a block by its handle** to where it belongs, with a mouse, pen or finger. A line shows where it will land, and Escape puts it back.
+- **Your text reads as prose.** A text block on the Desk is as tall as its text and has no box around it, so a long paragraph no longer scrolls inside a three-line field. Quotes keep their frame and a little space either side. Needs Chrome 123; earlier versions keep the old fixed-height blocks.
 - **The right-click save says whether it saved.** "Save selection to ReadTrail" now flashes the text it kept. When it cannot save, the toolbar icon shows "!" for that tab, and its tooltip says why.
 
 ### Changed
@@ -19,6 +20,8 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 
 ### Fixed
 
+- **Quote on a narrow Desk lands on the new quote.** Focus used to fall to the page because the Draft pane was shown after the quote was placed.
+- **Desk messages are seen with no draft open.** "Open a draft first", "Draft removed." and "That draft no longer exists" used to be announced into the hidden editor. A failed-save warning now clears once that draft saves, and says that a missing title is the problem when it is.
 - **Undoing a removed quote no longer stops the draft saving.** Pressing Undo remove after the removal had autosaved used to make every later save of that draft fail, so writing after it was lost on reload.
 - The privacy policy described a **Clear all** button that no reader can reach. It now names the two controls the side panel and the Desk actually show, **Clear saved places** and **Clear page content**, and says exactly what each removes and keeps, including that neither removes drafts or the passage text quoted in them.
 
