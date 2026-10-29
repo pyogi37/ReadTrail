@@ -51,7 +51,6 @@ All messages are `{ type, ... }` sent with `chrome.runtime.sendMessage`. Handler
 | `setPageTags` | page | `{url,tags,tabId?}` (`tabId` when tagging the open tab) | `{ok,tags}` or `invalid-sender` |
 | `listLibrary` | page | none | `{ok,saved,passages,notes,pagemeta,counts,limit}` |
 | `clearLibrary` | page | `{kinds?:["saved","passages","notes","pagemeta"]}` | `{ok,removed}` (never touches settings) |
-| `removePageData` | page | `{url}` | `{ok,removed}` passages, notes, tags of one page |
 | `saveDraft` | page | `{title,tags?,blocks?}` | `{ok,draft}` or `draft-full` |
 | `updateDraft` | page | `{id,title?,tags?,blocks?}` | `{ok,draft}` |
 | `removeDraft` / `listDrafts` | page | `{id}` / none | `{ok}` / `{ok,drafts}` newest first |

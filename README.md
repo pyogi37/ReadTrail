@@ -50,7 +50,7 @@ It explores a simple product question:
 
 - 💾 Explicit **Save for later** with one persistent resume point per exact page URL
 - 🕒 A quiet "Recently closed" list when a tab closes with unsaved reading (ask, always save, or never)
-- 📚 A side panel with your saved pages: Continue reading, Remove, and Clear all
+- 📚 A side panel with your saved pages: Continue reading, Remove saved place, and Clear saved places
 - 📄 Continue reading opens the page, activates reading lock, and restores the saved position
 - 🔒 Local-only settings and saved-page data—no account, analytics, or page-text collection
 - 🧩 Manifest V3 Chrome extension architecture

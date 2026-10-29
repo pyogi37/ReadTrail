@@ -111,7 +111,8 @@ This space should help readers resume and organize reading, not become a noisy a
 - Permanent history requires a clear user choice.
 - Temporary session state should expire with the browser session unless saved.
 - Incognito reading should not be retained.
-- Readers should be able to delete individual records, clear all records, and exclude sites.
+- Readers should be able to delete individual records and exclude sites.
+- Two bulk clears, each confirmed first: **Clear saved places** removes every saved reading position (URL, title, position); **Clear page content** removes every saved passage, note, and page tag. Neither removes drafts or settings: a draft is removed on its own from the Desk, and settings return through Reset to defaults.
 - ReadTrail should store only what is required to restore a position or bookmark.
 - Cloud sync, accounts, content analysis, and external transmission are outside the initial product unless deliberately reconsidered later.
 

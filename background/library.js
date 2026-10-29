@@ -719,26 +719,6 @@
     });
   }
 
-  // Removes passages, notes, and tags that belong to one page.
-  function handleRemovePageData(msg, sendResponse) {
-    if (!S.isValidPageUrl(msg.url)) {
-      reply(sendResponse, ERRORS.INVALID_INPUT);
-      return;
-    }
-    readLibrary((library, error) => {
-      if (error) {
-        reply(sendResponse, error);
-        return;
-      }
-      const keys = [
-        ...library.passages.filter((p) => p.url === msg.url).map((p) => passageKey(p.id)),
-        ...library.notes.filter((n) => n.url === msg.url).map((n) => noteKey(n.id)),
-        ...library.pagemeta.filter((m) => m.url === msg.url).map((m) => pageMetaKey(m.url))
-      ];
-      removeKeys(keys, (removeError) => reply(sendResponse, removeError, { removed: keys.length }));
-    });
-  }
-
   function handleExportLibrary(sendResponse) {
     readLibrary((library, error) => {
       if (error) {
@@ -1080,7 +1060,6 @@
       setPageTags: guardTagWrite(handleSetPageTags),
       listLibrary: handleListLibrary,
       clearLibrary: handleClearLibrary,
-      removePageData: handleRemovePageData,
       saveDraft: handleSaveDraft,
       updateDraft: handleUpdateDraft,
       removeDraft: handleRemoveDraft,

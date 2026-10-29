@@ -10,17 +10,15 @@ const constantsSrc = readSource("shared/constants.js");
 const validatorsSrc = readSource("shared/validators.js");
 const pageControlsSrc = readSource("shared/page-controls.js");
 const searchIndexSrc = readSource("sidepanel/search-index.js");
-const connectionsSrc = readSource("sidepanel/connections.js");
 const exportImportSrc = readSource("sidepanel/export-import.js");
 const knowledgeViewSrc = readSource("sidepanel/knowledge-view.js");
 const pageViewSrc = readSource("sidepanel/page-view.js");
-const libraryViewSrc = readSource("sidepanel/library-view.js");
 const recentViewSrc = readSource("sidepanel/recent-view.js");
 const sidepanelSrc = readSource("sidepanel/sidepanel.js");
 
 // Every external <script src="..."></script> is stripped so the harness can
-// eval the same sources itself, in the same order the manifest/HTML loads
-// them (11 tags), against a mock chrome instead of the packaged files.
+// eval the same sources itself, in the same order the HTML loads them,
+// against a mock chrome instead of the packaged files.
 const strippedHtml = html.replace(/<script[^>]*src="[^"]+"[^>]*><\/script>\s*/g, "");
 
 const makeState = (active, extra = {}) => ({ version: 1, active, mode: "following", position: null, ...extra });
@@ -82,11 +80,9 @@ function loadSidePanel({ mode = "panel" } = {}) {
   window.eval(validatorsSrc);
   window.eval(pageControlsSrc);
   window.eval(searchIndexSrc);
-  window.eval(connectionsSrc);
   window.eval(exportImportSrc);
   window.eval(knowledgeViewSrc);
   window.eval(pageViewSrc);
-  window.eval(libraryViewSrc);
   window.eval(recentViewSrc);
   window.eval(sidepanelSrc);
 
@@ -223,9 +219,6 @@ function findPassage(id) {
 function findNote(id) {
   return [...document.querySelectorAll(".note-item")].find((li) => li.dataset.id === id);
 }
-function findSavedItem(url) {
-  return [...document.querySelectorAll(".saved-item")].find((li) => li.dataset.url === url);
-}
 
 async function flushAsync() {
   for (let i = 0; i < 20; i++) {
@@ -242,7 +235,9 @@ if (typeof globalThis.URL.revokeObjectURL !== "function") {
 
 
 describe("motion", () => {
-  const css = readSource("sidepanel/sidepanel.css");
+  // A Windows checkout with core.autocrlf has CRLF line endings; the block
+  // below is found by its "}\n}" ending.
+  const css = readSource("sidepanel/sidepanel.css").replace(/\r\n/g, "\n");
 
   // The reader's setting has to switch off animations, not only transitions.
   // The blanket rule used to cover transitions alone, so any animation added
@@ -648,12 +643,6 @@ describe("knowledge view tags", () => {
     expect(tagBrowserEl().querySelectorAll(".tag-page-list .page-card")).toHaveLength(1);
     expect(tagBrowserEl().querySelector(".tag-page-list").textContent).toContain("a.example.com");
   });
-
-  it("does not surface the deferred automatic-connections UI", () => {
-    const h = loadSidePanel();
-    setupLibrary(h, { passages: [makePassage({ id: "p1" })] });
-    expect(findPassage("p1").querySelector("details.connections")).toBeNull();
-  });
 });
 
 describe("knowledge view export", () => {
@@ -888,54 +877,6 @@ describe("page view: passages, notes, exclusion", () => {
   });
 });
 
-describe("library view: remove with knowledge counts", () => {
-  it("shows the passage/note count and a Remove-page-and-N-notes button when the page has library data", () => {
-    const h = loadSidePanel();
-    const url = "https://example.com/article-a";
-    setupLibrary(h, {
-      passages: [makePassage({ id: "p1", url })],
-      notes: [makeNote({ id: "n1", url }), makeNote({ id: "n2", url })]
-    });
-    h.shiftType("listSavedResumePoints")({ ok: true, items: [{ url, version: 1, title: "An article", position: {}, savedAt: 100 }] });
-
-    findSavedItem(url).querySelector(".btn-remove").click();
-    const li = findSavedItem(url);
-    expect(li.querySelector(".confirm-text").textContent).toContain("3");
-    expect(li.querySelector(".btn-remove-all").textContent).toBe("Remove page and 3 notes");
-  });
-
-  it("Remove page and N notes removes the saved point then the page's passages and notes", () => {
-    const h = loadSidePanel();
-    const url = "https://example.com/article-a";
-    setupLibrary(h, { passages: [makePassage({ id: "p1", url })], notes: [makeNote({ id: "n1", url })] });
-    h.shiftType("listSavedResumePoints")({ ok: true, items: [{ url, version: 1, title: "An article", position: {}, savedAt: 100 }] });
-
-    findSavedItem(url).querySelector(".btn-remove").click();
-    findSavedItem(url).querySelector(".btn-remove-all").click();
-
-    expect(h.runtimeMsgs).toContainEqual({ type: "removeSavedResumePoint", url });
-    expect(h.runtimeMsgs.some((m) => m.type === "removePageData")).toBe(false);
-    h.shiftType("removeSavedResumePoint")({ ok: true });
-    expect(h.runtimeMsgs).toContainEqual({ type: "removePageData", url });
-  });
-
-  it("the plain Remove button sends only removeSavedResumePoint, never removePageData", () => {
-    const h = loadSidePanel();
-    const url = "https://example.com/article-b";
-    setupLibrary(h, {});
-    h.shiftType("listSavedResumePoints")({ ok: true, items: [{ url, version: 1, title: "B", position: {}, savedAt: 50 }] });
-
-    findSavedItem(url).querySelector(".btn-remove").click();
-    const li = findSavedItem(url);
-    expect(li.querySelector(".btn-remove-all")).toBeNull();
-    li.querySelector(".item-confirm .btn-danger-solid").click();
-
-    expect(h.runtimeMsgs).toContainEqual({ type: "removeSavedResumePoint", url });
-    h.shiftType("removeSavedResumePoint")({ ok: true });
-    expect(h.runtimeMsgs.some((m) => m.type === "removePageData")).toBe(false);
-  });
-});
-
 describe("side panel shell: knowledge debounce and settings resync", () => {
   it("debounces storage changes into a single listLibrary reload after 150ms, coalescing bursts", () => {
     vi.useFakeTimers();
@@ -952,6 +893,21 @@ describe("side panel shell: knowledge debounce and settings resync", () => {
       vi.advanceTimersByTime(100);
       expect(h.pendingCount("listLibrary")).toBe(before);
       vi.advanceTimersByTime(50);
+      expect(h.pendingCount("listLibrary")).toBe(before + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reloads the library when a saved place changes", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadSidePanel();
+      h.shiftType("listLibrary")(libraryResponse({}));
+      const before = h.pendingCount("listLibrary");
+
+      h.emitChanged({ [h.KEYS.SAVED_PREFIX + "https://example.com/article"]: { newValue: {} } }, "local");
+      vi.advanceTimersByTime(150);
       expect(h.pendingCount("listLibrary")).toBe(before + 1);
     } finally {
       vi.useRealTimers();

@@ -106,13 +106,6 @@
     }, 150);
   }
 
-  function countsFor(url) {
-    return {
-      passages: library.passages.filter((p) => p.url === url).length,
-      notes: library.notes.filter((n) => n.url === url).length
-    };
-  }
-
   function pageTagsFor(url) {
     const meta = library.pagemeta.find((m) => m.url === url);
     return meta ? meta.tags : [];
@@ -965,7 +958,6 @@
     init,
     reload: load,
     scheduleReload,
-    countsFor,
     pageTagsFor,
     savePassageFromTab,
     saveNoteForTab,

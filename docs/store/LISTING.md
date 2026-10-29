@@ -30,7 +30,7 @@ ReadTrail is a reading companion for long pages: articles, essays, documentation
 - Nothing is tracked until you turn ReadTrail on for a page.
 - Everything is stored on your device. No account, no sync, no analytics, no network requests.
 - Incognito tabs never leave a trace, and ReadTrail never offers to save one.
-- Remove one page, passage, or draft, or clear everything, with one clear confirmation.
+- Remove one page, passage, or draft, or clear all saved places or all passages, notes, and page tags at once. Every removal asks you to confirm first.
 
 **Honest about what it is not.** ReadTrail is not a read-it-later inbox, a note-taking app with a thousand features, or a cursor effect. It does one thing: help you read closely, keep what you find, and write with it, without ever leaving your device.
 

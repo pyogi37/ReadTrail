@@ -134,42 +134,6 @@
       </details>
     </section>
 
-    <section class="library-section" id="librarySection" aria-labelledby="libraryHeading" hidden aria-hidden="true">
-      <div class="section-row">
-        <h2 class="section-heading" id="libraryHeading">Saved pages</h2>
-        <button type="button" id="clearAllButton" class="btn-danger btn-small" disabled>Clear all</button>
-      </div>
-      <p class="privacy-note" id="privacyNote">
-        Pages appear here only after you choose <strong>Save for later</strong> on that page.
-        The exact page URL and title stay on this device.
-      </p>
-      <div class="clear-confirm" id="clearConfirm" role="alertdialog" aria-modal="false" aria-label="Confirm clear all" hidden>
-        <span class="confirm-text">Remove every saved page from this device?</span>
-        <div class="confirm-actions">
-          <button type="button" id="clearConfirmYes" class="btn-danger-solid">Clear all</button>
-          <button type="button" id="clearConfirmCancel" class="btn-ghost">Cancel</button>
-        </div>
-      </div>
-
-      <p class="status-message" id="statusMessage" role="status" aria-live="polite" hidden></p>
-      <p class="error-message" id="errorMessage" role="alert" aria-live="polite" hidden></p>
-
-      <div class="content" id="contentRegion" aria-label="Saved pages">
-        <p class="loading" id="loadingState">Loading your saved pages…</p>
-        <div class="empty" id="emptyState" hidden>
-          <p class="empty-title">Nothing saved yet</p>
-          <p class="empty-text">
-            Turn ReadTrail on for a page, pause at a line, and choose <strong>Save for later</strong>.
-            It will appear here so you can continue reading.
-          </p>
-        </div>
-        <p class="load-error" id="loadErrorState" role="alert" hidden>
-          Your saved pages could not be loaded. Close and reopen this panel to try again.
-        </p>
-        <ul class="list" id="savedList" hidden></ul>
-      </div>
-    </section>
-
   </main>
   <script src="../shared/constants.js"></script>
   <script src="../shared/validators.js"></script>

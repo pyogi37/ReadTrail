@@ -10,6 +10,10 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 - **Copy with source** in a quote's options, for dropping one quotation into whatever you are writing elsewhere.
 - Nothing new is read or stored to produce either. If the clipboard is unavailable, ReadTrail says so and points to the download.
 
+### Fixed
+
+- The privacy policy described a **Clear all** button that no reader can reach. It now names the two controls the side panel and the Desk actually show, **Clear saved places** and **Clear page content**, and says exactly what each removes and keeps, including that neither removes drafts or the passage text quoted in them.
+
 ### Planned
 
 - Optional AI actions (summaries, tag and connection suggestions) using the reader's own Anthropic API key. Off unless a key is added.
@@ -42,7 +46,7 @@ First Chrome Web Store release.
 - Side panel with current-page controls, saved pages, and a "Recently closed" list for tabs that closed with unsaved progress (ask, always save, or never).
 - Per-tab reading state: two tabs on the same page never share activation, position, or reading lock.
 - Resilient restoration: landmark-based anchors with structural checks and a proportional fallback when a page changed.
-- Knowledge layer: saved passages, notes, tags, local search, connections, and JSON export/import.
+- Knowledge layer: saved passages, notes, tags, local search, and JSON export/import.
 - Options for appearance, closing-tab behavior, and excluded sites.
 
 ### Privacy

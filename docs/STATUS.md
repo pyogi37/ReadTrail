@@ -2,38 +2,35 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** 2.1, Sprint 009 "Get the draft out" (`docs/sprints/SPRINT-009.md`). The 2.1 direction was agreed with the owner on 2026-10-09 and is written in `docs/PRODUCT-DIRECTION-2.1.md`: the draft leaves the Desk, then the Desk behaves like one document, then PDFs become clippable. Decisions 76 to 84. Version string is still 2.0.0; no tag has been cut.
-- **Read first:** `docs/PRODUCT-DIRECTION-2.1.md`, then `docs/sprints/SPRINT-009.md`, then `docs/DECISIONS.md` items 69 to 84.
-- **Last commit:** see `git log -1`. `main` was in sync with `origin` at the start of this session; the Sprint 009 commit is local until the owner pushes.
+- **Current phase:** 2.1, Sprint 010 "The Desk as one document" (`docs/sprints/SPRINT-010.md`), approved by the owner 2026-10-29 with two small tasks added: the reading guide and line highlight stay on the text, and the right-click save says it saved. It runs as three parallel cloud sessions on `sprint-010/*` branches; the lead merges, writes the docs, and pushes `main`. Version string is still 2.0.0; no tag has been cut.
+- **Read first:** `docs/sprints/SPRINT-010.md`, then `docs/PRODUCT-DIRECTION-2.1.md` section 3.2, then `docs/DECISIONS.md` items 69 to 88.
+- **Last commit:** see `git log -1`. `origin/main` had nine commits (privacy wording for the two clears, removal of `library-view.js`, `connections.js` and the worker's `removePageData`), built on the `main` from before Sprint 009. They are merged here, with their decisions renumbered from 76 to 79 to 85 to 88, because 76 to 84 were already Sprint 009's. The owner approved pushing the merge.
 
-## Verified by the lead, clean tree
+## Verified by the lead, merged tree
 
 | Check | Result |
 |---|---|
-| `npm test` | 379 passing, 16 files |
+| `npm test` | 355 passing, 15 files |
 | `npm run test:e2e` | 9 scenarios passing |
-| `npm run package:check` | 32 files would ship |
+| `npm run package:check` | 30 files would ship |
 | `git diff --check` | clean |
 
 ## Done this session
 
-Sprint 009 step 1 is implemented and green: `sidepanel/draft-markdown.js` (pure Markdown rendering of a draft or one quote, file naming), **Copy as Markdown** and **Download .md** beside Close on the open draft, **Copy with source** in a quote's options row before Remove, and a generalised text download in `export-import.js`. Unit coverage in `tests/draft-markdown.test.js` and four Desk tests. No permission, message, page read, or storage write was added. CHANGELOG, manual QA (QA-4.8 to 4.10), decisions, and this file updated.
-
-One harness defect found and recorded (decision 84): leaked `hashchange` listeners across Desk instances in `tests/desk.test.js`. Not a product defect.
+- The knowledge graph now includes the docs: all 84 decisions of the time, the sprints and the QA logs join the code (1203 nodes, 50 communities). The 12 PNGs were not extracted.
+- Sprint 010 was written, trimmed under Ponytail, and approved.
+- `vitest.config.js` excludes `.claude/`, because an agent worktree there doubled the suite to 695 tests and pulled in a Playwright spec.
 
 ## Blocked / needs owner
 
-1. ~~Codex review of `9fb76a2..6d80528`: two findings.~~ **Both fixed** with regression coverage: text blocks now pass through byte for byte, CRLF included (criterion 2), and the whole file name stays within sixty characters, extension included (criterion 5).
-2. **Manual QA-4.8 to 4.10 in a real Chrome:** the clipboard and the downloads folder cannot be exercised by the JSDOM or Playwright suites. Paste into Google Docs once to confirm the blockquotes render.
-3. Carried over: store copy approval and `docs/store/PERMISSIONS.md` still says "(1.0)" and "1.1"; the fifth design critique has not been run; manual QA with a screen reader, high contrast, 200% zoom, touch, and real third-party articles is still not done.
-4. **Real readers.** Nobody outside the project has used ReadTrail on a real page. Direction 2.1 section 6 asks the owner to put it in front of two or three students or writers for twenty minutes each, and asks the lead to log the north-star journey on three real reads under `docs/qa/runs/`.
+1. **Manual QA-4.8 to 4.10 (Sprint 009) in a real Chrome:** the clipboard and the downloads folder. The ids QA-4.8 and QA-4.9 have each been used twice since Sprint 009; renumber them after that run.
+2. Carried over: store copy approval; `docs/store/PERMISSIONS.md` still says "(1.0)" and "1.1"; manual QA with a screen reader, high contrast, 200% zoom, touch, and real third-party articles.
+3. **Real readers.** Nobody outside the project has used ReadTrail on a real page (direction 2.1 section 6).
 
 ## Next task
 
-In this order, each its own sprint doc and each reviewed before the next begins:
-
-1. Owner runs QA-4.8 to 4.10 in a real Chrome.
-2. Sprint 010: the Desk as one document (direction 3.2), then the fifth critique. Flexibility must move or the editor is redesigned again.
-3. Sprint 011: PDF text clips through the context menu (direction 3.3), after verifying in a real Chrome that the viewer fires the menu with selection text.
+1. Merge the three Sprint 010 branches as they land, each reviewed against its criteria. Record decisions from item 89, add a QA-8 section for the editor, and add the `flashCapture` protocol row to `docs/ARCHITECTURE.md`.
+2. The fifth critique on the Desk. If flexibility is still 1, the editor is redesigned again.
+3. Sprint 011: PDF text clips through the context menu (direction 3.3), after verifying the viewer's menu in a real Chrome.
 4. Capture shortcut and tag autocomplete; first-run and empty states.
-5. Do not start 1.1 AI, images, or anything touching permissions or network without the owner. Do not tag or push without the owner.
+5. Do not start 1.1 AI, images, or anything touching permissions or network without the owner. Do not tag without the owner. Pushing `main` and the `sprint-010/*` branches is approved for this sprint only.
