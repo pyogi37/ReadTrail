@@ -110,9 +110,19 @@ test("the ruler and the line highlight stay on the text", async () => {
   expect(shares.inside).toBeGreaterThan(0.3);
   expect(shares.outside).toBe(0);
 
-  // B4: turning ReadTrail off leaves the page as it was.
-  await sendMessage(ext, { type: "setPageActive", tabId, url, active: false });
+  // The underline's glow is cut at the text's ends, not left to fade past them.
+  expect((await sendMessage(ext, { type: "setSettings", settings: { style: "underline" } })).ok).toBe(true);
+  await page.mouse.move((text.left + text.right) / 2 + 1, y);
+  await expect.poll(() => canvasAlpha(page, text.left + 4, y)).toBeGreaterThan(0);
+  for (const x of [text.left - 3, text.right + 3]) {
+    expect(await canvasAlpha(page, x, y), `underline alpha at x=${x}`).toBe(0);
+  }
+
+  // B4: turning ReadTrail off leaves the page as it was. In the panel's order
+  // (page-view.js disablePage): the page first, so a pending position still
+  // saves, then the worker.
   expect((await sendTabMessage(ext, tabId, { type: "setPageActive", active: false })).ok).toBe(true);
+  await sendMessage(ext, { type: "setPageActive", tabId, url, active: false });
   expect(await page.evaluate(() => ({
     highlight: CSS.highlights.has("readtrail-line"),
     rules: document.querySelectorAll("style[data-readtrail-line]").length,

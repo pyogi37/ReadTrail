@@ -151,6 +151,11 @@
     var left = span.left;
     var right = span.right;
     ctx.clearRect(0, 0, viewportWidth, viewportHeight);
+    // The glow (shadowBlur) spreads past the line's ends, so it is cut at the text's.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, 0, right - left, viewportHeight);
+    ctx.clip();
 
     if (state === "saved") {
       // Saved: dashed warm-gold underline with a filled end badge, making it
@@ -206,6 +211,7 @@
       ctx.lineTo(right, y);
       ctx.stroke();
     }
+    ctx.restore();
   }
 
   function clear() {

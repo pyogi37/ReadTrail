@@ -9,7 +9,7 @@ function createContext() {
   return {
     setTransform: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(), beginPath: vi.fn(),
     moveTo: vi.fn(), lineTo: vi.fn(), stroke: vi.fn(), arc: vi.fn(), fill: vi.fn(),
-    save: vi.fn(), restore: vi.fn(), setLineDash: vi.fn()
+    save: vi.fn(), restore: vi.fn(), setLineDash: vi.fn(), rect: vi.fn(), clip: vi.fn()
   };
 }
 
@@ -110,6 +110,15 @@ describe("ReadTrail renderer", () => {
 
     window.ReadTrailRenderer.renderUnderline(120, style, "saved", extent);
     expect(context.arc).toHaveBeenCalledWith(390, 120, 5, 0, Math.PI * 2); // badge
+  });
+
+  it.each(["following", "frozen", "saved"])("clips the %s underline's glow to the text's extent", (state) => {
+    window.ReadTrailRenderer.renderUnderline(120, { size: 30, color: "#FF6B6B", opacity: 0.3 }, state, { left: 100, right: 400 });
+    expect(context.rect).toHaveBeenCalledWith(100, 0, 300, window.innerHeight);
+    // The clip is set before anything is stroked, and lifted once at the end.
+    expect(context.clip.mock.invocationCallOrder[0]).toBeLessThan(context.stroke.mock.invocationCallOrder[0]);
+    expect(context.restore.mock.invocationCallOrder.at(-1)).toBeGreaterThan(context.stroke.mock.invocationCallOrder.at(-1));
+    expect(context.save).toHaveBeenCalledTimes(context.restore.mock.calls.length);
   });
 
   it("clamps an extent to the viewport and spans the viewport without a usable one (B3)", () => {

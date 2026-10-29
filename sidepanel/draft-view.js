@@ -145,10 +145,11 @@
         const fresh = drafts.find((d) => d.id === current.id);
         if (!fresh) {
           current = null;
-        } else if (dirty || sameDraftContent(fresh, current)) {
+        } else if (dirty || sameDraftContent(fresh, { ...current, blocks: blocksToSave() })) {
           // Either this page is mid-edit, or the change that woke us is the
-          // one we just wrote. Rebuilding here would take the caret out of the
-          // block the reader is typing in.
+          // one we just wrote, compared as written, a quote kept for Undo
+          // included. Rebuilding here would take the caret out of the block
+          // the reader is typing in.
           rebuildEditor = false;
         }
       }

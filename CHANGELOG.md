@@ -15,7 +15,7 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 
 ### Changed
 
-- The ruler, the underline and the line highlight now cover only the text you are reading, not the whole width of the window or of the box around the text. The highlight no longer changes the page's own elements.
+- The ruler, the underline and the line highlight now cover only the text you are reading, not the whole width of the window or of the box around the text. The highlight no longer changes the page's own elements, and the underline's glow stops where the text does.
 
 ### Fixed
 

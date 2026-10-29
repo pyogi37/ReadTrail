@@ -1420,6 +1420,34 @@ describe("ReadTrail Desk", () => {
     }
   });
 
+  // Round six's P0: the stored copy holds the quote kept for Undo, so the
+  // page took its own save for someone else's and rebuilt the editor,
+  // dropping keystrokes and the focus on Undo.
+  it("does not rebuild the editor when its own save, holding a quote kept for Undo, comes back", () => {
+    vi.useFakeTimers();
+    try {
+      const blocks = [{ type: "text", text: "Before" }, quoteBlock(), { type: "text", text: "After" }];
+      const h = loadDesk({ hash: "#/drafts/draft-1", passages: [passage()], drafts: [draft({ blocks })] });
+      document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+      expect(document.activeElement).toBe(document.querySelector("#draftUndo"));
+      vi.advanceTimersByTime(400);
+      const saved = h.messages.filter((m) => m.type === "updateDraft")[0];
+      const stored = draft({ blocks: saved.blocks, updatedAt: 200 });
+      h.shift("updateDraft")({ ok: true, draft: stored });
+      const area = areas()[0];
+
+      h.emitStorage({ "readtrail.draft.v1:draft-1": { newValue: stored } });
+      vi.advanceTimersByTime(150);
+      h.shift("listDrafts")({ ok: true, drafts: [stored] });
+
+      expect(areas()[0]).toBe(area);
+      expect(document.activeElement).toBe(document.querySelector("#draftUndo"));
+      expect(document.querySelectorAll(".quote-block")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("saves a quote's removal when the reader leaves the draft while its undo is on offer", () => {
     vi.useFakeTimers();
     try {

@@ -2,7 +2,7 @@
 
 ## Status
 
-Done 2026-10-29. Approved by the owner the same day, with the recommendation on the handle; the owner added parts B and C. All three branches are merged into `main`, with two fixes from the lead (decisions 93 and 97); decisions 89 to 97 record the rest. The three sessions ran as local worktree agents, not in the cloud as the owner asked. Direction: `docs/PRODUCT-DIRECTION-2.1.md` section 3.2. Part A is measured next by the fifth critique round (decision 76): if flexibility is still 1, the editor is redesigned again before Sprint 011.
+Done 2026-10-29. Approved by the owner the same day, with the recommendation on the handle; the owner added parts B and C. All three branches are merged into `main`, with two fixes from the lead (decisions 93 and 97); decisions 89 to 97 record the rest. The three sessions ran as local worktree agents, not in the cloud as the owner asked. Direction: `docs/PRODUCT-DIRECTION-2.1.md` section 3.2. Part A is measured next by critique round six (decision 76): if flexibility is still 1, the editor is redesigned again before Sprint 011.
 
 ## How this sprint runs
 
@@ -122,9 +122,9 @@ The ruler, the underline and the yellow line highlight mark the text being read,
 - Dragging a clip from Sources into the draft.
 - A keyboard-operable handle.
 - contenteditable or rich text, and Markdown shortcuts beyond `# `.
-- Restyling text blocks without their card, and textareas that grow with their text (`field-sizing: content`). Neither was asked for; the fifth critique says whether they are needed.
+- Restyling text blocks without their card, and textareas that grow with their text (`field-sizing: content`). Neither was asked for; critique round six says whether they are needed.
 - A confirmation for the side panel's own Save selection, which already reports in its status line.
 - A right-click save without a selection, for example the whole page.
 - Bounding the dots style, which follows the pointer and has no width.
-- The fifth critique itself, which follows this sprint.
+- Critique round six itself, which follows this sprint.
 - Steps 3.3 to 3.5 of the direction follow in their own sprints.

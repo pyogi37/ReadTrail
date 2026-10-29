@@ -133,3 +133,56 @@ Same protocol: two isolated parallel sub-agents, both barred from `.impeccable/c
 **Detector:** `desk.html` clean. `sidepanel.html`'s 14 low-contrast findings are decision 30's false positive again (`#fdf4f4` is the 7% accent gradient over white). It missed the browser-default placeholder grey at 3.22 to 3.60:1. **No overlay exists**: `script-src 'self'` refused both injection paths.
 
 **Exercised for the first time:** library search, the Tags view, export, merge and replace import, and both Clear buttons. Still untested: a real screen reader, forced colours, touch hardware, the real side panel's right-click capture, headed Chrome.
+
+## Round six, 2026-10-29
+
+The first round run as two cloud routines (claude.ai, Opus 5.5), each an isolated session that cloned `main` at `1818cc1`: Sprint 010 and the round-five P0 fix. Both were barred from this log, `.impeccable/`, `docs/STATUS.md`, `docs/DECISIONS.md`, `docs/PRODUCT-DIRECTION-2.1.md`, the handoffs and the sprint docs. Both used impeccable 4.8.0. The routines' permission classifier blocked `npx skills add`, so A read the skill from a plain clone, and B ran the checksum-verified detector engine 0.1.18 from `npm pack`. Measured in headless Chromium against the unpacked extension, with real key and pointer events.
+
+**Score: 26/40, Acceptable.** Assessment A gave 27 and Assessment B gave 28. The synthesis takes the lower score where the other assessment measured the defect behind it: user control falls to 2 for A's P0, error recovery to 2 for B's lingering alert, and aesthetics to 2 for A's finding that the draft reads as a form. Six rounds read **19 → 21 → 19 → 20 → 23 → 26**.
+
+| # | Heuristic | A | B | Synthesis |
+|---|---|---|---|---|
+| 1 | Visibility of system status | 3 | 3 | 3 |
+| 2 | Match with the real world | 3 | 3 | 3 |
+| 3 | User control and freedom | 2 | 3 | 2 |
+| 4 | Consistency and standards | 3 | 3 | 3 |
+| 5 | Error prevention | 2 | 2 | 2 |
+| 6 | Recognition rather than recall | 3 | 3 | 3 |
+| 7 | Flexibility and efficiency | 3 | 3 | 3 |
+| 8 | Aesthetic and minimalist design | 2 | 3 | 2 |
+| 9 | Error recognition and recovery | 3 | 2 | 2 |
+| 10 | Help and documentation | 3 | 3 | 3 |
+
+**What direction 2.1 section 3.2 asked:** flexibility moved again, from 2 to 3, and both assessors scored it 3 on keys that cross blocks, Alt with an arrow, Control with Enter, drag and deep links. It was 1 for four rounds. So the editor is not redesigned again. Aesthetics did not move: it stays at 2, and both assessments name the same cause. Every text block is a bordered card with a fixed three-row textarea, so the draft reads like a form, and long paragraphs scroll inside their own boxes.
+
+**Design specificity (A):** authored, not generic. The verdict on each quote, the provenance summary and the pencil-red and kept-gold palette belong to this product. The block cards and the stacked pane headers are generic app chrome.
+
+**Found:**
+
+- **P0, fixed the same day (decision 100).** While a removed quote's Undo stood, each autosave rebuilt the editor: typed words were lost and focus fell off Undo. The cause was decision 98's stored copy failing decision 41's own-write check (`sidepanel/draft-view.js:148` with `:246`).
+- **P1.** At 390px, Quote leaves focus on `<body>`. The focus is asked for while the Draft pane is still hidden (`draft-view.js:1412`, `desk.js:103`). Round five found the same at 390px.
+- **P1.** Text blocks never grow (`area.rows = 3`, `min-height: 88px`). A six-sentence paragraph needs 208px and gets 88.
+- **P1.** A failed-save alert stays after the next save succeeds, and the message names two possible causes instead of the one that applies (`draft-view.js:92`, `:273`).
+- **P1.** Messages written to the draft status line are invisible when no draft is open. "Open a draft first", "Draft removed." and "That draft no longer exists" all land inside the hidden editor (`desk.html:116,127`). This is round five's P1, still open.
+- **P2.** Return's text fallback only finds identical wording. A one-word edit to the paragraph reports "not found", although the help promises "by its wording". It can also report "by its wording" for a different paragraph with the same sentence (`content/passage.js:276-285`; partly an artefact of the fixture's repeated prose).
+- **P2.** Placeholders measure 3.22 to 3.58:1, because no `::placeholder` colour is set (`#newDraftTitle`, `#librarySearch`, `#draftTags`).
+- **P2.** In Sources, five buttons are named just "Quote", with repeated "Edit passage note" and "Remove this passage" (`knowledge-view.js:361`).
+- **P2.** A quote whose clip was deleted keeps its Return until it is pressed, although the Desk already knows the clip is gone (`draft-view.js:885`).
+- **P2.** Quote always appends at the end of the draft.
+- **P2.** The draft title gets about 185px at 1280 and is cut off by the three action buttons (`desk.css:205-211`).
+- **P2.** At 390px the first writing block starts about 780px down, below the header, help, tabs, pane intro, New draft form and drafts list.
+- **P3.** The export message omits drafts (round five's, still open). `summary` and the skip link use Chrome's 1px outline instead of the 2px ring. The New draft form is a card inside a card. Much secondary text is 11px. `.quote-cite` declares colour and size twice. One object is called clip, passage and block in different places, and the literal `# ` stays visible in headings.
+
+**Detector:** `desk.html` 0 static findings. `sidepanel.html` had 9 low-contrast findings, all decision 30's false positive again: the gradient was laid over white instead of `#17141f`, and the real ratios are 16.15, 7.36 and 5.36 on the plain background and at least 14.05, 6.40 and 4.66 at the Desk gradient's peak. Live scans over CDP confirmed the two placeholder findings and missed `#draftTags`. Tiny text on `#libraryUsage` and the kicker above the heading are arguable. Nested cards on `#newDraftForm` are confirmed.
+
+**Confirmed working by measurement:**
+- Every Sprint 010 behaviour worked: Enter at the end, quiet Backspace, crossing at the edges and over quotes, Alt with an arrow announcing the new position, Control with Enter, and drag with a drop line and Escape.
+- Undo restored text and quotes, with storage keeping the quote during the offer.
+- Return behaved in all four conditions, and its verdicts survived a reload.
+- Markdown Copy and Download were byte-identical.
+- Search, tags and their deep links worked; merge import counts were right; and a quoted clip's deletion warning named the draft.
+- Keyboard: 63 tab stops at 1280 and 30 at 390, each with a visible indicator.
+- Accessibility tree: 0 unnamed controls.
+- Every visible target is at least 24px apart from one native checkbox. There was no overflow at 390 or 1280 and zero console errors. Reduced motion leaves no animations.
+
+**Still untested:** the real side panel, touch hardware, a screen reader's speech, IME, reading the clipboard back, storage-full and draft-full saves, two Desk tabs editing one draft, replace-mode import, and round five's excluded-site and duplicate-sentence cases.
