@@ -60,57 +60,68 @@
   var SAVED_COLOR = "#C9A227"; // Warm-gold distinguishes a deliberate save.
   var STATIC_COLOR = "#FFFFFF"; // Strong neutral for the frozen "stopped" caps.
 
-  function renderRuler(y, settings, state) {
+  // The ruler and underline span the text they are on, {left, right} in
+  // viewport pixels. Without an extent they span the viewport.
+  function spanOf(extent) {
+    var left = extent && Number.isFinite(extent.left) ? Math.max(0, extent.left) : 0;
+    var right = extent && Number.isFinite(extent.right) ? Math.min(viewportWidth, extent.right) : viewportWidth;
+    return right > left ? { left: left, right: right } : { left: 0, right: viewportWidth };
+  }
+
+  function renderRuler(y, settings, state, extent) {
     ensureCanvas();
     if (!ctx) return;
     var halfH = settings.size / 2;
+    var span = spanOf(extent);
+    var left = span.left;
+    var right = span.right;
     ctx.clearRect(0, 0, viewportWidth, viewportHeight);
 
     if (state === "saved") {
       // Saved: warm-gold band with dashed edges and a left edge flag so it is
       // distinguishable by shape as well as color. Dashes imply "a placed mark".
       ctx.fillStyle = parseColor(SAVED_COLOR, settings.opacity);
-      ctx.fillRect(0, y - halfH, viewportWidth, settings.size);
+      ctx.fillRect(left, y - halfH, right - left, settings.size);
       ctx.strokeStyle = parseColor(SAVED_COLOR, Math.min(settings.opacity + 0.35, 1));
       ctx.lineWidth = 2;
       ctx.setLineDash([8, 6]);
       ctx.beginPath();
-      ctx.moveTo(0, y - halfH);
-      ctx.lineTo(viewportWidth, y - halfH);
-      ctx.moveTo(0, y + halfH);
-      ctx.lineTo(viewportWidth, y + halfH);
+      ctx.moveTo(left, y - halfH);
+      ctx.lineTo(right, y - halfH);
+      ctx.moveTo(left, y + halfH);
+      ctx.lineTo(right, y + halfH);
       ctx.stroke();
       ctx.setLineDash([]);
-      // Flag protruding from the left edge.
+      // Flag protruding from the left end.
       ctx.fillStyle = parseColor(SAVED_COLOR, 1);
-      ctx.fillRect(4, y - halfH - 10, 8, 10);
+      ctx.fillRect(left + 4, y - halfH - 10, 8, 10);
     } else if (state === "frozen") {
-      // Frozen: translucent band with solid "stopped" end caps on both edges
+      // Frozen: translucent band with solid "stopped" end caps on both ends
       // and a solid center line to read as an explicitly halted marker.
       ctx.fillStyle = parseColor(settings.color, settings.opacity);
-      ctx.fillRect(0, y - halfH, viewportWidth, settings.size);
+      ctx.fillRect(left, y - halfH, right - left, settings.size);
       ctx.strokeStyle = parseColor(STATIC_COLOR, 0.9);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(viewportWidth, y);
+      ctx.moveTo(left, y);
+      ctx.lineTo(right, y);
       ctx.stroke();
       // Solid end caps (a visual "stopper").
       ctx.fillStyle = parseColor(STATIC_COLOR, 0.9);
-      ctx.fillRect(0, y - halfH, 5, settings.size);
-      ctx.fillRect(viewportWidth - 5, y - halfH, 5, settings.size);
+      ctx.fillRect(left, y - halfH, 5, settings.size);
+      ctx.fillRect(right - 5, y - halfH, 5, settings.size);
     } else {
       // Following: light, translucent band with thin edges (the default).
       ctx.fillStyle = parseColor(settings.color, settings.opacity);
-      ctx.fillRect(0, y - halfH, viewportWidth, settings.size);
+      ctx.fillRect(left, y - halfH, right - left, settings.size);
 
       ctx.strokeStyle = parseColor(settings.color, Math.min(settings.opacity + 0.3, 1));
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(0, y - halfH);
-      ctx.lineTo(viewportWidth, y - halfH);
-      ctx.moveTo(0, y + halfH);
-      ctx.lineTo(viewportWidth, y + halfH);
+      ctx.moveTo(left, y - halfH);
+      ctx.lineTo(right, y - halfH);
+      ctx.moveTo(left, y + halfH);
+      ctx.lineTo(right, y + halfH);
       ctx.stroke();
     }
   }
@@ -133,9 +144,12 @@
     }
   }
 
-  function renderUnderline(y, settings, state) {
+  function renderUnderline(y, settings, state, extent) {
     ensureCanvas();
     if (!ctx) return;
+    var span = spanOf(extent);
+    var left = span.left;
+    var right = span.right;
     ctx.clearRect(0, 0, viewportWidth, viewportHeight);
 
     if (state === "saved") {
@@ -145,13 +159,13 @@
       ctx.lineWidth = 3;
       ctx.setLineDash([10, 7]);
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(viewportWidth, y);
+      ctx.moveTo(left, y);
+      ctx.lineTo(right, y);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle = parseColor(SAVED_COLOR, 1);
       ctx.beginPath();
-      ctx.arc(viewportWidth - 10, y, 5, 0, Math.PI * 2);
+      ctx.arc(right - 10, y, 5, 0, Math.PI * 2);
       ctx.fill();
     } else if (state === "frozen") {
       // Frozen: bright, thick solid line reading as a "stopped" marker.
@@ -161,16 +175,16 @@
       ctx.strokeStyle = parseColor(STATIC_COLOR, 0.9);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(viewportWidth, y);
+      ctx.moveTo(left, y);
+      ctx.lineTo(right, y);
       ctx.stroke();
       ctx.restore();
 
       ctx.strokeStyle = parseColor(STATIC_COLOR, 0.9);
       ctx.lineWidth = 4;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(viewportWidth, y);
+      ctx.moveTo(left, y);
+      ctx.lineTo(right, y);
       ctx.stroke();
     } else {
       // Following: soft translucent glow line (the default).
@@ -180,16 +194,16 @@
       ctx.strokeStyle = parseColor(settings.color, Math.min(settings.opacity + 0.2, 1));
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(viewportWidth, y);
+      ctx.moveTo(left, y);
+      ctx.lineTo(right, y);
       ctx.stroke();
       ctx.restore();
 
       ctx.strokeStyle = parseColor(settings.color, settings.opacity);
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(viewportWidth, y);
+      ctx.moveTo(left, y);
+      ctx.lineTo(right, y);
       ctx.stroke();
     }
   }

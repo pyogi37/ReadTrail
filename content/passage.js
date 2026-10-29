@@ -22,8 +22,13 @@
     }
   }
 
+  // The last captured range, in memory only, so the context-menu save can show
+  // what it kept (flashCaptured). Never stored or sent.
+  let lastCaptured = null;
+
   // Returns { ok, text, start, end, url, title } or { ok:false, error }.
   function captureSelection() {
+    lastCaptured = null;
     let selection = null;
     try {
       selection = window.getSelection();
@@ -37,6 +42,7 @@
     if (text.length === 0) return { ok: false, error: "no-selection" };
     if (text.length > TEXT_MAX) return { ok: false, error: "too-long" };
     const range = selection.getRangeAt(0);
+    lastCaptured = range.cloneRange();
     return {
       ok: true,
       text,
@@ -238,17 +244,26 @@
   // A second named highlight, removed on a timer. CSS transitions do not apply
   // to ::highlight, so the flash is the highlight's presence, not an animation.
   function flashRange(range) {
-    if (!highlightsSupported()) return;
+    if (!highlightsSupported()) return false;
     try {
       CSS.highlights.set(REVEAL_NAME, new Highlight(range));
     } catch (_) {
-      return;
+      return false;
     }
     if (flashTimer !== null) clearTimeout(flashTimer);
     flashTimer = setTimeout(() => {
       flashTimer = null;
       try { CSS.highlights.delete(REVEAL_NAME); } catch (_) { /* already gone */ }
     }, FLASH_MS);
+    return true;
+  }
+
+  // The context-menu save's confirmation: the kept text flashes where it is,
+  // without scrolling, once. A range the page has since collapsed is not shown.
+  function flashCaptured() {
+    const range = lastCaptured;
+    lastCaptured = null;
+    return Boolean(range && !range.collapsed) && flashRange(range);
   }
 
   // Returns "exact" | "approximate" | "missing".
@@ -284,5 +299,5 @@
   }
 
   window.ReadTrailPassage = { captureSelection, applyHighlights, clearHighlights, HIGHLIGHT_NAME,
-    revealPassage, clearReveal, normalizeText, REVEAL_NAME };
+    revealPassage, clearReveal, flashCaptured, normalizeText, REVEAL_NAME };
 })();

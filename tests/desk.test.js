@@ -1010,4 +1010,389 @@ describe("ReadTrail Desk", () => {
     expect(document.querySelector("#draftStatus").textContent).toBe("Copied the quote with its source.");
     withoutClipboard();
   });
+
+  // --- The Desk as one document (Sprint 010) ---
+
+  const key = (target, init) => {
+    const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+    target.dispatchEvent(event);
+    return event;
+  };
+  const areas = () => [...document.querySelectorAll(".block-text")];
+  const caretAt = (area, start, end = start) => {
+    area.focus();
+    area.setSelectionRange(start, end);
+  };
+  const savedDrafts = (h) => {
+    globalThis.ReadTrailSidePanel.draftView.flushSave();
+    return h.messages.filter((m) => m.type === "updateDraft");
+  };
+
+  it("adds one empty block below with Enter at the end, and leaves the block it came from as it was", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "# Findings\nFirst line" }, { type: "text", text: "Last" }] })]
+    });
+    // A key the textarea handles must not reach the block's handler too.
+    const reached = vi.fn();
+    document.querySelector("#draftBlocks").addEventListener("keydown", reached);
+    const first = areas()[0];
+    caretAt(first, first.value.length);
+
+    const event = key(first, { key: "Enter" });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(reached).not.toHaveBeenCalled();
+    expect(areas().map((a) => a.value)).toEqual(["# Findings\nFirst line", "", "Last"]);
+    expect(document.activeElement).toBe(areas()[1]);
+    const saved = savedDrafts(h);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].blocks).toEqual([
+      { type: "text", text: "# Findings\nFirst line" },
+      { type: "text", text: "" },
+      { type: "text", text: "Last" }
+    ]);
+  });
+
+  it.each([
+    ["Shift with Enter", { key: "Enter", shiftKey: true }, 11],
+    ["Enter mid-text", { key: "Enter" }, 5],
+    ["Enter during composition", { key: "Enter", isComposing: true }, 11]
+  ])("leaves %s to the browser as a line break", (_, init, caret) => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [{ type: "text", text: "Hello world" }] })] });
+    const area = areas()[0];
+    caretAt(area, caret);
+    expect(key(area, init).defaultPrevented).toBe(false);
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(1);
+  });
+
+  it("leaves Enter over a selection to the browser", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [{ type: "text", text: "Hello world" }] })] });
+    const area = areas()[0];
+    caretAt(area, 6, 11);
+    expect(key(area, { key: "Enter" }).defaultPrevented).toBe(false);
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(1);
+  });
+
+  it("says so with an alert at the block limit, and changes nothing", () => {
+    loadDesk();
+    const max = globalThis.ReadTrailShared.LIMITS.DRAFT_BLOCKS_MAX;
+    const blocks = Array.from({ length: max }, (_, i) => ({ type: "text", text: `Block ${i}` }));
+    const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks })] });
+    const last = areas().at(-1);
+    caretAt(last, last.value.length);
+
+    // Prevented all the same: a line break would change the block.
+    expect(key(last, { key: "Enter" }).defaultPrevented).toBe(true);
+
+    const status = document.querySelector("#draftStatus");
+    expect(status.textContent).toBe("This draft has as many blocks as it can hold.");
+    expect(status.getAttribute("role")).toBe("alert");
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(max);
+    expect(last.value).toBe(`Block ${max - 1}`);
+    expect(savedDrafts(h)).toHaveLength(0);
+  });
+
+  it("removes an empty block quietly with Backspace, with the caret at the end of the text above", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "Above" }, quoteBlock(), { type: "text", text: "" }, { type: "text", text: "" }] })]
+    });
+    // Something already in the status line, which the removal must not touch.
+    withoutClipboard();
+    document.querySelector("#draftCopyMarkdown").click();
+    const status = document.querySelector("#draftStatus");
+    const before = { text: status.textContent, role: status.getAttribute("role"), hidden: status.hidden };
+    const reached = vi.fn();
+    document.querySelector("#draftBlocks").addEventListener("keydown", reached);
+
+    const event = key(areas()[1], { key: "Backspace" });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(reached).not.toHaveBeenCalled();
+    // One press, one block, and the quote between is stepped over.
+    expect(areas().map((a) => a.value)).toEqual(["Above", ""]);
+    expect(document.querySelectorAll(".quote-block")).toHaveLength(1);
+    expect(document.querySelector("#draftLive").textContent).toBe("Empty block removed.");
+    const above = areas()[0];
+    expect(document.activeElement).toBe(above);
+    expect([above.selectionStart, above.selectionEnd]).toEqual([5, 5]);
+    // No undo offer, nothing pulled away from the writing.
+    expect(document.querySelector("#draftUndo").hidden).toBe(true);
+    expect(document.querySelector(".draft-undo-slot")).toBeNull();
+    expect({ text: status.textContent, role: status.getAttribute("role"), hidden: status.hidden }).toEqual(before);
+    expect(above.closest(".draft-block").classList.contains("just-changed")).toBe(false);
+    const saved = savedDrafts(h);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].blocks.map((b) => b.type)).toEqual(["text", "quote", "text"]);
+  });
+
+  it("lands on the quote's Return, or its options without one, when only quotes are above", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock(), { type: "text", text: "" }] })] });
+    key(areas()[0], { key: "Backspace" });
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(1);
+    expect(document.activeElement).toBe(document.querySelector(".quote-block .btn-return"));
+
+    // A quote whose clip is gone has no Return, and the citation link would
+    // turn the next Enter into a new tab.
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [quoteBlock({ checked: { quality: "missing", at: 1, reason: "clip-gone" } }), { type: "text", text: "" }] })]
+    });
+    key(areas()[0], { key: "Backspace" });
+    expect(document.activeElement).toBe(document.querySelector(".quote-block .block-options-toggle"));
+    expect(document.activeElement.closest(".passage-text")).toBeNull();
+  });
+
+  it("leaves Backspace to the browser in a block with text or in the first block", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [{ type: "text", text: "" }, { type: "text", text: "x" }] })] });
+    expect(key(areas()[0], { key: "Backspace" }).defaultPrevented).toBe(false);
+    caretAt(areas()[1], 1);
+    expect(key(areas()[1], { key: "Backspace" }).defaultPrevented).toBe(false);
+    caretAt(areas()[1], 0, 1);
+    expect(key(areas()[1], { key: "Backspace" }).defaultPrevented).toBe(false);
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(2);
+    expect(document.querySelector("#draftLive").textContent).toBe("");
+  });
+
+  it("crosses into the nearest text block with Up at the start and Down at the end, over quotes", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "One" }, quoteBlock(), quoteBlock({ passageId: "passage-2" }), { type: "text", text: "Two" }] })]
+    });
+    const reached = vi.fn();
+    document.querySelector("#draftBlocks").addEventListener("keydown", reached);
+    const [one, two] = areas();
+
+    caretAt(two, 0);
+    expect(key(two, { key: "ArrowUp" }).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(one);
+    expect([one.selectionStart, one.selectionEnd]).toEqual([3, 3]);
+
+    expect(key(one, { key: "ArrowDown" }).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(two);
+    expect([two.selectionStart, two.selectionEnd]).toEqual([0, 0]);
+
+    // Crossing changes nothing in the draft and never lands in a quote.
+    expect(reached).not.toHaveBeenCalled();
+    expect(document.querySelectorAll(".draft-block")).toHaveLength(4);
+    expect(savedDrafts(h)).toHaveLength(0);
+  });
+
+  it("leaves Up and Down alone away from the edge, with Shift, over a selection, or with no text block that way", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "abc" }, { type: "text", text: "def" }] })]
+    });
+    const [first, second] = areas();
+    const stays = (area, init, start, end) => {
+      caretAt(area, start, end);
+      expect(key(area, init).defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(area);
+    };
+    stays(second, { key: "ArrowUp" }, 1);
+    stays(second, { key: "ArrowUp", shiftKey: true }, 0);
+    stays(second, { key: "ArrowUp" }, 0, 2);
+    stays(first, { key: "ArrowDown" }, 2);
+    stays(first, { key: "ArrowDown", shiftKey: true }, 3);
+    // The first and last blocks have nothing to cross to.
+    stays(first, { key: "ArrowUp" }, 0);
+    stays(second, { key: "ArrowDown" }, 3);
+
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock(), { type: "text", text: "mid" }, quoteBlock()] })] });
+    const middle = areas()[0];
+    stays(middle, { key: "ArrowUp" }, 0);
+    stays(middle, { key: "ArrowDown" }, 3);
+  });
+
+  // JSDOM does no layout, so each block is given a 80px box every 100px.
+  const stubRects = () => document.querySelectorAll(".draft-block").forEach((node, i) => {
+    node.getBoundingClientRect = () => ({ top: i * 100, bottom: i * 100 + 80, height: 80, left: 0, right: 300, width: 300, x: 0, y: i * 100 });
+  });
+  const pointer = (target, type, y, init = {}) => {
+    const event = new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, isPrimary: true, button: 0, clientX: 20, clientY: y, ...init });
+    target.dispatchEvent(event);
+    return event;
+  };
+  const handleOf = (index) => document.querySelectorAll(".draft-block")[index].querySelector(".block-handle");
+  const order = () => [...document.querySelectorAll(".draft-block")]
+    .map((b) => (b.classList.contains("quote-block") ? "quote" : b.querySelector(".block-text").value));
+  const marks = () => document.querySelectorAll(".is-lifted, .drop-before, .drop-after").length;
+
+  it("drags a block by its handle to the line, through the same move as the options row", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "a" }, { type: "text", text: "b" }, quoteBlock()] })]
+    });
+    stubRects();
+    const handle = handleOf(2);
+    expect(pointer(handle, "pointerdown", 210).defaultPrevented).toBe(true);
+    // Under four pixels it is still a press.
+    pointer(handle, "pointermove", 213);
+    expect(marks()).toBe(0);
+
+    pointer(handle, "pointermove", 30);
+    const blocks = document.querySelectorAll(".draft-block");
+    expect(blocks[2].classList.contains("is-lifted")).toBe(true);
+    expect(blocks[0].classList.contains("drop-before")).toBe(true);
+    pointer(handle, "pointerup", 30);
+
+    expect(order()).toEqual(["quote", "a", "b"]);
+    expect(marks()).toBe(0);
+    expect(document.querySelector("#draftLive").textContent).toBe("Moved to position 1 of 3.");
+    // Focus keeps the reader on the moved block without opening its options,
+    // and not in a textarea, which would raise a touch keyboard.
+    expect(document.querySelector('.block-options-toggle[aria-expanded="true"]')).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector(".quote-block .block-options-toggle"));
+    const saved = savedDrafts(h);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].blocks.map((b) => b.type)).toEqual(["quote", "text", "text"]);
+
+    // To the end of the list, past the last block's middle.
+    stubRects();
+    const first = handleOf(0);
+    pointer(first, "pointerdown", 10);
+    pointer(first, "pointermove", 260);
+    expect(document.querySelectorAll(".draft-block")[2].classList.contains("drop-after")).toBe(true);
+    pointer(first, "pointerup", 260);
+    expect(order()).toEqual(["a", "b", "quote"]);
+    expect(document.activeElement).toBe(document.querySelector(".quote-block .block-options-toggle"));
+  });
+
+  it("puts the block back on a drop where it started, on Escape, and on pointercancel, and saves nothing", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "a" }, { type: "text", text: "b" }, { type: "text", text: "c" }] })]
+    });
+    stubRects();
+    const handle = handleOf(1);
+    // Either gap beside the block leaves it where it is, so no line shows.
+    pointer(handle, "pointerdown", 110);
+    pointer(handle, "pointermove", 160);
+    expect(document.querySelectorAll(".draft-block")[1].classList.contains("is-lifted")).toBe(true);
+    expect(document.querySelectorAll(".drop-before, .drop-after")).toHaveLength(0);
+    pointer(handle, "pointerup", 160);
+    expect(order()).toEqual(["a", "b", "c"]);
+    expect(marks()).toBe(0);
+
+    // Escape during a drag belongs to the drag: an open options row keeps
+    // its place.
+    const toggle = document.querySelectorAll(".block-options-toggle")[1];
+    toggle.click();
+    const inRow = document.querySelectorAll(".block-options")[1].querySelector(".btn-insert-below");
+    inRow.focus();
+    pointer(handle, "pointerdown", 110);
+    pointer(handle, "pointermove", 10);
+    expect(marks()).toBe(2);
+    expect(key(inRow, { key: "Escape" }).defaultPrevented).toBe(true);
+    expect(marks()).toBe(0);
+    expect(document.querySelectorAll(".block-options")[1].hidden).toBe(false);
+    pointer(handle, "pointerup", 10);
+    expect(order()).toEqual(["a", "b", "c"]);
+
+    pointer(handle, "pointerdown", 110);
+    pointer(handle, "pointermove", 290);
+    expect(marks()).toBe(2);
+    pointer(handle, "pointercancel", 290);
+    expect(marks()).toBe(0);
+    pointer(handle, "pointerup", 290);
+    expect(order()).toEqual(["a", "b", "c"]);
+
+    // A window that loses focus mid-drag may never see the release, and the
+    // next click anywhere must not finish the drag.
+    pointer(handle, "pointerdown", 110);
+    pointer(handle, "pointermove", 10);
+    window.dispatchEvent(new Event("blur"));
+    expect(marks()).toBe(0);
+    pointer(document.body, "pointerup", 10);
+    expect(order()).toEqual(["a", "b", "c"]);
+    // So may a handle that loses its pointer capture.
+    pointer(handle, "pointerdown", 110);
+    pointer(handle, "pointermove", 10);
+    pointer(handle, "lostpointercapture", 10);
+    expect(marks()).toBe(0);
+    pointer(document.body, "pointerup", 10);
+    expect(order()).toEqual(["a", "b", "c"]);
+
+    expect(document.querySelector("#draftLive").textContent).toBe("");
+    expect(savedDrafts(h)).toHaveLength(0);
+  });
+
+  it("drags only from the handle, so a press in the text still belongs to the text", () => {
+    const h = loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "a" }, { type: "text", text: "b" }] })]
+    });
+    stubRects();
+    const area = areas()[1];
+    expect(pointer(area, "pointerdown", 110).defaultPrevented).toBe(false);
+    pointer(area, "pointermove", 10);
+    pointer(area, "pointerup", 10);
+    expect(marks()).toBe(0);
+    expect(order()).toEqual(["a", "b"]);
+    // Only the primary button lifts a block.
+    pointer(handleOf(1), "pointerdown", 110, { button: 2 });
+    pointer(handleOf(1), "pointermove", 10);
+    pointer(handleOf(1), "pointerup", 10);
+    expect(order()).toEqual(["a", "b"]);
+    expect(savedDrafts(h)).toHaveLength(0);
+  });
+
+  it("keeps the handle out of the tab order and away from assistive technology", () => {
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: [quoteBlock(), { type: "text", text: "mine" }] })] });
+    for (const block of document.querySelectorAll(".draft-block")) {
+      const handles = block.querySelectorAll(".block-handle");
+      expect(handles).toHaveLength(1);
+      expect(handles[0].tagName).toBe("SPAN");
+      expect(handles[0].getAttribute("aria-hidden")).toBe("true");
+      expect(handles[0].hasAttribute("tabindex")).toBe(false);
+      expect(handles[0].hasAttribute("role")).toBe(false);
+    }
+    // A quote at rest still has exactly three tab stops (decision 81).
+    const quote = document.querySelector(".quote-block");
+    const stops = [...quote.querySelectorAll("a[href], button, textarea, [tabindex]:not([tabindex='-1'])")]
+      .filter((el) => !el.closest("[hidden]"));
+    expect(stops).toHaveLength(3);
+
+    // A draft of one block has nowhere to drag it, so it offers no handle.
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+    expect(document.querySelector(".block-handle")).toBeNull();
+  });
+
+  it("keeps a standing undo offer in its gap when Backspace removes an empty block above it", () => {
+    loadDesk({
+      hash: "#/drafts/draft-1",
+      drafts: [draft({ blocks: [{ type: "text", text: "A" }, { type: "text", text: "" }, { type: "text", text: "X" }, { type: "text", text: "B" }] })]
+    });
+    document.querySelectorAll(".draft-block")[2].querySelector(".btn-remove-block").click();
+    key(areas()[1], { key: "Backspace" });
+    expect(areas().map((a) => a.value)).toEqual(["A", "B"]);
+    // The offer still sits between A and B, and restores X there.
+    const slot = document.querySelector(".draft-undo-slot");
+    expect(slot.previousElementSibling.querySelector(".block-text").value).toBe("A");
+    document.querySelector("#draftUndo").click();
+    expect(areas().map((a) => a.value)).toEqual(["A", "X", "B"]);
+  });
+
+  it("styles the handle with a 24px target, no touch scrolling, hidden from hit testing at rest, and no motion of its own", () => {
+    const css = readSource("sidepanel/desk.css").replace(/\r\n/g, "\n");
+    const rule = (selector) => {
+      const at = css.indexOf(`${selector} {`);
+      expect(at).toBeGreaterThanOrEqual(0);
+      return css.slice(at, css.indexOf("}", at));
+    };
+    const handle = rule(".block-handle");
+    expect(Number(handle.match(/\bwidth: (\d+)px/)[1])).toBeGreaterThanOrEqual(24);
+    expect(Number(handle.match(/\bheight: (\d+)px/)[1])).toBeGreaterThanOrEqual(24);
+    expect(handle).toContain("touch-action: none");
+    expect(handle).toContain("visibility: hidden");
+    // Always there where nothing can hover to reveal it.
+    const touch = css.slice(css.indexOf("@media (hover: none) {\n  .block-handle {"));
+    expect(touch.slice(0, touch.indexOf("}\n}"))).toContain("visibility: visible");
+    // The global reduced-motion rule switches transitions off; nothing here
+    // may escape it.
+    const own = css.slice(css.indexOf(".block-handle {"), css.indexOf(".draft-block.drop-after::after {") + 60);
+    expect(own).not.toContain("animation");
+    expect(own).not.toContain("!important");
+  });
 });

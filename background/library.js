@@ -1018,6 +1018,45 @@
     } catch (_) { /* context menus unavailable */ }
   }
 
+  // The menu save has no surface of its own: success flashes on the page, and
+  // failure marks that tab's toolbar icon, never the global recently-closed badge.
+  const SAVE_FAILED_MS = 8000;
+  const saveFailedTimers = new Map();
+
+  function saveFailedTitle(error) {
+    const reason =
+      error === ERRORS.TOO_LONG ? `the selection is longer than ${LIMITS.TEXT_MAX.toLocaleString("en-US")} characters`
+      : error === ERRORS.NO_SELECTION ? "nothing was selected on this page (a selection inside a frame cannot be saved)"
+      : error === ERRORS.STORAGE_FULL ? "this device's ReadTrail storage is full"
+      : "it could not be saved";
+    return `ReadTrail did not save that: ${reason}.`;
+  }
+
+  // text null hands the tab back to the global badge. setTitle rejects null
+  // (measured in Chromium), so the title goes back to the manifest's.
+  function markTab(tabId, text, title) {
+    try {
+      chrome.action.setBadgeText({ tabId, text }, () => { void chrome.runtime.lastError; });
+      chrome.action.setTitle({ tabId, title: title || chrome.runtime.getManifest().action.default_title },
+        () => { void chrome.runtime.lastError; });
+    } catch (_) { /* the mark is cosmetic */ }
+  }
+
+  function showSaveFailed(tabId, error) {
+    clearTimeout(saveFailedTimers.get(tabId));
+    markTab(tabId, "!", saveFailedTitle(error));
+    // shortcut: a suspended worker never fires this, so the mark stays until that tab's
+    // next successful save or until it closes; move to chrome.alarms (a new permission) only if readers see it.
+    saveFailedTimers.set(tabId, setTimeout(() => clearSaveFailed(tabId), SAVE_FAILED_MS));
+  }
+
+  // Unconditional, so a mark left by a suspended worker's lost timer still clears.
+  function clearSaveFailed(tabId) {
+    clearTimeout(saveFailedTimers.get(tabId));
+    saveFailedTimers.delete(tabId);
+    markTab(tabId, null, null);
+  }
+
   function onContextMenuClick(info, tab) {
     if (!info || info.menuItemId !== MENU_ID || !tab || !S.isValidTabId(tab.id)) return;
     if (tab.incognito === true) return;
@@ -1025,14 +1064,24 @@
     if (!tabs || typeof tabs.sendMessage !== "function") return;
     try {
       tabs.sendMessage(tab.id, { type: "capturePassage" }, (captured) => {
-        if (chrome.runtime.lastError || !captured || !captured.ok) return;
+        if (chrome.runtime.lastError || !captured || !captured.ok) {
+          showSaveFailed(tab.id, captured && captured.error);
+          return;
+        }
         if (typeof onPassageSaved === "function" && tab.incognito !== true) {
           onPassageSaved(tab.id, captured.url);
         }
         handleSavePassage(
           { title: captured.title, text: captured.text, start: captured.start, end: captured.end },
           { tab: { id: tab.id, url: captured.url, incognito: Boolean(tab.incognito) } },
-          () => {}
+          (result) => {
+            if (!result.ok) {
+              showSaveFailed(tab.id, result.error);
+              return;
+            }
+            clearSaveFailed(tab.id);
+            tabs.sendMessage(tab.id, { type: "flashCapture" }, () => { void chrome.runtime.lastError; });
+          }
         );
       });
     } catch (_) { /* tab gone */ }

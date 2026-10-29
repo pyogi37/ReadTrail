@@ -25,8 +25,10 @@
   let savedVisual = false;
 
   let trail = [];
-  let lastHighlight = null;
-  let lastHighlightStyle = null;
+  const LINE_HIGHLIGHT = "readtrail-line";
+  let lineBlock = null; // The block the line highlight covers.
+  let lineStyle = null; // The one ReadTrail rule for ::highlight(readtrail-line); exists only on an active page.
+  let guideExtent = null; // {left, right} of the last block found; null spans the viewport.
   let animFrame = null;
   let cursor = { x: 0, y: 0 };
 
@@ -192,6 +194,11 @@
 
   // --- Visual helpers ---
 
+  function blockOf(node) {
+    if (!node || node.nodeType !== Node.TEXT_NODE || !node.parentElement) return null;
+    return node.parentElement.closest("p, div, li, h1, h2, h3, h4, h5, h6, td, th, pre, blockquote, dt, dd, section, article");
+  }
+
   function lineAtPoint(x, y) {
     let range = null;
     try {
@@ -199,44 +206,63 @@
     } catch (_) {
       return null;
     }
-    if (!range || !range.startContainer) return null;
-    const node = range.startContainer;
-    if (node.nodeType !== Node.TEXT_NODE) return null;
-    const el = node.parentElement;
-    if (!el) return null;
-    return el.closest("p, div, li, h1, h2, h3, h4, h5, h6, td, th, pre, blockquote, dt, dd, section, article");
+    return range ? blockOf(range.startContainer) : null;
   }
 
-  function highlightLine(el) {
-    if (lastHighlight && lastHighlight !== el) {
-      lastHighlight.classList.remove("readtrail-highlight");
-      lastHighlight.style.setProperty("background-color", lastHighlightStyle.value, lastHighlightStyle.priority);
-      lastHighlightStyle = null;
-    }
-    if (el && lastHighlight !== el) {
-      lastHighlightStyle = {
-        value: el.style.getPropertyValue("background-color"),
-        priority: el.style.getPropertyPriority("background-color")
-      };
-      el.classList.add("readtrail-highlight");
-      const color = /^#[0-9a-f]{6}$/i.test(settings.highlightColor)
-        ? settings.highlightColor
-        : (DEFAULTS.highlightColor || "#FFEB3B");
-      const r = parseInt(color.slice(1, 3), 16);
-      const g = parseInt(color.slice(3, 5), 16);
-      const b = parseInt(color.slice(5, 7), 16);
-      el.style.setProperty("background-color", `rgba(${r}, ${g}, ${b}, 0.3)`, "important");
-    }
-    lastHighlight = el;
+  // A range over a block's contents: the line highlight paints it, and its
+  // box is the extent the ruler and underline span.
+  function contentsOf(block) {
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    return range;
+  }
+
+  // A block with no box (hidden, detached) leaves the guide's extent as it was.
+  function takeExtent(range) {
+    const rect = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null;
+    if (rect && rect.width > 0) guideExtent = { left: rect.left, right: rect.right };
+  }
+
+  function highlightsSupported() {
+    return typeof CSS !== "undefined" && CSS.highlights && typeof Highlight === "function";
+  }
+
+  function lineRule() {
+    const color = /^#[0-9a-f]{6}$/i.test(settings.highlightColor)
+      ? settings.highlightColor
+      : (DEFAULTS.highlightColor || "#FFEB3B");
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `::highlight(${LINE_HIGHLIGHT}) { background-color: rgba(${r}, ${g}, ${b}, 0.3); color: inherit; }`;
+  }
+
+  // The highlight paints behind the block's glyphs only; the page's own
+  // elements get no class and no inline style.
+  function highlightLine(block, range) {
+    if (block === lineBlock || !highlightsSupported()) return;
+    try {
+      if (!block) {
+        CSS.highlights.delete(LINE_HIGHLIGHT);
+      } else {
+        if (!lineStyle) {
+          lineStyle = document.createElement("style");
+          lineStyle.dataset.readtrailLine = "true";
+          lineStyle.textContent = lineRule();
+          (document.head || document.documentElement).appendChild(lineStyle);
+        }
+        CSS.highlights.set(LINE_HIGHLIGHT, new Highlight(range));
+      }
+      lineBlock = block;
+    } catch (_) { /* fail safely; the next move tries again */ }
   }
 
   function clearHighlight() {
-    if (lastHighlight) {
-      lastHighlight.classList.remove("readtrail-highlight");
-      lastHighlight.style.setProperty("background-color", lastHighlightStyle.value, lastHighlightStyle.priority);
-      lastHighlight = null;
-      lastHighlightStyle = null;
-    }
+    lineBlock = null;
+    if (!lineStyle) return; // Nothing was drawn, so a dormant page is never touched.
+    lineStyle.remove();
+    lineStyle = null;
+    try { CSS.highlights.delete(LINE_HIGHLIGHT); } catch (_) { /* already gone */ }
   }
 
   function ensureVisuals() {
@@ -251,8 +277,8 @@
     if (!R || !s || !Number.isFinite(y)) return;
     try {
       const state = savedVisual ? "saved" : mode;
-      if (s.style === "ruler") R.renderRuler(y, s, state);
-      else if (s.style === "underline") R.renderUnderline(y, s, state);
+      if (s.style === "ruler") R.renderRuler(y, s, state, guideExtent);
+      else if (s.style === "underline") R.renderUnderline(y, s, state, guideExtent);
       else if (s.style === "dots") {
         const x = Number.isFinite(window.innerWidth) ? window.innerWidth / 2 : 0;
         R.renderDots([{ x: x, y: y, alpha: 1 }], s);
@@ -265,11 +291,14 @@
     const s = settings;
     if (!R || !s) return;
     try {
-      if (s.highlightLine) highlightLine(lineAtPoint(x, y));
+      const block = lineAtPoint(x, y);
+      const range = block ? contentsOf(block) : null;
+      if (range) takeExtent(range);
+      if (s.highlightLine) highlightLine(block, range);
       const state = savedVisual ? "saved" : mode;
       if (s.style === "dots") addTrailPoint(x, y);
-      else if (s.style === "ruler") R.renderRuler(y, s, state);
-      else if (s.style === "underline") R.renderUnderline(y, s, state);
+      else if (s.style === "ruler") R.renderRuler(y, s, state, guideExtent);
+      else if (s.style === "underline") R.renderUnderline(y, s, state, guideExtent);
     } catch (_) { /* fail safely */ }
   }
 
@@ -288,6 +317,8 @@
         const height = Number.isFinite(rect.height) && rect.height > 0 ? rect.height : 0;
         y = rect.top + (height / 2);
       }
+      const block = range ? blockOf(range.startContainer) : null;
+      if (block) takeExtent(contentsOf(block));
     } catch (_) { /* retain the captured viewport offset as a safe fallback */ }
     renderAtY(y);
   }
@@ -320,6 +351,7 @@
     cancelTrailFrame();
     trail = [];
     clearHighlight();
+    guideExtent = null;
     const R = getRenderer();
     if (!R) return;
     try {
@@ -436,6 +468,7 @@
       savePosition(clickPosition, "following");
     } else if (mode === "following") {
       setMode("frozen");
+      clearHighlight(); // The line highlight follows the pointer, so a pause takes it away.
       lastPosition = clickPosition;
       renderAtY(clickPosition.viewportOffset);
       clearSaveTimer();
@@ -544,7 +577,7 @@
     if (applied.position) {
       lastPosition = applied.position;
       restoreScroll(applied.position);
-      renderAtY(applied.position.viewportOffset);
+      renderFrozenAnchor(); // From the anchor, so the guide takes its block's extent at once.
     }
   }
 
@@ -749,6 +782,17 @@
       }
       return false;
     }
+    if (msg.type === "flashCapture") {
+      // Confirms the reader's own context-menu save, so it works on a dormant
+      // page, like capturePassage. passage.js flashes the range that save kept.
+      const PS = getPassage();
+      let flashed = false;
+      if (PS && typeof PS.flashCaptured === "function") {
+        try { flashed = PS.flashCaptured() === true; } catch (_) { /* fail safely */ }
+      }
+      if (sendResponse) sendResponse({ ok: flashed });
+      return false;
+    }
     if (msg.type === "pageInfo") {
       // Lets extension pages learn the exact URL and title of a tab whose URL
       // Chrome does not expose to them. Works on dormant pages and reads no
@@ -784,6 +828,7 @@
       try { R.clear(); } catch (_) {}
     }
     if (!settings.highlightLine) clearHighlight();
+    else if (lineStyle) lineStyle.textContent = lineRule();
     // Re-render the current marker so appearance edits apply immediately.
     if ((mode === "following" || mode === "frozen") && lastPosition) {
       renderAtY(lastPosition.viewportOffset);
