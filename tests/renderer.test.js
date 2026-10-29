@@ -69,4 +69,56 @@ describe("ReadTrail renderer", () => {
     // The end badge distinguishes saved from the plain following/frozen lines.
     expect(context.arc).toHaveBeenCalled();
   });
+
+  // Every x the context was asked to draw at, so a test can prove nothing lands
+  // outside the text's extent.
+  function drawnXs() {
+    return [
+      ...context.fillRect.mock.calls.flatMap(([x, , w]) => [x, x + w]),
+      ...context.moveTo.mock.calls.map(([x]) => x),
+      ...context.lineTo.mock.calls.map(([x]) => x),
+      ...context.arc.mock.calls.flatMap(([x, , r]) => [x - r, x + r])
+    ];
+  }
+
+  it.each(["following", "frozen", "saved"])("keeps the %s ruler and underline inside the text's extent (B2)", (state) => {
+    const style = { size: 30, color: "#FF6B6B", opacity: 0.3 };
+    const extent = { left: 100, right: 400 };
+    for (const render of ["renderRuler", "renderUnderline"]) {
+      vi.clearAllMocks();
+      window.ReadTrailRenderer[render](120, style, state, extent);
+      const xs = drawnXs();
+      expect(xs.length).toBeGreaterThan(0);
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(100);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(400);
+      expect(context.clearRect).toHaveBeenCalledWith(0, 0, window.innerWidth, window.innerHeight);
+    }
+  });
+
+  it("puts the end marks at the ends of the extent (B2)", () => {
+    const style = { size: 30, color: "#FF6B6B", opacity: 0.3 };
+    const extent = { left: 100, right: 400 };
+    window.ReadTrailRenderer.renderRuler(120, style, "following", extent);
+    expect(context.fillRect).toHaveBeenCalledWith(100, 105, 300, 30);
+
+    window.ReadTrailRenderer.renderRuler(120, style, "saved", extent);
+    expect(context.fillRect).toHaveBeenCalledWith(104, 95, 8, 10); // flag
+
+    window.ReadTrailRenderer.renderRuler(120, style, "frozen", extent);
+    expect(context.fillRect).toHaveBeenCalledWith(100, 105, 5, 30); // left cap
+    expect(context.fillRect).toHaveBeenCalledWith(395, 105, 5, 30); // right cap
+
+    window.ReadTrailRenderer.renderUnderline(120, style, "saved", extent);
+    expect(context.arc).toHaveBeenCalledWith(390, 120, 5, 0, Math.PI * 2); // badge
+  });
+
+  it("clamps an extent to the viewport and spans the viewport without a usable one (B3)", () => {
+    const style = { size: 30, color: "#FF6B6B", opacity: 0.3 };
+    const width = window.innerWidth;
+    for (const extent of [undefined, null, { left: 300, right: 300 }, { left: 500, right: 200 }, { left: -50, right: width + 50 }]) {
+      context.fillRect.mockClear();
+      window.ReadTrailRenderer.renderRuler(120, style, "following", extent);
+      expect(context.fillRect).toHaveBeenCalledWith(0, 105, width, 30);
+    }
+  });
 });

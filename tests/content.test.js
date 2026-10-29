@@ -141,6 +141,38 @@ function loadContent({
 
 const flush = () => Promise.resolve();
 
+// JSDOM has no layout and no CSS Custom Highlight API. This stubs the highlight
+// registry, the Highlight class, caretRangeFromPoint (it hits `layout.hit`) and
+// range boxes, keyed by the id of the element a range starts in.
+function stubLayout({ hit = null, boxes = {} } = {}) {
+  const highlights = new Map();
+  vi.stubGlobal("CSS", { highlights });
+  vi.stubGlobal("Highlight", class { constructor(...ranges) { this.ranges = ranges; } });
+  const layout = { hit, highlights };
+  document.caretRangeFromPoint = vi.fn(() => (layout.hit ? { startContainer: layout.hit } : null));
+  Range.prototype.getBoundingClientRect = function () {
+    const box = boxes[this.startContainer.id] || { left: 0, right: 0 };
+    return { ...box, width: box.right - box.left, top: 0, height: 0 };
+  };
+  return layout;
+}
+
+afterEach(() => {
+  delete document.caretRangeFromPoint;
+  delete Range.prototype.getBoundingClientRect;
+  delete window.ReadTrailPassage;
+});
+
+function addParagraph(id, text) {
+  const p = document.createElement("p");
+  p.id = id;
+  p.textContent = text;
+  document.body.appendChild(p);
+  return p;
+}
+
+const lineStyles = () => document.querySelectorAll("style[data-readtrail-line]");
+
 function trustedPointerEvent(overrides = {}) {
   return {
     button: 0,
@@ -194,7 +226,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
     expect(resolvePosition).toHaveBeenCalledWith(position, document.body);
     expect(window.scrollTo).toHaveBeenCalledWith(0, 420);
-    expect(renderer.renderRuler).toHaveBeenCalledWith(160, expect.anything(), "frozen");
+    expect(renderer.renderRuler).toHaveBeenCalledWith(160, expect.anything(), "frozen", null);
     expect(addedDoc).toEqual(expect.arrayContaining(["mousemove", "click", "dblclick"]));
     expect(addedWin).toContain("pagehide");
   });
@@ -229,7 +261,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(addedDoc).toEqual(expect.arrayContaining(["mousemove", "click", "dblclick"]));
     expect(addedWin).toContain("pagehide");
     expect(renderer.ensureCanvas).toHaveBeenCalled();
-    expect(renderer.renderRuler).toHaveBeenCalledWith(200, expect.anything(), "frozen");
+    expect(renderer.renderRuler).toHaveBeenCalledWith(200, expect.anything(), "frozen", null);
   });
 
   it("throttles following checkpoints to once per second", async () => {
@@ -274,7 +306,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     // While frozen, movement must not move the marker.
     renderer.renderRuler.mockClear();
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 500 }));
-    expect(renderer.renderRuler).toHaveBeenCalledWith(50, expect.anything(), "frozen");
+    expect(renderer.renderRuler).toHaveBeenCalledWith(50, expect.anything(), "frozen", null);
     expect(renderer.renderRuler).not.toHaveBeenCalledWith(500, expect.anything());
 
     // A second click resumes following.
@@ -282,7 +314,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     vi.advanceTimersByTime(400);
     renderer.renderRuler.mockClear();
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 500 }));
-    expect(renderer.renderRuler).toHaveBeenCalledWith(500, expect.anything(), "following");
+    expect(renderer.renderRuler).toHaveBeenCalledWith(500, expect.anything(), "following", null);
   });
 
   it("keeps a frozen marker attached to its text line while the page scrolls", async () => {
@@ -302,8 +334,8 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     docHandlers.scroll();
 
     expect(resolveAnchor).toHaveBeenCalledWith(expect.any(Object), document.body);
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(190, expect.anything(), "frozen");
-    expect(renderer.renderRuler).not.toHaveBeenCalledWith(50, expect.anything(), "frozen");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(190, expect.anything(), "frozen", null);
+    expect(renderer.renderRuler).not.toHaveBeenCalledWith(50, expect.anything(), "frozen", null);
   });
 
   it("cancels a deferred single click when a double click follows", async () => {
@@ -436,7 +468,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(renderer.removeCanvas).not.toHaveBeenCalled();
     renderer.renderRuler.mockClear();
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 30, clientY: 70 }));
-    expect(renderer.renderRuler).toHaveBeenCalledWith(70, expect.anything(), "following");
+    expect(renderer.renderRuler).toHaveBeenCalledWith(70, expect.anything(), "following", null);
   });
 
   it("uses reading lock on interactive targets while preserving selection and non-primary gestures", async () => {
@@ -572,13 +604,13 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(getSaves()).toHaveLength(count + 1);
   });
 
+  // Sprint 010 B1 changed this test on purpose: it asserted a class and an
+  // inline style on the page's element, which was the defect. Its intent is
+  // unchanged: the highlight goes and the page's own style survives.
   it("preserves appearance updates and highlight cleanup", async () => {
-    const line = document.createElement("p");
-    line.id = "line";
-    line.textContent = "Readable text";
+    const line = addParagraph("line", "Readable text");
     line.style.backgroundColor = "rgb(1, 2, 3)";
-    document.body.appendChild(line);
-    document.caretRangeFromPoint = () => ({ startContainer: line.firstChild });
+    const layout = stubLayout({ hit: line.firstChild, boxes: { line: { left: 100, right: 400 } } });
 
     const { runtimeMessageHandler, storageChangeHandler, renderer } = loadContent({
       settings: { enabled: true, style: "underline", highlightLine: true, highlightColor: "#00FF00", size: 30, opacity: 0.3 }
@@ -588,10 +620,21 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     await flush();
 
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 20 }));
-    expect(line.classList.contains("readtrail-highlight")).toBe(true);
+    const [range] = layout.highlights.get("readtrail-line").ranges;
+    expect([range.startContainer, range.startOffset, range.endContainer, range.endOffset]).toEqual([line, 0, line, 1]);
+    expect(lineStyles()).toHaveLength(1);
+    expect(lineStyles()[0].textContent).toContain("::highlight(readtrail-line) { background-color: rgba(0, 255, 0, 0.3);");
+    expect(line.getAttribute("class")).toBeNull();
+    expect(line.getAttribute("style")).toBe("background-color: rgb(1, 2, 3);");
+
+    storageChangeHandler({ settings: { newValue: { style: "underline", highlightLine: true, highlightColor: "#0000FF" } } });
+    expect(lineStyles()).toHaveLength(1);
+    expect(lineStyles()[0].textContent).toContain("rgba(0, 0, 255, 0.3)");
 
     storageChangeHandler({ settings: { newValue: { enabled: true, style: "underline", highlightLine: false, color: "#FF6B6B" } } });
-    expect(line.classList.contains("readtrail-highlight")).toBe(false);
+    expect(layout.highlights.has("readtrail-line")).toBe(false);
+    expect(lineStyles()).toHaveLength(0);
+    expect(line.getAttribute("class")).toBeNull();
     expect(line.style.backgroundColor).toBe("rgb(1, 2, 3)");
     expect(renderer.clear).toHaveBeenCalled();
   });
@@ -741,7 +784,7 @@ describe("saveForLater bridge", () => {
     renderer.renderRuler.mockClear();
 
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following", null);
 
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
@@ -750,7 +793,7 @@ describe("saveForLater bridge", () => {
     expect(response).toHaveBeenCalledWith({ ok: true });
     // The successful persist triggers a re-render in the saved treatment, and
     // the persisted session mode is NOT changed (it stays following/frozen).
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved", null);
     const persistMsg = sentMsgs.find((m) => m.type === "persistResumePoint");
     expect(persistMsg).toBeDefined();
   });
@@ -771,7 +814,7 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
 
     expect(response).toHaveBeenCalledWith({ ok: false, error: "persistence-rejected", detail: "invalid-input" });
-    expect(renderer.renderRuler).not.toHaveBeenCalledWith(50, expect.anything(), "saved");
+    expect(renderer.renderRuler).not.toHaveBeenCalledWith(50, expect.anything(), "saved", null);
   });
 
   it("renders distinct non-color visual treatments for following, frozen, and saved", async () => {
@@ -785,19 +828,19 @@ describe("saveForLater bridge", () => {
 
     // Following: ruler renders with "following" state.
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following", null);
 
     // A deferred click freezes; the marker renders with "frozen".
     docHandlers.click(trustedPointerEvent({ clientX: 10, clientY: 50 }));
     vi.advanceTimersByTime(400);
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "frozen");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "frozen", null);
 
     // Save for later; the marker renders with the distinct "saved" state.
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
     await flush();
     expect(response).toHaveBeenCalledWith({ ok: true });
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved", null);
 
     // All three treatments are mutually distinct by state argument.
     const states = renderer.renderRuler.mock.calls.map((call) => call[2]);
@@ -818,13 +861,13 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
     await flush();
     expect(response).toHaveBeenCalledWith({ ok: true });
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved", null);
 
     renderer.renderRuler.mockClear();
     // Following to a new line clears the saved treatment back to following.
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 120 }));
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(120, expect.anything(), "following");
-    expect(renderer.renderRuler).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), "saved");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(120, expect.anything(), "following", null);
+    expect(renderer.renderRuler).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), "saved", null);
   });
 
   it("clears the saved visual state when the checkpoint is replaced by a freeze", async () => {
@@ -840,14 +883,14 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
     await flush();
     expect(response).toHaveBeenCalledWith({ ok: true });
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "saved", null);
 
     renderer.renderRuler.mockClear();
     // A new freeze replaces the checkpoint and returns to the frozen treatment.
     docHandlers.click(trustedPointerEvent({ clientX: 10, clientY: 90 }));
     vi.advanceTimersByTime(400);
-    expect(renderer.renderRuler).toHaveBeenLastCalledWith(90, expect.anything(), "frozen");
-    expect(renderer.renderRuler).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), "saved");
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(90, expect.anything(), "frozen", null);
+    expect(renderer.renderRuler).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), "saved", null);
   });
 
   it("deactivation hides visuals without deleting the saved record", async () => {
@@ -949,5 +992,161 @@ describe("ReadTrail content per-tab protocol (RT-304)", () => {
     expect(addedDoc).toEqual([]);
     expect(renderer.ensureCanvas).not.toHaveBeenCalled();
     expect(getSaves()).toHaveLength(0);
+  });
+});
+
+describe("the reading guide stays on the text (Sprint 010 part B)", () => {
+  beforeEach(() => {
+    resetDom();
+    document.body.innerHTML = "";
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  async function activePage(options) {
+    const loaded = loadContent(options);
+    await flush();
+    loaded.runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+    return loaded;
+  }
+
+  const move = (x, y) => document.dispatchEvent(new MouseEvent("mousemove", { clientX: x, clientY: y }));
+
+  it("bounds the ruler and the underline by the text of the block under the pointer (B2)", async () => {
+    const p = addParagraph("text", "A narrow paragraph");
+    stubLayout({ hit: p.firstChild, boxes: { text: { left: 120, right: 360 } } });
+    const { storageChangeHandler, renderer } = await activePage();
+
+    move(200, 50);
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following", { left: 120, right: 360 });
+
+    storageChangeHandler({ settings: { newValue: { style: "underline" } } });
+    move(210, 60);
+    expect(renderer.renderUnderline).toHaveBeenLastCalledWith(60, expect.anything(), "following", { left: 120, right: 360 });
+  });
+
+  it("spans the viewport before any block, keeps its extent over a gap, and takes the anchor's block when paused (B3)", async () => {
+    vi.useFakeTimers();
+    const first = addParagraph("first", "The line being read");
+    const anchored = addParagraph("anchored", "The paused line");
+    const layout = stubLayout({ boxes: { first: { left: 120, right: 360 }, anchored: { left: 80, right: 300 } } });
+    const { runtimeMessageHandler, renderer, resolveAnchor, docHandlers } = await activePage();
+
+    move(10, 40);
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(40, expect.anything(), "following", null);
+
+    layout.hit = first.firstChild;
+    move(200, 50);
+    layout.hit = null; // a margin between blocks
+    move(200, 70);
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(70, expect.anything(), "following", { left: 120, right: 360 });
+
+    docHandlers.click(trustedPointerEvent({ clientX: 200, clientY: 70 }));
+    vi.advanceTimersByTime(400);
+    resolveAnchor.mockReturnValue({ startContainer: anchored.firstChild, getBoundingClientRect: () => ({ top: 180, height: 20 }) });
+    docHandlers.scroll();
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(190, expect.anything(), "frozen", { left: 80, right: 300 });
+
+    // Turning off forgets the extent. A restored guide is drawn from its anchor:
+    // the viewport when the anchor no longer resolves, else the anchor's block.
+    const reload = async () => {
+      runtimeMessageHandler({ type: "setPageActive", active: false });
+      runtimeMessageHandler({
+        type: "setPageActive",
+        active: true,
+        state: { version: 1, active: true, mode: "frozen", position: makePosition({ viewportOffset: 90 }) }
+      });
+      await flush();
+    };
+    resolveAnchor.mockReturnValue(null);
+    await reload();
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(90, expect.anything(), "frozen", null);
+    resolveAnchor.mockReturnValue({ startContainer: anchored.firstChild, getBoundingClientRect: () => ({ top: 180, height: 20 }) });
+    await reload();
+    expect(renderer.renderRuler).toHaveBeenLastCalledWith(190, expect.anything(), "frozen", { left: 80, right: 300 });
+  });
+
+  it("pausing, turning the highlight off and deactivating each remove the line highlight and its rule (B4)", async () => {
+    vi.useFakeTimers();
+    const p = addParagraph("text", "A line to read");
+    const layout = stubLayout({ hit: p.firstChild, boxes: { text: { left: 120, right: 360 } } });
+    const loaded = loadContent({ settings: { style: "dots", highlightLine: true, highlightColor: "#00FF00" } });
+    const { runtimeMessageHandler, storageChangeHandler, sentMsgs } = loaded;
+    await flush();
+    const highlighted = () => layout.highlights.has("readtrail-line") && lineStyles().length === 1;
+    const cleared = () => layout.highlights.size === 0 && lineStyles().length === 0;
+
+    // Dormant: nothing is read, drawn or sent.
+    const sent = sentMsgs.length;
+    move(200, 50);
+    storageChangeHandler({ settings: { newValue: { style: "dots", highlightLine: true, highlightColor: "#0000FF" } } });
+    expect(document.caretRangeFromPoint).not.toHaveBeenCalled();
+    expect(cleared()).toBe(true);
+    expect(sentMsgs).toHaveLength(sent);
+
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+    move(200, 50);
+    expect(highlighted()).toBe(true);
+
+    loaded.docHandlers.click(trustedPointerEvent());
+    vi.advanceTimersByTime(400);
+    expect(cleared()).toBe(true);
+    move(200, 50); // a paused guide does not follow the pointer
+    expect(cleared()).toBe(true);
+
+    loaded.docHandlers.click(trustedPointerEvent());
+    vi.advanceTimersByTime(400);
+    move(200, 50);
+    expect(highlighted()).toBe(true);
+    storageChangeHandler({ settings: { newValue: { style: "dots", highlightLine: false } } });
+    expect(cleared()).toBe(true);
+
+    storageChangeHandler({ settings: { newValue: { style: "dots", highlightLine: true } } });
+    move(200, 50);
+    expect(highlighted()).toBe(true);
+    runtimeMessageHandler({ type: "setPageActive", active: false });
+    expect(cleared()).toBe(true);
+    expect(p.getAttribute("class")).toBeNull();
+    expect(p.getAttribute("style")).toBeNull();
+  });
+
+  it("routes flashCapture to passage.js once on a dormant page and does nothing else (B5)", async () => {
+    const { runtimeMessageHandler, renderer, addedDoc, sentMsgs } = loadContent();
+    await flush();
+    const sent = sentMsgs.length;
+    const flashCaptured = vi.fn(() => true);
+    window.ReadTrailPassage = { flashCaptured };
+
+    const response = vi.fn();
+    expect(runtimeMessageHandler({ type: "flashCapture" }, {}, response)).toBe(false);
+    expect(flashCaptured).toHaveBeenCalledTimes(1);
+    expect(response).toHaveBeenCalledWith({ ok: true });
+    expect(sentMsgs).toHaveLength(sent);
+    expect(addedDoc).toEqual([]);
+    expect(renderer.ensureCanvas).not.toHaveBeenCalled();
+
+    runtimeMessageHandler({ type: "flashCapture" }); // no reply callback: it still flashes
+    expect(flashCaptured).toHaveBeenCalledTimes(2);
+
+    flashCaptured.mockReturnValue(false);
+    runtimeMessageHandler({ type: "flashCapture" }, {}, response);
+    expect(response).toHaveBeenLastCalledWith({ ok: false });
+  });
+
+  it("answers flashCapture with ok false when passage.js or its flash is absent or throws (B5)", async () => {
+    const { runtimeMessageHandler } = loadContent();
+    await flush();
+    const response = vi.fn();
+    for (const passage of [undefined, {}, { flashCaptured: () => { throw new Error("boom"); } }]) {
+      window.ReadTrailPassage = passage;
+      expect(runtimeMessageHandler({ type: "flashCapture" }, {}, response)).toBe(false);
+      expect(response).toHaveBeenLastCalledWith({ ok: false });
+    }
+    expect(response).toHaveBeenCalledTimes(3);
   });
 });
