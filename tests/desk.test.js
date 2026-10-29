@@ -1589,13 +1589,65 @@ describe("ReadTrail Desk messages", () => {
       title.dispatchEvent(new Event("input"));
       vi.advanceTimersByTime(400);
       h.shift("updateDraft")({ ok: false, error: "invalid-input" });
-      expect(status().textContent).toBe("This draft needs a title before it can be saved.");
+      expect(status().textContent).toBe("A draft needs a title before it can be saved.");
 
       title.value = "A title";
       title.dispatchEvent(new Event("input"));
       vi.advanceTimersByTime(400);
       h.shift("updateDraft")({ ok: false, error: "invalid-input" });
       expect(status().textContent).toBe("That could not be saved.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names the size limit when a titled draft is refused as too long", () => {
+    vi.useFakeTimers();
+    try {
+      const long = Array.from({ length: 7 }, () => ({ type: "text", text: "x".repeat(3900) }));
+      const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: long })] });
+      const title = document.querySelector("#draftTitle");
+      title.value = "Long one";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: false, error: "invalid-input" });
+      expect(status().textContent).toBe("This draft is too long to save. A draft holds up to 24,000 characters; shorten or remove some blocks.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names the draft a refused save was about once it is closed", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+      const title = document.querySelector("#draftTitle");
+      title.value = "";
+      title.dispatchEvent(new Event("input"));
+      document.querySelector("#closeDraftButton").click();
+      h.shift("updateDraft")({ ok: false, error: "invalid-input" });
+      expect(status().textContent).toBe("A draft needs a title before it can be saved. This was an untitled draft, which is still open in your drafts and not saved yet.");
+      expect(status().hidden).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not leave an open draft's save alert behind when it is closed", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+      const title = document.querySelector("#draftTitle");
+      title.value = "Edited";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: false, error: "draft-full" });
+      expect(status().textContent).toBe("This draft is full. Remove a block before adding more.");
+
+      // Close resends the unsaved draft; its answer replaces the open-draft wording.
+      document.querySelector("#closeDraftButton").click();
+      h.shift("updateDraft")({ ok: false, error: "draft-full" });
+      expect(status().textContent).toBe('This draft is full. Remove a block before adding more. This was "Edited", which is still open in your drafts and not saved yet.');
     } finally {
       vi.useRealTimers();
     }

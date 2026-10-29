@@ -573,11 +573,6 @@ html {
   flex-wrap: wrap;
 }
 
-.draft-status-row .status-message {
-  flex: 1 1 auto;
-  margin-bottom: 0;
-}
-
 /* Tags are saved with the draft but nothing browses them yet, so they do not
    get a prominent slot in the editor. */
 .draft-tags {

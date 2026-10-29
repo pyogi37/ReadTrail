@@ -10,7 +10,7 @@ Rewritten at the end of every working session. Keep under 40 lines.
 
 | Check | Result |
 |---|---|
-| `npm test` | 406 passing, 15 files |
+| `npm test` | 409 passing, 15 files |
 | `npm run test:e2e` | 15 scenarios passing |
 | `npm run package:check` | 30 files would ship |
 | `git diff --check` | clean |
@@ -20,6 +20,7 @@ Rewritten at the end of every working session. Keep under 40 lines.
 - Sprint 011 ran as two cloud sessions, started by the lead with `start_session` (target cloud) from `docs/sprints/SPRINT-011-cloud-prompts.md`, on the owner's cloud-session credit. The two Sprint 011 routines stayed paused.
 - Part A (`sprint-011/text-blocks`, 67d772a): text blocks size to their text and lose their card; quotes keep their frame (decisions 102, 103). New `tests/e2e/desk-layout.spec.mjs` at 1280 and 390.
 - Part B (`sprint-011/desk-messages`, acfa08e): Quote shows the Draft pane first (104); the status line moved out of the editor and a save alert clears with its draft's next save (105). No desk.css change was needed.
+- Ultra review of the merged sprint: four nits; three fixed in decision 105's wording and tests, one shown not to happen.
 - Lead review: both diffs stayed inside their file lists; the moved status line keeps the shared `.status-message` margin, which suits its new place above the editor.
 
 ## Blocked / needs owner

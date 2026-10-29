@@ -302,8 +302,8 @@
         } else {
           // Say which draft, because the reader is looking at another one and
           // "Not saved" about nothing visible is worse than silence.
-          const name = snapshot.title || "that draft";
-          setStatus(`${saveErrorText(res, snapshot)} This was "${name}", which is still open in your drafts and not saved yet.`, "alert");
+          const name = String(snapshot.title || "").trim() ? `"${snapshot.title}"` : "an untitled draft";
+          setStatus(`${saveErrorText(res, snapshot)} This was ${name}, which is still open in your drafts and not saved yet.`, "alert");
         }
         saveAlertDraftId = snapshot.id;
         renderIndex();
@@ -323,10 +323,13 @@
     const code = res && res.error;
     if (code === "draft-full") return "This draft is full. Remove a block before adding more.";
     if (code === "storage-full") return "Your local storage is nearly full. Remove some clips or drafts first.";
-    if (code === "invalid-input") {
-      return draft && !String(draft.title || "").trim()
-        ? "This draft needs a title before it can be saved."
-        : "That could not be saved.";
+    if (code === "invalid-input" && draft) {
+      // Name the cause the worker's draft check would find, never a guess.
+      if (!String(draft.title || "").trim()) return "A draft needs a title before it can be saved.";
+      if (shared.draftChars && shared.draftChars(draft.blocks) > LIMITS.DRAFT_CHARS_MAX) {
+        return `This draft is too long to save. A draft holds up to ${LIMITS.DRAFT_CHARS_MAX.toLocaleString("en-US")} characters; shorten or remove some blocks.`;
+      }
+      return "That could not be saved.";
     }
     if (code === "not-found") return "This draft no longer exists.";
     return "That could not be saved. Please try again.";
