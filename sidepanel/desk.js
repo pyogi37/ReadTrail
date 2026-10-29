@@ -97,12 +97,10 @@
 
     wirePaneSwitcher();
     knowledgeView.setQuoteHandler((passage, done) => {
-      draftView.quoteInto(passage.id, (ok) => {
-        // On a narrow Desk the draft also contains any "open a draft first"
-        // guidance, so always reveal it after a quote attempt.
-        showPane("draft");
-        done(ok);
-      });
+      // Reveal the Draft pane first: on a narrow Desk focus cannot land on the
+      // new quote, nor a failure message be seen, while the pane is hidden.
+      showPane("draft");
+      draftView.quoteInto(passage.id, done);
     });
     knowledgeView.setNavigationHandler((state) => {
       if (!applyingRoute) setHash(hashForKnowledge(state), Boolean(state.query));

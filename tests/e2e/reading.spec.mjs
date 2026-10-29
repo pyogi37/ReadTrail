@@ -687,3 +687,45 @@ test("undoing a removed quote after its autosave keeps every later save", async 
   await desk.close();
   await source.close();
 });
+
+test("at 390px, Quote shows the Draft pane and lands on the new quote's Return", async () => {
+  expect((await sendMessage(ext, { type: "clearLibrary" })).ok).toBe(true);
+  const url = `${articleUrl()}?case=narrow-quote`;
+  const source = await ext.context.newPage();
+  await source.goto(url);
+  await source.evaluate(() => {
+    const node = document.querySelector("#p20").firstChild;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, "Paragraph 20.".length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const tabId = await tabIdFor(ext.worker, url);
+  const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
+  expect((await sendMessage(ext, {
+    type: "savePassage", tabId, url, title: captured.title, text: captured.text, start: captured.start, end: captured.end
+  })).ok).toBe(true);
+
+  const desk = await ext.context.newPage();
+  await desk.setViewportSize({ width: 390, height: 844 });
+  await desk.goto(deskUrl(ext.extensionId));
+  await desk.locator("#draftTab").click();
+  await desk.fill("#newDraftTitle", "Narrow quote");
+  await desk.click("#newDraftButton");
+  await expect(desk.locator("#draftEditor")).toBeVisible();
+
+  await desk.locator("#sourcesTab").click();
+  await expect(desk.locator("#draftEditor")).toBeHidden();
+  await desk.locator("#pageList .page-summary").click();
+  await desk.locator("#pageList .btn-quote").click();
+
+  await expect(desk.locator("#draftEditor")).toBeVisible();
+  await expect(desk.locator("#pageList")).toBeHidden();
+  const lastReturn = desk.locator(".quote-block").last().locator(".btn-return");
+  await expect(lastReturn).toBeVisible();
+  await expect(lastReturn).toBeFocused();
+  await desk.close();
+  await source.close();
+});

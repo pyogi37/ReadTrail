@@ -1491,3 +1491,113 @@ describe("ReadTrail Desk", () => {
     expect(own).not.toContain("!important");
   });
 });
+
+// Round six: a message the reader cannot see, or one that outlives its cause,
+// is worse than none.
+describe("ReadTrail Desk messages", () => {
+  const visible = (el) => {
+    for (let node = el; node; node = node.parentElement) if (node.hidden) return false;
+    return true;
+  };
+  const status = () => document.querySelector("#draftStatus");
+
+  it("shows the quote guidance when no draft is open", () => {
+    loadDesk({ hash: "#/sources", passages: [passage()], drafts: [draft()] });
+    document.querySelector(".btn-quote").click();
+
+    expect(document.querySelector("#draftEditor").hidden).toBe(true);
+    expect(status().textContent).toBe("Open a draft first, then quote a clip into it.");
+    expect(visible(status())).toBe(true);
+    expect(document.querySelector("#deskMain").dataset.activePane).toBe("draft");
+  });
+
+  it("shows that a draft is gone with no draft open", () => {
+    const h = loadDesk({ hash: "#/drafts/draft-gone", drafts: [] });
+    h.shift("listDrafts")({ ok: true, drafts: [] });
+
+    expect(status().textContent).toContain("That draft no longer exists");
+    expect(visible(status())).toBe(true);
+  });
+
+  it("shows Draft removed after the open draft is removed", () => {
+    const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+    document.querySelector(".draft-row .btn-remove-draft").click();
+    document.querySelector(".draft-row .item-confirm .btn-danger-solid").click();
+    h.shift("removeDraft")({ ok: true });
+
+    expect(document.querySelector("#draftEditor").hidden).toBe(true);
+    expect(status().textContent).toBe("Draft removed.");
+    expect(visible(status())).toBe(true);
+  });
+
+  it("clears a failed-save alert when that draft's next save succeeds", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+      const title = document.querySelector("#draftTitle");
+      title.value = "First edit";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: false, error: "storage-full" });
+      expect(status().getAttribute("role")).toBe("alert");
+      expect(status().hidden).toBe(false);
+
+      title.value = "Second edit";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: true, draft: draft({ title: "Second edit", updatedAt: 200 }) });
+
+      expect(status().textContent).toBe("");
+      expect(status().hidden).toBe(true);
+      expect(document.querySelector("#draftSaveState").textContent).toBe("Saved");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an alert a later message replaced when the save succeeds", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+      const title = document.querySelector("#draftTitle");
+      title.value = "First edit";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: false, error: "storage-full" });
+
+      document.querySelector("#draftCopyMarkdown").click(); // no clipboard here: an alert of its own
+      const other = status().textContent;
+      expect(other).toContain("Copying is not available");
+
+      title.value = "Second edit";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: true, draft: draft({ title: "Second edit", updatedAt: 200 }) });
+
+      expect(status().textContent).toBe(other);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names the missing title when a save is refused as invalid", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+      const title = document.querySelector("#draftTitle");
+      title.value = "  ";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: false, error: "invalid-input" });
+      expect(status().textContent).toBe("This draft needs a title before it can be saved.");
+
+      title.value = "A title";
+      title.dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: false, error: "invalid-input" });
+      expect(status().textContent).toBe("That could not be saved.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

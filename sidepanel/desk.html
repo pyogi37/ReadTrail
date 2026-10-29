@@ -108,6 +108,8 @@
         </aside>
 
         <div class="draft-editor-wrap">
+          <!-- Outside the editor so messages about a closed or missing draft are seen. -->
+          <p class="status-message draft-status" id="draftStatus" role="status" aria-live="polite" tabindex="-1" hidden></p>
           <div class="draft-editor-empty" id="draftEditorEmpty">
             <p class="empty-title">Open a draft to begin</p>
             <p class="empty-text">Choose one from the list, or start a new question above.</p>
@@ -124,7 +126,6 @@
               </div>
             </div>
             <div class="draft-status-row">
-              <p class="status-message draft-status" id="draftStatus" role="status" aria-live="polite" tabindex="-1" hidden></p>
               <button type="button" id="draftUndo" class="btn-ghost btn-small" hidden>Undo remove</button>
             </div>
             <p class="draft-summary" id="draftSummary" hidden></p>
