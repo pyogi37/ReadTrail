@@ -181,6 +181,58 @@ describe("passage capture and highlights", () => {
       expect(PS.revealPassage(broken, broken, "Second sentence there.")).toEqual({ quality: "approximate" });
     });
 
+    describe("flashing what the context-menu save kept (C3)", () => {
+      const select = (id, from, to) => {
+        const node = document.querySelector(id).firstChild;
+        const range = document.createRange();
+        range.setStart(node, from);
+        range.setEnd(node, to);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+      };
+      const withHighlights = () => {
+        class FakeHighlight { constructor(...ranges) { this.ranges = ranges; } }
+        vi.stubGlobal("Highlight", FakeHighlight);
+        vi.stubGlobal("CSS", { highlights: new Map() });
+        return CSS.highlights;
+      };
+
+      it("flashes only the most recent capture, once, without scrolling", () => {
+        const highlights = withHighlights();
+        select("#p1", 0, 5);
+        expect(PS.captureSelection().ok).toBe(true);
+        select("#p2", 0, 6);
+        expect(PS.captureSelection().ok).toBe(true);
+        // The reader moves on; the flash shows what was kept, not the new selection.
+        window.getSelection().removeAllRanges();
+
+        expect(PS.flashCaptured()).toBe(true);
+        expect(highlights.get("readtrail-reveal").ranges.map(String)).toEqual(["Second"]);
+        expect(window.scrollTo).not.toHaveBeenCalled();
+
+        highlights.clear();
+        expect(PS.flashCaptured()).toBe(false);
+        expect(highlights.size).toBe(0);
+      });
+
+      it("returns false with nothing captured, after a refused capture, or without the highlight API", () => {
+        const highlights = withHighlights();
+        expect(PS.flashCaptured()).toBe(false);
+
+        select("#p1", 0, 5);
+        PS.captureSelection();
+        window.getSelection().removeAllRanges();
+        expect(PS.captureSelection()).toEqual({ ok: false, error: "no-selection" });
+        expect(PS.flashCaptured()).toBe(false);
+        expect(highlights.size).toBe(0);
+
+        vi.unstubAllGlobals();
+        select("#p1", 0, 5);
+        PS.captureSelection();
+        expect(PS.flashCaptured()).toBe(false);
+      });
+    });
+
     it("clears the flash and works without the highlight API", () => {
       const { del } = highlightSpies();
       PS.clearReveal();

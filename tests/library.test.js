@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadServiceWorker, senders } from "./helpers/chrome-mock.js";
+import { loadServiceWorker, readSource, senders } from "./helpers/chrome-mock.js";
 
 const PAGE = senders.page("sidepanel/sidepanel.html");
 // The panel names the tab a save came from so the worker can refuse an
@@ -278,10 +278,12 @@ describe("knowledge layer: context menu", () => {
     );
 
     h.chrome.tabs.sendMessage.mockImplementation((_id, msg, cb) => {
-      expect(msg).toEqual({ type: "capturePassage" });
-      cb({ ok: true, text: "Selected words", start: anchor(), end: anchor([0, 1], 8), url: URL_A, title: "A" });
+      cb(msg.type === "capturePassage"
+        ? { ok: true, text: "Selected words", start: anchor(), end: anchor([0, 1], 8), url: URL_A, title: "A" }
+        : undefined);
     });
     h.emit.contextMenus.onClicked({ menuItemId: "readtrail-save-selection" }, { id: 4, url: URL_A, incognito: false });
+    expect(h.chrome.tabs.sendMessage.mock.calls[0].slice(0, 2)).toEqual([4, { type: "capturePassage" }]);
     const passages = call(h, { type: "listPassages" }).passages;
     expect(passages).toHaveLength(1);
     expect(passages[0]).toEqual(expect.objectContaining({ url: URL_A, title: "A", text: "Selected words" }));
@@ -290,6 +292,112 @@ describe("knowledge layer: context menu", () => {
     h.emit.contextMenus.onClicked({ menuItemId: "readtrail-save-selection" }, { id: 4, url: URL_A, incognito: true });
     h.emit.contextMenus.onClicked({ menuItemId: "other" }, { id: 4, url: URL_A });
     expect(call(h, { type: "listPassages" }).passages).toHaveLength(1);
+  });
+});
+
+describe("knowledge layer: the context-menu save says what happened", () => {
+  const TAB = 4;
+  const SELECTED = { ok: true, text: "Selected words", start: anchor(), end: anchor([0, 1], 8), url: URL_A, title: "A" };
+  const DEFAULT_TITLE = JSON.parse(readSource("manifest.json")).action.default_title;
+
+  // capture is what the tab's content script replies to capturePassage;
+  // undefined with lastError set is a tab with no content script.
+  function setup(capture) {
+    const h = load({ tabs: [{ id: TAB, url: URL_A, incognito: false }, { id: 5, url: URL_B, incognito: false }] });
+    h.chrome.action.setTitle = vi.fn((_details, callback) => callback?.());
+    h.chrome.runtime.getManifest = () => JSON.parse(readSource("manifest.json"));
+    h.chrome.tabs.sendMessage.mockImplementation((_id, msg, callback) => {
+      if (msg.type === "capturePassage" && capture === undefined) h.chrome.runtime.lastError = { message: "no receiver" };
+      callback?.(msg.type === "capturePassage" ? capture : undefined);
+      h.chrome.runtime.lastError = null;
+    });
+    return h;
+  }
+  const click = (h, tab = { id: TAB, url: URL_A, incognito: false }) =>
+    h.emit.contextMenus.onClicked({ menuItemId: "readtrail-save-selection" }, tab);
+  const sent = (h) => h.chrome.tabs.sendMessage.mock.calls.map(([id, msg]) => [id, msg]);
+  const badges = (h) => h.chrome.action.setBadgeText.mock.calls.map(([details]) => details);
+  const titles = (h) => h.chrome.action.setTitle.mock.calls.map(([details]) => details);
+
+  it("C1: a successful save asks that tab, once, to flash what it kept, and the message carries only its type", () => {
+    const h = setup(SELECTED);
+    click(h);
+    expect(sent(h)).toEqual([[TAB, { type: "capturePassage" }], [TAB, { type: "flashCapture" }]]);
+    expect(call(h, { type: "listPassages" }).passages).toHaveLength(1);
+    // Success marks nothing; it only hands the tab back to the global badge.
+    expect(badges(h)).toEqual([{ tabId: TAB, text: null }]);
+    expect(titles(h)).toEqual([{ tabId: TAB, title: DEFAULT_TITLE }]);
+  });
+
+  const LIBRARY_FULL = (h) => {
+    for (let i = 0; i < 1500; i++) {
+      const id = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+      h.localData[`readtrail.passage.v1:${id}`] = {
+        version: 1, id, url: URL_A, title: "", text: `p${i}`, start: null, end: null, note: "", tags: [], createdAt: 1, updatedAt: 1
+      };
+    }
+  };
+  const STORAGE_FULL = (h) => { h.chrome.storage.local.getBytesInUse = vi.fn((_, callback) => callback(9 * 1024 * 1024)); };
+
+  // Exact call lists: every badge write names the tab, so the global
+  // recently-closed count, and with it every other tab, is never touched.
+  it.each([
+    ["nothing selected (or a selection in a frame)", { ok: false, error: "no-selection" }, null,
+      "ReadTrail did not save that: nothing was selected on this page (a selection inside a frame cannot be saved)."],
+    ["a selection over the clip limit", { ok: false, error: "too-long" }, null,
+      "ReadTrail did not save that: the selection is longer than 4,000 characters."],
+    ["storage full", SELECTED, STORAGE_FULL, "ReadTrail did not save that: this device's ReadTrail storage is full."],
+    ["the library full", SELECTED, LIBRARY_FULL, "ReadTrail did not save that: it could not be saved."],
+    ["a tab with no content script", undefined, null, "ReadTrail did not save that: it could not be saved."]
+  ])("C2: %s marks only that tab, never flashes, and clears after eight seconds", (_label, capture, arrange, title) => {
+    vi.useFakeTimers();
+    try {
+      const h = setup(capture);
+      if (arrange) arrange(h);
+      const before = Object.keys(h.localData).length;
+      click(h);
+
+      expect(sent(h)).toEqual([[TAB, { type: "capturePassage" }]]);
+      expect(Object.keys(h.localData)).toHaveLength(before);
+      expect(badges(h)).toEqual([{ tabId: TAB, text: "!" }]);
+      expect(titles(h)).toEqual([{ tabId: TAB, title }]);
+
+      vi.advanceTimersByTime(7999);
+      expect(badges(h)).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      // Back to the global badge (the recently-closed count) and the manifest title.
+      expect(badges(h)).toEqual([{ tabId: TAB, text: "!" }, { tabId: TAB, text: null }]);
+      expect(titles(h)).toEqual([{ tabId: TAB, title }, { tabId: TAB, title: DEFAULT_TITLE }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("C2: the tab's next successful save clears the mark at once, and the old timer does nothing", () => {
+    vi.useFakeTimers();
+    try {
+      const h = setup({ ok: false, error: "no-selection" });
+      click(h);
+      vi.advanceTimersByTime(3000);
+      h.chrome.tabs.sendMessage.mockImplementation((_id, msg, callback) => callback?.(msg.type === "capturePassage" ? SELECTED : undefined));
+      click(h);
+      expect(sent(h).at(-1)).toEqual([TAB, { type: "flashCapture" }]);
+      expect(badges(h)).toEqual([{ tabId: TAB, text: "!" }, { tabId: TAB, text: null }]);
+      vi.advanceTimersByTime(10000);
+      expect(badges(h)).toHaveLength(2);
+      expect(titles(h)).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still ignores a click in an incognito tab: nothing is read, saved, flashed or marked", () => {
+    const h = setup(SELECTED);
+    click(h, { id: TAB, url: URL_A, incognito: true });
+    expect(h.chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    expect(h.chrome.action.setBadgeText).not.toHaveBeenCalled();
+    expect(h.chrome.action.setTitle).not.toHaveBeenCalled();
+    expect(call(h, { type: "listPassages" }).passages).toHaveLength(0);
   });
 });
 
