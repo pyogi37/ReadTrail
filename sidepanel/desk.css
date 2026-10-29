@@ -294,7 +294,7 @@ html {
 
 .draft-blocks {
   display: grid;
-  gap: 12px;
+  gap: 4px;
   list-style: none;
 }
 
@@ -312,6 +312,25 @@ html {
   background: rgba(241, 198, 108, 0.045);
 }
 
+/* The reader's own text reads as one run of prose: no card, and consecutive
+   text blocks sit close. The border stays, transparent, so text lines up with
+   a quote's. A quote keeps its frame and a wider gap either side, which is
+   what makes it read as an embed. */
+.text-block {
+  padding-block: 2px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.text-block .block-text {
+  padding-block: 4px;
+}
+
+* + .quote-block,
+.quote-block + .draft-block {
+  margin-top: 12px;
+}
+
 .block-text {
   width: 100%;
   min-height: 88px;
@@ -327,6 +346,18 @@ html {
   font-size: 21px;
   font-weight: 600;
   line-height: 1.35;
+}
+
+/* Chrome 123 and later size a text block to its text, so a line is a line and
+   a paragraph never scrolls inside itself. Earlier versions keep the fixed
+   height above. A manual resize would only fight the content size. */
+@supports (field-sizing: content) {
+  .block-text,
+  .block-text.heading-block-text {
+    min-height: 0;
+    field-sizing: content;
+    resize: none;
+  }
 }
 
 /* Provenance is the product's whole thesis and it was set at 11px in the
@@ -747,11 +778,22 @@ html {
 }
 
 .draft-block.drop-before::before {
-  top: -8px;
+  top: -3px;
 }
 
 .draft-block.drop-after::after {
-  bottom: -8px;
+  bottom: -3px;
+}
+
+/* Centred in the wider gap either side of a quote. */
+.quote-block.drop-before::before,
+.quote-block + .draft-block.drop-before::before {
+  top: -9px;
+}
+
+.quote-block.drop-after::after,
+.draft-block:has(+ .quote-block).drop-after::after {
+  bottom: -9px;
 }
 
 .block-options {
