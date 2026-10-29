@@ -2,9 +2,9 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** 2.1. Sprint 010 "The Desk as one document" (`docs/sprints/SPRINT-010.md`) is done and merged: Desk keys and drag (part A), the reading guide and line highlight bounded by the text (part B), and the right-click save confirmation (part C). Decisions 89 to 101. Version string is still 2.0.0; no tag has been cut.
+- **Current phase:** 2.1, Sprint 011 "Round six's P1s and the Desk's text blocks" (`docs/sprints/SPRINT-011.md`), ordered by the owner 2026-10-29 and run as two cloud routines on `sprint-011/*` branches. Sprint 010 is done (decisions 89 to 101). Version string is still 2.0.0; no tag has been cut.
 - **Read first:** `docs/sprints/SPRINT-010.md`, `docs/DECISIONS.md` items 89 to 101, then `docs/PRODUCT-DIRECTION-2.1.md` section 3.2 for what critique round six must measure.
-- **Last commit:** see `git log -1`. The owner approved pushing `main` and the `sprint-010/*` branches for this sprint.
+- **Last commit:** see `git log -1`. The owner approved pushing `main` and the `sprint-011/*` branches for this sprint.
 
 ## Verified by the lead, merged tree
 
@@ -34,7 +34,7 @@ Also checked in real Chromium with a scratch Playwright script: a right-click sa
 
 ## Next task
 
-1. **Owner orders round six's P1s** (`docs/qa/runs/2026-09-27-desk-critique.md`, round six): Quote at 390px loses focus; text blocks never grow; a failed-save alert outlives the save; messages for a closed draft are invisible. Both assessors also point at the form-like blocks (card plus three fixed rows, decision 101).
-2. Sprint 011: PDF text clips through the context menu (direction 3.3), after verifying the viewer's menu in a real Chrome.
+1. **Sprint 011:** merge `sprint-011/text-blocks` and `sprint-011/desk-messages` as they land, each reviewed against its criteria; decisions from item 102.
+2. Sprint 012: PDF text clips through the context menu (direction 3.3), after verifying the viewer's menu in a real Chrome.
 3. Capture shortcut and tag autocomplete; first-run and empty states.
-4. Do not start 1.1 AI, images, or anything touching permissions or network without the owner. Do not tag without the owner. Push approval was for Sprint 010 only.
+4. Do not start 1.1 AI, images, or anything touching permissions or network without the owner. Do not tag without the owner. Push approval is per sprint; Sprint 011 has it.
