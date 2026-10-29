@@ -670,6 +670,90 @@ html {
   }
 }
 
+/* The way to drag a block, on the card's left edge opposite the options
+   corner. It is not a control: Alt with an arrow and the options row are the
+   keyboard and single-pointer ways to move, so it is no tab stop and is
+   hidden from assistive technology. Where there is hover it appears while
+   the block is under the pointer or being dragged, and at rest it is hidden
+   from hit testing, not just from sight (decision 44). It straddles the
+   border so it clears the text, and it is opaque so the border does not run
+   through its dots. */
+.block-handle {
+  position: absolute;
+  top: 6px;
+  left: -13px;
+  width: 24px;
+  height: 28px;
+  /* The six dots are drawn in the content box, two by three. */
+  padding: 4px 5px;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  background: radial-gradient(circle, currentColor 1.2px, transparent 1.7px) content-box 0 0 / 6px 6px,
+    var(--surface-raised);
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity var(--motion), visibility var(--motion), color var(--motion);
+}
+
+.draft-block:hover > .block-handle,
+.draft-block.is-lifted > .block-handle {
+  visibility: visible;
+  opacity: 1;
+}
+
+.block-handle:hover,
+.draft-block.is-lifted > .block-handle {
+  color: var(--text);
+}
+
+.draft-block.is-lifted > .block-handle {
+  cursor: grabbing;
+}
+
+/* There is no hover to reveal it on a touch screen. */
+@media (hover: none) {
+  .block-handle {
+    visibility: visible;
+    opacity: 1;
+  }
+}
+
+/* Lifted, the block takes the raised surface and stays where it was, so the
+   drop line is the one thing that moves. */
+.draft-block.is-lifted {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--surface-raised);
+}
+
+.quote-block.is-lifted {
+  border-color: rgba(241, 198, 108, 0.5);
+}
+
+/* Where the block will land: a mark in the gap, in the pencil red. */
+.draft-block.drop-before::before,
+.draft-block.drop-after::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  left: -1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.draft-block.drop-before::before {
+  top: -8px;
+}
+
+.draft-block.drop-after::after {
+  bottom: -8px;
+}
+
 .block-options {
   display: flex;
   flex-wrap: wrap;

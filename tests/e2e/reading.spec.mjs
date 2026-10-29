@@ -499,3 +499,129 @@ test("a quote block leads with Return and keeps its plumbing behind one control"
   await desk.close();
   await source.close();
 });
+
+// Sprint 010, part A. The keys a writer already knows move between blocks,
+// the caret steps over a quote, and a block can be dragged by its handle, all
+// with real key and mouse events in Chromium.
+test("the Desk reads as one document: Enter, Backspace, Up and Down over a quote, and a drag", async () => {
+  expect((await sendMessage(ext, { type: "clearLibrary" })).ok).toBe(true);
+  const url = `${articleUrl()}?case=editor`;
+  const source = await ext.context.newPage();
+  await source.goto(url);
+  await source.evaluate(() => {
+    const node = document.querySelector("#p40").firstChild;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, "Paragraph 40.".length);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const tabId = await tabIdFor(ext.worker, url);
+  const captured = await sendTabMessage(ext, tabId, { type: "capturePassage" });
+  expect((await sendMessage(ext, {
+    type: "savePassage", tabId, url, title: captured.title, text: captured.text, start: captured.start, end: captured.end
+  })).ok).toBe(true);
+
+  const desk = await ext.context.newPage();
+  await desk.setViewportSize({ width: 1280, height: 900 });
+  await desk.goto(deskUrl(ext.extensionId));
+  await desk.fill("#newDraftTitle", "One document");
+  await desk.click("#newDraftButton");
+  const areas = desk.locator(".block-text");
+  const caret = (area) => area.evaluate((el) => [el.selectionStart, el.selectionEnd]);
+
+  // Enter at the end makes the next block, and adds nothing to this one.
+  await areas.first().click();
+  await desk.keyboard.type("First thought.");
+  await desk.keyboard.press("Enter");
+  await expect(areas).toHaveCount(2);
+  await expect(areas.first()).toHaveValue("First thought.");
+  await expect(areas.nth(1)).toBeFocused();
+
+  // Backspace in that empty block takes it away quietly.
+  await desk.keyboard.press("Backspace");
+  await expect(areas).toHaveCount(1);
+  await expect(desk.locator("#draftLive")).toHaveText("Empty block removed.");
+  await expect(desk.locator("#draftUndo")).toBeHidden();
+  await expect(areas.first()).toBeFocused();
+  expect(await caret(areas.first())).toEqual([14, 14]);
+
+  // A quote, then the reader's words below it.
+  await desk.locator("#pageList .page-summary").click();
+  await desk.locator("#pageList .btn-quote").click();
+  await expect(desk.locator(".quote-block .passage-text")).toHaveText("Paragraph 40.");
+  await expect(desk.locator(".quote-block .btn-return")).toBeFocused();
+  await desk.keyboard.press("Control+Enter");
+  await expect(areas).toHaveCount(2);
+  await expect(areas.nth(1)).toBeFocused();
+  await desk.keyboard.type("After the quote.");
+
+  // From the first line Up first goes to the start of the block, which is
+  // Chromium's own; the next Up crosses the quote to the end of the text
+  // above (sprint assumption 1).
+  await desk.keyboard.press("ArrowUp");
+  await expect(areas.nth(1)).toBeFocused();
+  expect(await caret(areas.nth(1))).toEqual([0, 0]);
+  await desk.keyboard.press("ArrowUp");
+  await expect(areas.first()).toBeFocused();
+  expect(await caret(areas.first())).toEqual([14, 14]);
+  // At the end, Down crosses back in one press, to the start.
+  await desk.keyboard.press("ArrowDown");
+  await expect(areas.nth(1)).toBeFocused();
+  expect(await caret(areas.nth(1))).toEqual([0, 0]);
+  await expect(areas.first()).toHaveValue("First thought.");
+  await expect(areas.nth(1)).toHaveValue("After the quote.");
+
+  // At rest the handle is no hit target; on hover it is one, big enough.
+  const blocks = desk.locator(".draft-block");
+  const last = blocks.nth(2);
+  const handle = last.locator(".block-handle");
+  await desk.mouse.move(1270, 890);
+  const restHit = await handle.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === el;
+  });
+  expect(restHit).toBe(false);
+  await last.hover();
+  await expect(handle).toBeVisible();
+  const box = await handle.boundingBox();
+  expect(box.width).toBeGreaterThanOrEqual(24);
+  expect(box.height).toBeGreaterThanOrEqual(24);
+  expect(await handle.evaluate((el) => getComputedStyle(el).touchAction)).toBe("none");
+
+  // A press at the very left edge of the text still selects text, and moves
+  // no block: the handle's target stops short of the textarea.
+  const textBox = await areas.first().boundingBox();
+  await desk.mouse.move(textBox.x + 2, textBox.y + 16);
+  await desk.mouse.down();
+  await desk.mouse.move(textBox.x + 90, textBox.y + 16, { steps: 5 });
+  await desk.mouse.up();
+  const selected = await caret(areas.first());
+  expect(selected[1]).toBeGreaterThan(selected[0]);
+  await expect(desk.locator(".is-lifted")).toHaveCount(0);
+
+  // Drag the last block above the first: it lifts, the line shows, it lands.
+  await last.hover();
+  await desk.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const firstBox = await blocks.first().boundingBox();
+  await desk.mouse.down();
+  await desk.mouse.move(box.x + box.width / 2, firstBox.y + 6, { steps: 8 });
+  await expect(last).toHaveClass(/is-lifted/);
+  await expect(blocks.first()).toHaveClass(/drop-before/);
+  await desk.mouse.up();
+  await expect(desk.locator("#draftLive")).toHaveText("Moved to position 1 of 3.");
+  await expect(desk.locator(".is-lifted, .drop-before, .drop-after")).toHaveCount(0);
+  await expect(areas.first()).toHaveValue("After the quote.");
+  await expect(areas.nth(1)).toHaveValue("First thought.");
+  await expect(blocks.nth(2)).toHaveClass(/quote-block/);
+  await expect(blocks.first().locator(".block-options-toggle")).toBeFocused();
+  await expect(desk.locator("#draftSaveState")).toHaveText("Saved");
+
+  await desk.reload();
+  await expect(areas.first()).toHaveValue("After the quote.");
+  await expect(areas.nth(1)).toHaveValue("First thought.");
+
+  await desk.close();
+  await source.close();
+});

@@ -14,6 +14,8 @@
   const SAVE_DEBOUNCE_MS = 400;
   const UNDO_WINDOW_MS = 12000;
   const STATUS_LIFETIME_MS = 9000;
+  // A press on a drag handle that wobbles a little is still a press.
+  const DRAG_START_PX = 4;
 
   let els = null;
   let drafts = [];
@@ -29,10 +31,11 @@
   // reader could edit A, switch to B, watch A's save fail, and lose everything
   // A held on the next reload with nothing ever retried.
   let failedSnapshots = new Map();
-  let pendingFocus = null; // { index, control } restored after a re-render
+  let pendingFocus = null; // { index, control, caret, quiet } restored after a re-render
   let removed = null;      // { block, index } while the undo offer stands
   let undoTimer = null;
   let undoSlot = null;     // the list item the undo offer sits in
+  let drag = null;         // { index, pointerId, x, y, lifted, slot } while a handle is held
   // Which block's options are open, by its stable key. Held here and rendered
   // from state, because the block list is rebuilt on every move and anything
   // kept only in the DOM would be wiped by the next render.
@@ -437,6 +440,7 @@
 
   function renderEditor() {
     if (!els) return;
+    cancelDrag();
     const open = Boolean(current);
     els.editor.hidden = !open;
     els.editorEmpty.hidden = open;
@@ -484,6 +488,8 @@
   }
 
   function renderBlocks() {
+    // A drag holds a position in the list being replaced.
+    cancelDrag();
     els.blocks.textContent = "";
     const frag = document.createDocumentFragment();
     current.blocks.forEach((block, index) => {
@@ -511,13 +517,14 @@
 
   function restoreFocus() {
     if (!pendingFocus) return;
-    const { index, control } = pendingFocus;
+    const { index, control, caret, quiet } = pendingFocus;
     pendingFocus = null;
     const item = blockNode(index);
     if (!item) return;
     // The whole list was rebuilt; mark just this one so the reader can see
-    // which block moved or arrived.
-    item.classList.add("just-changed");
+    // which block moved or arrived. A quiet removal moved nothing, so the
+    // block the reader is put back in does not flash.
+    if (!quiet) item.classList.add("just-changed");
     // A quote block has no textarea, so a keyboard move asked for one and found
     // nothing, and focus fell to the page. Fall back to the block's first
     // control rather than losing the reader's place.
@@ -527,8 +534,26 @@
     const target = (control && item.querySelector(`${control}:not(:disabled)`))
       || item.querySelector("textarea")
       || item.querySelector(".btn-return:not(:disabled)")
+      // A quote without Return has its options next, never the link.
+      || item.querySelector(".block-options-toggle")
       || item.querySelector("a[href], button:not(:disabled)");
     if (target && typeof target.focus === "function") target.focus();
+    if (caret && target && target.tagName === "TEXTAREA") placeCaret(target, caret);
+  }
+
+  // A caret that crosses into a block lands at the edge it crossed: the end of
+  // the text when it comes from below, the start when it comes from above.
+  function placeCaret(area, at) {
+    const position = at === "end" ? area.value.length : 0;
+    area.setSelectionRange(position, position);
+  }
+
+  // The keys that cross between blocks step over quotes, which hold no caret.
+  function nearestTextBlock(index, step) {
+    for (let i = index + step; i >= 0 && i < current.blocks.length; i += step) {
+      if (current.blocks[i].type !== "quote") return i;
+    }
+    return -1;
   }
 
   // The control a keyboard move should come back to, so Alt+Up pressed on
@@ -551,6 +576,13 @@
   function blockLabel(block, index) {
     const position = `Block ${index + 1} of ${current.blocks.length}`;
     return block.type === "quote" ? `${position}, quote from ${block.title || hostOf(block.url)}` : `${position}, your text`;
+  }
+
+  // A key that changes the list or the focused block is handled once, by its
+  // owner, so the block's own handler never acts on it a second time.
+  function claimKey(event) {
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   // Moves and inserts from any control in a block, so the shortcuts the options
@@ -709,15 +741,37 @@
     // the owner stops it rather than the block guessing where it came from.
     area.addEventListener("keydown", (event) => {
       if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-        event.preventDefault();
-        event.stopPropagation();
+        claimKey(event);
         moveBlock(index, event.key === "ArrowUp" ? -1 : 1, true);
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
+        claimKey(event);
         insertTextBlock(index + 1);
+        return;
+      }
+      // The keys a writer already knows move between blocks the way they move
+      // through a page, but only from a collapsed caret at the text's edge.
+      // Anywhere else, with a modifier, or mid-composition, they stay the
+      // textarea's own.
+      if (event.isComposing || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (area.selectionStart !== area.selectionEnd) return;
+      const atStart = area.selectionStart === 0;
+      const atEnd = area.selectionEnd === area.value.length;
+      if (event.key === "Enter" && atEnd) {
+        claimKey(event);
+        insertTextBlock(index + 1);
+      } else if (event.key === "Backspace" && area.value === "" && index > 0) {
+        claimKey(event);
+        removeEmptyBlock(index);
+      } else if ((event.key === "ArrowUp" && atStart) || (event.key === "ArrowDown" && atEnd)) {
+        const up = event.key === "ArrowUp";
+        const next = nearestTextBlock(index, up ? -1 : 1);
+        if (next < 0) return;
+        claimKey(event);
+        const target = blockNode(next).querySelector("textarea");
+        target.focus();
+        placeCaret(target, up ? "end" : "start");
       }
     });
     area.addEventListener("input", () => {
@@ -731,6 +785,7 @@
     const { toggle, row } = blockOptions(block, index);
     li.appendChild(toggle);
     li.appendChild(row);
+    addDragHandle(li, index);
     bindBlockKeys(li, index);
     return li;
   }
@@ -825,6 +880,7 @@
     const { toggle, row } = blockOptions(block, index);
     li.appendChild(toggle);
     li.appendChild(row);
+    addDragHandle(li, index);
     // A quote block has no textarea, so without this the only block class that
     // always lands at the end had no keyboard move.
     bindBlockKeys(li, index);
@@ -1016,6 +1072,23 @@
     scheduleSave();
   }
 
+  // Backspace in an empty block. Nothing in it can be lost, so unlike Remove
+  // it offers no undo, leaves the status line alone, and keeps the reader
+  // writing instead of moving focus to an offer.
+  function removeEmptyBlock(index) {
+    const [removedKey] = blockKeys.splice(index, 1);
+    if (openOptionsKey === removedKey) openOptionsKey = null;
+    current.blocks.splice(index, 1);
+    // A standing undo offer keeps its gap between the same two blocks.
+    if (removed && index < removed.index) removed.index -= 1;
+    const above = nearestTextBlock(index, -1);
+    // With only quotes above, the one directly above takes focus on Return.
+    pendingFocus = { index: above >= 0 ? above : index - 1, control: null, caret: "end", quiet: true };
+    renderBlocks();
+    announce("Empty block removed.");
+    scheduleSave();
+  }
+
   // The way back belongs in the gap the block left, but the block list is
   // rebuilt often, so it is placed from state on every render rather than
   // moved once and hoped for.
@@ -1110,6 +1183,123 @@
   function announce(message) {
     if (!els) return;
     els.live.textContent = message;
+  }
+
+  // --- Dragging a block ---
+
+  // Pointer events with capture, so mouse, pen and touch share one path. The
+  // handle is not a control: Alt with an arrow and the options row are the
+  // keyboard and single-pointer ways to move a block (WCAG 2.5.7), and they
+  // stay the ones announced, so the handle is no tab stop and is hidden from
+  // assistive technology. A draft of one block has nowhere to drag it.
+  function addDragHandle(li, index) {
+    if (current.blocks.length < 2) return;
+    const handle = document.createElement("span");
+    handle.className = "block-handle";
+    handle.setAttribute("aria-hidden", "true");
+    handle.addEventListener("pointerdown", (event) => {
+      if (drag || !current || event.button !== 0 || event.isPrimary === false) return;
+      // A press on the handle neither starts a text selection nor takes focus.
+      event.preventDefault();
+      drag = { index, pointerId: event.pointerId, x: event.clientX, y: event.clientY, lifted: false, slot: null };
+      if (typeof handle.setPointerCapture === "function") {
+        try {
+          handle.setPointerCapture(event.pointerId);
+        } catch (_) {
+          // An already released pointer cannot be captured; the window
+          // listeners below still see it.
+        }
+      }
+      window.addEventListener("pointermove", onDragMove);
+      window.addEventListener("pointerup", onDragEnd);
+      window.addEventListener("pointercancel", onDragCancel);
+      window.addEventListener("keydown", onDragKey, true);
+      // A release the window never saw would otherwise finish this drag on the
+      // reader's next click, anywhere.
+      window.addEventListener("blur", cancelDrag);
+    });
+    handle.addEventListener("lostpointercapture", onDragCancel);
+    li.appendChild(handle);
+  }
+
+  function onDragMove(event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!drag.lifted) {
+      if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < DRAG_START_PX) return;
+      drag.lifted = true;
+      const node = blockNode(drag.index);
+      if (node) node.classList.add("is-lifted");
+    }
+    showDropLine(dropSlot(event.clientY));
+  }
+
+  // The gap nearest the pointer, as the position of the block it would land
+  // before; one past the last block is the end of the list.
+  function dropSlot(y) {
+    const nodes = [...els.blocks.children].filter((child) => child.classList.contains("draft-block"));
+    const at = nodes.findIndex((node) => {
+      const rect = node.getBoundingClientRect();
+      return y < rect.top + rect.height / 2;
+    });
+    return at < 0 ? nodes.length : at;
+  }
+
+  function showDropLine(slot) {
+    // Either gap beside the block itself would leave it where it is.
+    const next = slot === drag.index || slot === drag.index + 1 ? null : slot;
+    if (next === drag.slot) return;
+    drag.slot = next;
+    clearDropLine();
+    if (drag.slot === null) return;
+    const last = current.blocks.length - 1;
+    const node = blockNode(Math.min(drag.slot, last));
+    if (node) node.classList.add(drag.slot > last ? "drop-after" : "drop-before");
+  }
+
+  function clearDropLine() {
+    if (!els || !els.blocks) return;
+    for (const node of els.blocks.querySelectorAll(".drop-before, .drop-after")) {
+      node.classList.remove("drop-before", "drop-after");
+    }
+  }
+
+  function onDragEnd(event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const { index, lifted, slot } = drag;
+    cancelDrag();
+    if (!lifted || slot === null) return;
+    const target = slot > index ? slot - 1 : slot;
+    // Through the same move the options row and Alt with an arrow use, so the
+    // announcement, the save and the focus rules are the ones those prove.
+    // Focus lands on the moved block's options: a textarea would open the
+    // on-screen keyboard after a drag with a finger.
+    moveBlock(index, target - index, true, ".block-options-toggle");
+  }
+
+  function onDragCancel(event) {
+    if (drag && event.pointerId === drag.pointerId) cancelDrag();
+  }
+
+  // Escape belongs to the drag while one is held, so it is stopped before an
+  // open options row can close on it too.
+  function onDragKey(event) {
+    if (event.key !== "Escape") return;
+    claimKey(event);
+    cancelDrag();
+  }
+
+  // Puts the block back as it was. Every way a drag ends comes through here.
+  function cancelDrag() {
+    if (!drag) return;
+    window.removeEventListener("pointermove", onDragMove);
+    window.removeEventListener("pointerup", onDragEnd);
+    window.removeEventListener("pointercancel", onDragCancel);
+    window.removeEventListener("keydown", onDragKey, true);
+    window.removeEventListener("blur", cancelDrag);
+    const node = blockNode(drag.index);
+    if (node) node.classList.remove("is-lifted");
+    clearDropLine();
+    drag = null;
   }
 
   // --- Taking the draft out ---
