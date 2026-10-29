@@ -9,6 +9,13 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 - **Copy as Markdown** and **Download .md** on the open draft. The title becomes the heading, your text passes through as you wrote it, each quote becomes a blockquote naming its source, and a Sources list at the end gives every page once with its title and address. Two quotes of one page share a number.
 - **Copy with source** in a quote's options, for dropping one quotation into whatever you are writing elsewhere.
 - Nothing new is read or stored to produce either. If the clipboard is unavailable, ReadTrail says so and points to the download.
+- **The Desk reads as one document.** Enter at the end of your text starts the next block. Backspace in an empty block removes it and takes you to the end of the text above. Up at the start and Down at the end move into the neighbouring block, stepping over quotes, which hold no caret. Alt with an arrow and the options row still move blocks from the keyboard.
+- **Drag a block by its handle** to where it belongs, with a mouse, pen or finger. A line shows where it will land, and Escape puts it back.
+- **The right-click save says whether it saved.** "Save selection to ReadTrail" now flashes the text it kept. When it cannot save, the toolbar icon shows "!" for that tab, and its tooltip says why.
+
+### Changed
+
+- The ruler, the underline and the line highlight now cover only the text you are reading, not the whole width of the window or of the box around the text. The highlight no longer changes the page's own elements.
 
 ### Fixed
 

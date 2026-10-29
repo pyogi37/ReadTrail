@@ -70,6 +70,7 @@ Messages delivered to a content script with `chrome.tabs.sendMessage(tabId, ...)
 | `pageInfo` | none | `{url,title}` |
 | `capturePassage` | none | `{ok,text,start,end,url,title}` or `{ok:false,error:"no-selection"|"too-long"}` |
 | `revealPassage` | `{start,end,text}` | `{ok,quality:"exact"|"approximate"|"missing"}` |
+| `flashCapture` | none; sent by the worker only after a context-menu `savePassage` replied `ok` | `{ok}`, whether the range kept by the last `capturePassage` flashed. No scroll, nothing read or stored, works on a dormant page |
 
 ### Return
 
@@ -79,7 +80,7 @@ A durable record about a page must be attributable to a tab. A content script's 
 
 The content script resolves both anchors and **compares the resolved text with the stored clip text** before reporting `exact`; otherwise it searches the page's text with the same whitespace normalisation capture uses, including separators between block elements, and reports `approximate`, or `missing`. The flash is a second named highlight removed on a timer, because CSS transitions do not apply to `::highlight`.
 
-The worker's `background/library.js` owns the knowledge-layer handlers and the "Save selection to ReadTrail" context menu. `content/passage.js` captures the selection on request and draws saved passages with the CSS Custom Highlight API (no DOM mutation).
+The worker's `background/library.js` owns the knowledge-layer handlers and the "Save selection to ReadTrail" context menu. A menu save confirms itself on the page with `flashCapture`, and a failed one marks only that tab's toolbar icon ("!" and a reason as its title), never the global recently-closed badge. `content/passage.js` captures the selection on request and draws saved passages with the CSS Custom Highlight API (no DOM mutation). The line highlight is a third named highlight, `readtrail-line`, coloured by one ReadTrail `<style>` element that exists only on an active page; the ruler and underline span the text box of the block under the pointer.
 
 Error codes live in `shared/constants.js` (`ERRORS`). Do not invent new strings inline.
 

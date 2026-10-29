@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved by the owner 2026-10-29, with the recommendation on the handle. The owner added two small tasks the same day: the reading guide and the line highlight stay on the text (part B), and the right-click save says it saved (part C). Direction: `docs/PRODUCT-DIRECTION-2.1.md` section 3.2. Part A is measured afterwards by the fifth critique round (decision 76): if flexibility is still 1, the editor is redesigned again before Sprint 011.
+Done 2026-10-29. Approved by the owner the same day, with the recommendation on the handle; the owner added parts B and C. All three branches are merged into `main`, with two fixes from the lead (decisions 93 and 97); decisions 89 to 97 record the rest. The three sessions ran as local worktree agents, not in the cloud as the owner asked. Direction: `docs/PRODUCT-DIRECTION-2.1.md` section 3.2. Part A is measured next by the fifth critique round (decision 76): if flexibility is still 1, the editor is redesigned again before Sprint 011.
 
 ## How this sprint runs
 

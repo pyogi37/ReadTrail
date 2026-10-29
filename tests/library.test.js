@@ -339,6 +339,16 @@ describe("knowledge layer: the context-menu save says what happened", () => {
   };
   const STORAGE_FULL = (h) => { h.chrome.storage.local.getBytesInUse = vi.fn((_, callback) => callback(9 * 1024 * 1024)); };
 
+  it("ties the tab to its page only when the clip was kept (decision 23)", () => {
+    const kept = setup(SELECTED);
+    click(kept);
+    expect(kept.sessionData[`readtrail.seen.v1:${TAB}`]).toEqual(expect.objectContaining({ url: URL_A }));
+    const refused = setup(SELECTED);
+    STORAGE_FULL(refused);
+    click(refused);
+    expect(refused.sessionData[`readtrail.seen.v1:${TAB}`]).toBeUndefined();
+  });
+
   // Exact call lists: every badge write names the tab, so the global
   // recently-closed count, and with it every other tab, is never touched.
   it.each([

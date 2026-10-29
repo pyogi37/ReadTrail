@@ -76,6 +76,17 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 - **QA-7.2 Update.** Load a newer build over it. Expected: settings and saved pages preserved; console clean.
 - **QA-7.3 Uninstall.** Remove the extension. Expected: no residue in other extensions or pages.
 
+## QA-8 The Desk as one document, and the reading guide (Sprint 010)
+
+- **QA-8.1 Writing across blocks.** In a draft with a long paragraph that wraps, a quote, and more text, press Enter at the end of the paragraph, type, press Backspace in an empty block, and use Up and Down from the first and last lines. Expected: Enter makes one new block below; Backspace in an empty block lands at the end of the text above; Up from the first line reaches the start, the next Up crosses into the block above; the caret never lands inside the quote.
+- **QA-8.2 IME.** With a Japanese or Chinese input method, press Enter to commit a composition at the end of a block. Expected: the composition commits and no block is created.
+- **QA-8.3 Drag.** Drag a block by its handle with a mouse, then on a touch screen. Expected: a line shows the landing place, the block moves there, the page does not scroll while dragging on touch, Escape mid-drag puts it back, and pressing in the text still selects text.
+- **QA-8.4 Screen reader.** With NVDA or VoiceOver, press Enter at the end of a block and Backspace in an empty one. Expected: the new block's label is read, and "Empty block removed." is announced. The handle is never announced or reached by Tab.
+- **QA-8.5 Undo while writing.** Remove a quote, then press Enter in the block above where it was and press Undo remove. Expected: the quote returns below the new block, before the block it used to precede.
+- **QA-8.6 The guide stays on the text.** On a real article with a narrow column, activate with the ruler, then the underline, then Highlight current line on. Expected: each stops at the text's left and right edges; the highlight paints behind the words only; the page's own backgrounds are untouched; changing the highlight colour applies at once.
+- **QA-8.7 Right-click save.** Select a sentence, right-click, choose Save selection to ReadTrail. Expected: the sentence flashes where it is and the page does not scroll. Then select text inside an embedded frame and save. Expected: the toolbar icon shows "!" for that tab, its tooltip says a selection inside a frame cannot be saved, and the icon returns to normal after about eight seconds.
+- **QA-8.8 Reduced motion.** Enable reduced motion in the OS and drag a block. Expected: nothing about lifting, the drop line or landing animates.
+
 ## Run template
 
 ```

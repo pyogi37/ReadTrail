@@ -1374,6 +1374,25 @@ describe("ReadTrail Desk", () => {
     expect(areas().map((a) => a.value)).toEqual(["A", "X", "B"]);
   });
 
+  it("keeps a standing undo offer in its gap when Enter adds a block or a block moves across it", () => {
+    const blocks = (texts) => texts.map((text) => ({ type: "text", text }));
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: blocks(["A", "X", "B"]) })] });
+    document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+    areas()[0].setSelectionRange(1, 1);
+    key(areas()[0], { key: "Enter" });
+    // The new block sits under A, where the caret was, and X still goes back before B.
+    document.querySelector("#draftUndo").click();
+    expect(areas().map((a) => a.value)).toEqual(["A", "", "X", "B"]);
+
+    loadDesk({ hash: "#/drafts/draft-1", drafts: [draft({ blocks: blocks(["A", "B", "X", "C"]) })] });
+    document.querySelectorAll(".draft-block")[2].querySelector(".btn-remove-block").click();
+    key(areas()[1], { key: "ArrowDown", altKey: true });
+    expect(areas().map((a) => a.value)).toEqual(["A", "C", "B"]);
+    // B moved past the gap, so X goes back before C, the block it came before.
+    document.querySelector("#draftUndo").click();
+    expect(areas().map((a) => a.value)).toEqual(["A", "X", "C", "B"]);
+  });
+
   it("styles the handle with a 24px target, no touch scrolling, hidden from hit testing at rest, and no motion of its own", () => {
     const css = readSource("sidepanel/desk.css").replace(/\r\n/g, "\n");
     const rule = (selector) => {

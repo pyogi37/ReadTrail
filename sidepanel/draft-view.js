@@ -1005,6 +1005,9 @@
     blockKeys.splice(target, 0, movedKey);
     const [block] = current.blocks.splice(index, 1);
     current.blocks.splice(target, 0, block);
+    // A standing undo offer keeps its gap between the same two unmoved blocks.
+    if (removed && index < removed.index && target >= removed.index) removed.index -= 1;
+    else if (removed && index >= removed.index && target < removed.index) removed.index += 1;
     const atEdge = delta < 0 ? target === 0 : target === current.blocks.length - 1;
     let control;
     if (movedByKeyboard) {
@@ -1040,6 +1043,8 @@
     }
     current.blocks.splice(index, 0, { type: "text", text: "" });
     blockKeys.splice(index, 0, newBlockKey());
+    // A new block goes below the one it came from, so above a gap it fills.
+    if (removed && index <= removed.index) removed.index += 1;
     // The reader is writing now, so the options they came from close.
     openOptionsKey = null;
     pendingFocus = { index, control: "textarea" };

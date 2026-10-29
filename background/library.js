@@ -1068,9 +1068,6 @@
           showSaveFailed(tab.id, captured && captured.error);
           return;
         }
-        if (typeof onPassageSaved === "function" && tab.incognito !== true) {
-          onPassageSaved(tab.id, captured.url);
-        }
         handleSavePassage(
           { title: captured.title, text: captured.text, start: captured.start, end: captured.end },
           { tab: { id: tab.id, url: captured.url, incognito: Boolean(tab.incognito) } },
@@ -1079,6 +1076,8 @@
               showSaveFailed(tab.id, result.error);
               return;
             }
+            // Only a clip that was kept ties this tab to its page (decision 23).
+            if (typeof onPassageSaved === "function") onPassageSaved(tab.id, captured.url);
             clearSaveFailed(tab.id);
             tabs.sendMessage(tab.id, { type: "flashCapture" }, () => { void chrome.runtime.lastError; });
           }
