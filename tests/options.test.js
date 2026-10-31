@@ -27,7 +27,9 @@ function renderOptions(settings = storedSettings) {
   // Options never touch chrome.storage: reads and writes go through the
   // service worker. `set` records every setSettings message for assertions.
   const set = vi.fn();
+  const storageListeners = [];
   globalThis.chrome = {
+    storage: { onChanged: { addListener: (handler) => storageListeners.push(handler) } },
     runtime: {
       lastError: null,
       sendMessage: vi.fn((message, callback) => {
@@ -45,7 +47,8 @@ function renderOptions(settings = storedSettings) {
 
   window.eval(fs.readFileSync(path.join(root, "shared/constants.js"), "utf8"));
   window.eval(script);
-  return { set };
+  const emitStorageChange = (changes, area) => storageListeners.forEach((handler) => handler(changes, area));
+  return { set, emitStorageChange, setStored: (next) => { settings = next; } };
 }
 
 describe("ReadTrail options", () => {
@@ -116,5 +119,31 @@ describe("ReadTrail options", () => {
       expect.any(Function)
     );
     expect(document.querySelector("#saveStatus").textContent).toBe("Defaults restored");
+  });
+
+  it("keeps a site excluded elsewhere when a slider moves afterwards", () => {
+    const { set, emitStorageChange, setStored } = renderOptions();
+    const elsewhere = { ...storedSettings, excludedHosts: ["example.com"] };
+    setStored(elsewhere);
+    emitStorageChange({ settings: { newValue: elsewhere } }, "local");
+    expect(document.querySelector("#excludedList").textContent).toContain("example.com");
+
+    const size = document.querySelector("#size");
+    size.value = "48";
+    size.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(set).toHaveBeenLastCalledWith(
+      { settings: expect.objectContaining({ size: 48, excludedHosts: ["example.com"] }) },
+      expect.any(Function)
+    );
+  });
+
+  it("restores defaults but keeps the reader's excluded sites", () => {
+    const { set } = renderOptions({ ...storedSettings, size: 80, excludedHosts: ["example.com"] });
+    document.querySelector("#resetBtn").click();
+
+    expect(set).toHaveBeenLastCalledWith(
+      { settings: { ...storedSettings, excludedHosts: ["example.com"] } },
+      expect.any(Function)
+    );
   });
 });

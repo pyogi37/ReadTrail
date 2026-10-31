@@ -371,10 +371,16 @@
     });
   }
 
-  function syncPageTags() {
+  function storedPageTags() {
     const KV = NS.knowledgeView;
-    if (!els || !tab || !tab.url || !KV || typeof KV.pageTagsFor !== "function") return;
-    els.pageTagsInput.value = KV.pageTagsFor(tab.url).join(", ");
+    if (!tab || !tab.url || !KV || typeof KV.pageTagsFor !== "function") return "";
+    return KV.pageTagsFor(tab.url).join(", ");
+  }
+
+  // A library reload must not wipe what the reader is typing.
+  function syncPageTags() {
+    if (!els || document.activeElement === els.pageTagsInput) return;
+    els.pageTagsInput.value = storedPageTags();
   }
 
   function submitPageTags(event) {
@@ -508,7 +514,8 @@
       clearError();
       showPageStatus("");
       els.noteForm.hidden = true;
-      els.pageTagsInput.value = "";
+      // Unconditional: typed tags must never be saved onto a different page.
+      els.pageTagsInput.value = storedPageTags();
     }
     render();
     loadState();
