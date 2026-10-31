@@ -2,9 +2,9 @@
 
 Rewritten at the end of every working session. Keep under 40 lines.
 
-- **Current phase:** 2.1. Sprint 012 "The audit's must-fix findings" (`docs/sprints/SPRINT-012.md`) is done and merged on local `main` 2026-10-31 (decisions 106 to 112). No sprint is open. Version string is still 2.0.0; no tag has been cut.
+- **Current phase:** 2.1. Sprint 012 "The audit's must-fix findings" (`docs/sprints/SPRINT-012.md`) is done, merged and pushed 2026-10-31 (decisions 106 to 112). No sprint is open. Version string is still 2.0.0; no tag has been cut.
 - **Read first:** `docs/DECISIONS.md` items 106 to 112, then `docs/PRODUCT-DIRECTION-2.1.md` section 3.3 for Sprint 013.
-- **Last commit:** see `git log -1`. Sprint 012 has no push approval yet: `main` is ahead of `origin/main` until the owner approves.
+- **Last commit:** see `git log -1`. The owner approved pushing Sprint 012 on 2026-10-31; `main` is pushed. Push approval is per sprint.
 
 ## Verified by the lead, merged tree
 
@@ -25,11 +25,10 @@ Also checked in real Chromium with a scratch Playwright script (deleted after): 
 
 ## Blocked / needs owner
 
-1. **Push `main`** (Sprint 012 merges and docs).
-2. **Manual QA-4.8 to 4.10, QA-8.1 to 8.8, QA-9.1 to 9.3 and QA-10.1 to 10.3 in a real Chrome.** Touch, IME, a screen reader, two real Desk tabs and real narrow-column articles are not covered by any automated run. QA-4.8 and QA-4.9 are each used twice since Sprint 009; renumber after that run.
-3. **Round five's P1s; the owner chooses the order.** Four untrue statements (summary after clips are cleared, Return on duplicate sentences, Return on an excluded site, the export message omitting drafts); at 960px and wider both panes share one scroll. Replace import no longer deletes the library when it cannot use every record (decision 111), but still asks no confirmation.
-4. **Delete the two paused Sprint 011 routines** at claude.ai/code/routines (trig_01QN81fBYLnRuJgMgnoMEDTs, trig_01NNJZWmfPu1oT1ugLytxfkj); the API cannot.
-5. Carried over: store copy approval; `docs/store/PERMISSIONS.md` still says "(1.0)" and "1.1"; real readers (direction 2.1 section 6).
+1. **Manual QA-4.8 to 4.10, QA-8.1 to 8.8, QA-9.1 to 9.3 and QA-10.1 to 10.3 in a real Chrome.** Touch, IME, a screen reader, two real Desk tabs and real narrow-column articles are not covered by any automated run. QA-4.8 and QA-4.9 are each used twice since Sprint 009; renumber after that run.
+2. **Round five's P1s; the owner chooses the order.** Four untrue statements (summary after clips are cleared, Return on duplicate sentences, Return on an excluded site, the export message omitting drafts); at 960px and wider both panes share one scroll. Replace import no longer deletes the library when it cannot use every record (decision 111), but still asks no confirmation.
+3. **Delete the two paused Sprint 011 routines** at claude.ai/code/routines (trig_01QN81fBYLnRuJgMgnoMEDTs, trig_01NNJZWmfPu1oT1ugLytxfkj); the API cannot.
+4. Carried over: store copy approval; `docs/store/PERMISSIONS.md` still says "(1.0)" and "1.1"; real readers (direction 2.1 section 6).
 
 ## Next task
 
