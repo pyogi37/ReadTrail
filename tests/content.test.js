@@ -61,6 +61,7 @@ function loadContent({
   const sentMsgs = [];
   const addedDoc = [];
   const docHandlers = {};
+  loadedDocHandlers = docHandlers;
   const addedWin = [];
   const removedDoc = [];
   const removedWin = [];
@@ -173,6 +174,13 @@ function addParagraph(id, text) {
 
 const lineStyles = () => document.querySelectorAll("style[data-readtrail-line]");
 
+// A dispatched event cannot claim isTrusted, so a real mouse move calls the
+// listener the last loaded page registered, if any (a dormant page has none).
+let loadedDocHandlers = {};
+function trustedMove(x, y) {
+  loadedDocHandlers.mousemove?.(trustedPointerEvent({ clientX: x, clientY: y }));
+}
+
 function trustedPointerEvent(overrides = {}) {
   return {
     button: 0,
@@ -205,7 +213,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(addedWin).toEqual([]);
     expect(renderer.ensureCanvas).not.toHaveBeenCalled();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 5, clientY: 5 }));
+    trustedMove(5, 5);
     document.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
     document.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, button: 0 }));
 
@@ -264,6 +272,20 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(renderer.renderRuler).toHaveBeenCalledWith(200, expect.anything(), "frozen", null);
   });
 
+  it("ignores a page script's synthetic mousemove on an active page", async () => {
+    const { runtimeMessageHandler, renderer, getSaves, sentMsgs } = loadContent();
+    await flush();
+    runtimeMessageHandler({ type: "setPageActive", active: true });
+    await flush();
+    renderer.renderRuler.mockClear();
+    const sent = sentMsgs.length;
+
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    expect(renderer.renderRuler).not.toHaveBeenCalled();
+    expect(getSaves()).toHaveLength(0);
+    expect(sentMsgs).toHaveLength(sent);
+  });
+
   it("throttles following checkpoints to once per second", async () => {
     vi.useFakeTimers();
     const { runtimeMessageHandler, getSaves } = loadContent();
@@ -271,11 +293,11 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     expect(getSaves()).toHaveLength(1); // first write is immediate (nothing saved yet)
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 20, clientY: 60 }));
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 30, clientY: 70 }));
+    trustedMove(20, 60);
+    trustedMove(30, 70);
     expect(getSaves()).toHaveLength(1); // subsequent moves coalesce into one pending write
 
     vi.advanceTimersByTime(1000);
@@ -293,7 +315,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
     const target = document.createElement("p");
     document.body.appendChild(target);
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     const savesBefore = getSaves().length;
 
     docHandlers.click(trustedPointerEvent());
@@ -305,7 +327,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
     // While frozen, movement must not move the marker.
     renderer.renderRuler.mockClear();
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 500 }));
+    trustedMove(100, 500);
     expect(renderer.renderRuler).toHaveBeenCalledWith(50, expect.anything(), "frozen", null);
     expect(renderer.renderRuler).not.toHaveBeenCalledWith(500, expect.anything());
 
@@ -313,7 +335,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     docHandlers.click(trustedPointerEvent());
     vi.advanceTimersByTime(400);
     renderer.renderRuler.mockClear();
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 100, clientY: 500 }));
+    trustedMove(100, 500);
     expect(renderer.renderRuler).toHaveBeenCalledWith(500, expect.anything(), "following", null);
   });
 
@@ -324,7 +346,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     docHandlers.click(trustedPointerEvent({ clientX: 10, clientY: 50 }));
     vi.advanceTimersByTime(400);
 
@@ -347,7 +369,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
 
     const target = document.createElement("p");
     document.body.appendChild(target);
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     const savesBefore = getSaves().length;
 
     docHandlers.click(trustedPointerEvent());
@@ -435,8 +457,8 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 20, clientY: 60 }));
+    trustedMove(10, 50);
+    trustedMove(20, 60);
     expect(deferred.saves).toHaveLength(1);
 
     const response = vi.fn();
@@ -457,8 +479,8 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 20, clientY: 60 }));
+    trustedMove(10, 50);
+    trustedMove(20, 60);
     const response = vi.fn();
     runtimeMessageHandler({ type: "setPageActive", active: false }, {}, response);
 
@@ -467,7 +489,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(response).toHaveBeenCalledWith({ ok: false, error: "save-failed" });
     expect(renderer.removeCanvas).not.toHaveBeenCalled();
     renderer.renderRuler.mockClear();
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 30, clientY: 70 }));
+    trustedMove(30, 70);
     expect(renderer.renderRuler).toHaveBeenCalledWith(70, expect.anything(), "following", null);
   });
 
@@ -550,7 +572,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     expect(removedWin).toContain("pagehide");
 
     const before = getSaves().length;
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 5, clientY: 5 }));
+    trustedMove(5, 5);
     expect(renderer.ensureCanvas).not.toHaveBeenCalled();
     expect(renderer.renderRuler).not.toHaveBeenCalled();
     expect(getSaves()).toHaveLength(before);
@@ -575,7 +597,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     vi.stubGlobal("location", { href: "https://example.com/drifted" });
 
     const before = getSaves().length;
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 5, clientY: 5 }));
+    trustedMove(5, 5);
     document.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
 
     expect(renderer.removeCanvas).toHaveBeenCalled(); // fully cleaned up
@@ -594,10 +616,10 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     const count = getSaves().length;
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 20, clientY: 60 }));
+    trustedMove(20, 60);
     expect(getSaves()).toHaveLength(count); // pending, not yet written
 
     window.dispatchEvent(new Event("pagehide"));
@@ -619,7 +641,7 @@ describe("ReadTrail content lifecycle (RT-004A)", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 20 }));
+    trustedMove(10, 20);
     const [range] = layout.highlights.get("readtrail-line").ranges;
     expect([range.startContainer, range.startOffset, range.endContainer, range.endOffset]).toEqual([line, 0, line, 1]);
     expect(lineStyles()).toHaveLength(1);
@@ -681,7 +703,7 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
 
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
@@ -710,7 +732,7 @@ describe("saveForLater bridge", () => {
       anchor: { version: 1, path: [0, 1], offset: 5 }
     });
     capture.mockReturnValueOnce(original);
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
 
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
@@ -742,7 +764,7 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
 
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
@@ -761,7 +783,7 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
 
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
@@ -783,7 +805,7 @@ describe("saveForLater bridge", () => {
     await flush();
     renderer.renderRuler.mockClear();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following", null);
 
     const response = vi.fn();
@@ -808,7 +830,7 @@ describe("saveForLater bridge", () => {
     await flush();
     renderer.renderRuler.mockClear();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
 
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
@@ -827,7 +849,7 @@ describe("saveForLater bridge", () => {
     renderer.renderRuler.mockClear();
 
     // Following: ruler renders with "following" state.
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     expect(renderer.renderRuler).toHaveBeenLastCalledWith(50, expect.anything(), "following", null);
 
     // A deferred click freezes; the marker renders with "frozen".
@@ -856,7 +878,7 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
     await flush();
@@ -865,7 +887,7 @@ describe("saveForLater bridge", () => {
 
     renderer.renderRuler.mockClear();
     // Following to a new line clears the saved treatment back to following.
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 120 }));
+    trustedMove(10, 120);
     expect(renderer.renderRuler).toHaveBeenLastCalledWith(120, expect.anything(), "following", null);
     expect(renderer.renderRuler).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), "saved", null);
   });
@@ -878,7 +900,7 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
     await flush();
@@ -900,7 +922,7 @@ describe("saveForLater bridge", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     const response = vi.fn();
     runtimeMessageHandler({ type: "saveForLater" }, {}, response);
     await flush();
@@ -937,7 +959,7 @@ describe("ReadTrail content per-tab protocol (RT-304)", () => {
     runtimeMessageHandler({ type: "setPageActive", active: true });
     await flush();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     expect(getSaves()).toHaveLength(1);
     expect(getSaves()[0]).toEqual(expect.objectContaining({
       type: "savePagePosition",
@@ -959,7 +981,7 @@ describe("ReadTrail content per-tab protocol (RT-304)", () => {
     await flush();
     expect(resolvePosition).toHaveBeenCalled();
 
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     const saves = getSaves();
     expect(saves.length).toBeGreaterThan(0);
     expect(saves[saves.length - 1].restoreQuality).toBe("approximate");
@@ -974,7 +996,7 @@ describe("ReadTrail content per-tab protocol (RT-304)", () => {
     });
     await flush();
     vi.advanceTimersByTime(1100); // past the checkpoint throttle
-    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 10, clientY: 50 }));
+    trustedMove(10, 50);
     const after = getSaves();
     expect(after.length).toBeGreaterThan(saves.length);
     expect(after[after.length - 1].restoreQuality).toBeUndefined();
@@ -1014,7 +1036,7 @@ describe("the reading guide stays on the text (Sprint 010 part B)", () => {
     return loaded;
   }
 
-  const move = (x, y) => document.dispatchEvent(new MouseEvent("mousemove", { clientX: x, clientY: y }));
+  const move = trustedMove;
 
   it("bounds the ruler and the underline by the text of the block under the pointer (B2)", async () => {
     const p = addParagraph("text", "A narrow paragraph");

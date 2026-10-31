@@ -653,6 +653,43 @@ describe("drafts", () => {
     expect(call(h, { type: "listPassages" }).passages).toHaveLength(1);
   });
 
+  // Replace used to skip a record rejected after the shape check, then retire
+  // the whole old library and reply ok. Now any rejection refuses the import.
+  it("refuses a replace import that would drop a record, writing nothing", () => {
+    const h = load();
+    call(h, { type: "savePassage", url: URL_A, text: "the old clip" });
+    draftOf(h);
+    const before = JSON.parse(JSON.stringify(h.localData));
+    const passage = {
+      version: 1, id: MISSING_ID, url: URL_B, title: "Real title", text: "what the page really said",
+      start: null, end: null, note: "", tags: [], createdAt: 1, updatedAt: 1
+    };
+    const fabricated = {
+      version: 1, id: "22222222-3333-4444-8555-666666666666", title: "Imported", tags: [],
+      blocks: [{ type: "quote", passageId: MISSING_ID, text: "what someone wishes it said", url: URL_B, title: "Real title" }],
+      createdAt: 1, updatedAt: 1
+    };
+    const payload = {
+      format: "readtrail-export", version: 1, exportedAt: 1,
+      saved: [], notes: [], pagemeta: [], passages: [passage], drafts: [fabricated]
+    };
+    expect(call(h, { type: "importLibrary", payload, mode: "replace" }))
+      .toEqual({ ok: false, error: "invalid-input" });
+    expect(h.localData).toEqual(before);
+  });
+
+  it("clears nothing when clearLibrary names its kinds as anything but a list", () => {
+    const h = load();
+    call(h, { type: "savePassage", url: URL_A, text: "a clip" });
+    call(h, { type: "saveNote", url: URL_B, text: "a note" });
+    draftOf(h);
+    const before = JSON.parse(JSON.stringify(h.localData));
+    for (const kinds of ["notes", null, {}, 1]) {
+      expect(call(h, { type: "clearLibrary", kinds })).toEqual({ ok: false, error: "invalid-input" });
+    }
+    expect(h.localData).toEqual(before);
+  });
+
   it("imports a quote whose clip is genuinely gone, marked as having no way back", () => {
     const h = load();
     const orphan = {

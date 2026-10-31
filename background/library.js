@@ -698,8 +698,9 @@
   // Removes only the chosen kinds. Settings and everything outside the
   // library prefixes are never touched.
   function handleClearLibrary(msg, sendResponse) {
-    const kinds = Array.isArray(msg.kinds) ? msg.kinds : Object.keys(KIND_PREFIXES);
-    if (!kinds.every((kind) => Object.prototype.hasOwnProperty.call(KIND_PREFIXES, kind))) {
+    // Only an absent `kinds` means everything; a malformed one must not wipe the library.
+    const kinds = msg.kinds === undefined ? Object.keys(KIND_PREFIXES) : msg.kinds;
+    if (!Array.isArray(kinds) || !kinds.every((kind) => Object.prototype.hasOwnProperty.call(KIND_PREFIXES, kind))) {
       reply(sendResponse, ERRORS.INVALID_INPUT);
       return;
     }
@@ -858,6 +859,12 @@
         existingDrafts.add(draft.id);
         draftCount += 1;
         imported += 1;
+      }
+      // A replacement that would silently drop records is refused before any
+      // write, so the existing library stays exactly as it was.
+      if (mode === "replace" && rejected > 0) {
+        reply(sendResponse, ERRORS.INVALID_INPUT);
+        return;
       }
       const store = getLocalStore();
       if (!store) {
