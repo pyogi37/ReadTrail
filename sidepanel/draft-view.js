@@ -147,18 +147,39 @@
         const fresh = drafts.find((d) => d.id === current.id);
         if (!fresh) {
           current = null;
-        } else if (dirty || sameDraftContent(fresh, { ...current, blocks: blocksToSave() })) {
-          // Either this page is mid-edit, or the change that woke us is the
-          // one we just wrote, compared as written, a quote kept for Undo
-          // included. Rebuilding here would take the caret out of the block
-          // the reader is typing in.
+        } else if (dirty || savePending(current.id) || sameDraftContent(fresh, { ...current, blocks: blocksToSave() })) {
+          // Either this page is mid-edit or has a save on the way, or the
+          // change that woke us is the one we just wrote, compared as written,
+          // a quote kept for Undo included. Rebuilding here would take the
+          // caret out of the block the reader is typing in.
           rebuildEditor = false;
+        } else {
+          adoptStored(fresh);
         }
       }
       renderIndex();
       if (rebuildEditor) renderEditor();
       if (callback) callback(true);
     });
+  }
+
+  function savePending(id) {
+    return Boolean(activeSave && activeSave.id === id) || saveQueue.some((job) => job.id === id);
+  }
+
+  // Another tab changed the open draft. Redrawing the old copy let the next
+  // keystroke save it over their quote or text, so the stored copy is adopted.
+  function adoptStored(fresh) {
+    const next = JSON.parse(JSON.stringify(fresh));
+    // A quote kept for Undo is still stored at its gap; keep it out of view
+    // while the offer stands, or end the offer if the other tab moved it.
+    if (removed && removed.block.type === "quote") {
+      if (JSON.stringify(next.blocks[removed.index]) === JSON.stringify(removed.block)) next.blocks.splice(removed.index, 1);
+      else dropUndo();
+    }
+    current = next;
+    resetBlockKeys(current.blocks.length);
+    openOptionsKey = null;
   }
 
   function openDraft(id, options = {}) {
@@ -183,7 +204,9 @@
       setStatus("That draft no longer exists. Choose one from the list, or start a new question.", "alert");
       return;
     }
-    current = JSON.parse(JSON.stringify(draft));
+    // A storage reload may have reset `drafts` to the older stored copy, while
+    // the retry below resends the failed snapshot: the editor shows what it sends.
+    current = JSON.parse(JSON.stringify({ ...draft, ...failedSnapshots.get(id) }));
     resetBlockKeys(current.blocks.length);
     openOptionsKey = null;
     dirty = false;
@@ -1181,6 +1204,17 @@
     retireUndo();
   }
 
+  // Ends the offer without saving the removal, for when storage already
+  // holds a newer copy that keeps the block.
+  function dropUndo() {
+    if (undoTimer !== null) {
+      clearTimeout(undoTimer);
+      undoTimer = null;
+    }
+    removed = null;
+    retireUndo();
+  }
+
   // Returns whether the offer held focus when it was withdrawn.
   function retireUndo() {
     if (!els || !els.undo) return false;
@@ -1210,7 +1244,9 @@
     // Drop the placeholder only if we are the ones who added it, and do it
     // before the index is clamped, or the restored block is appended past the
     // end of an empty list and the placeholder is what survives.
-    if (placeholderAdded && current.blocks.length === 1) {
+    // Once typed into, it is the reader's writing and stays.
+    const only = current.blocks.length === 1 ? current.blocks[0] : null;
+    if (placeholderAdded && only && only.type === "text" && !only.text) {
       current.blocks = [];
       blockKeys = [];
     }
@@ -1405,6 +1441,9 @@
       return;
     }
     const draftId = current.id;
+    // The stored draft the answer brings back still holds a quote kept for
+    // Undo, so the offer ends first and its removal is saved with the flush.
+    withdrawUndo();
     flushSave((saved) => {
       if (!saved) {
         if (callback) callback(false);

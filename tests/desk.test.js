@@ -1469,6 +1469,154 @@ describe("ReadTrail Desk", () => {
     }
   });
 
+  // A second Desk tab redrew its old copy of the open draft, so the next
+  // keystroke saved it over the quote the other tab had appended.
+  it("takes in another tab's edits to the open draft before the next keystroke saves", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadDesk({ hash: "#/drafts/draft-1", passages: [passage()], drafts: [draft()] });
+      const elsewhere = draft({ blocks: [...draft().blocks, quoteBlock()], updatedAt: 300 });
+      h.emitStorage({ "readtrail.draft.v1:draft-1": { newValue: elsewhere } });
+      vi.advanceTimersByTime(150);
+      h.shift("listDrafts")({ ok: true, drafts: [elsewhere] });
+      expect(document.querySelectorAll(".quote-block")).toHaveLength(1);
+
+      areas()[0].value = "My opening thought, sharpened.";
+      areas()[0].dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      const saved = h.messages.filter((m) => m.type === "updateDraft").at(-1);
+      expect(saved.blocks).toEqual([{ type: "text", text: "My opening thought, sharpened." }, quoteBlock()]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not take in a stored copy older than a save of its own still on the way", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadDesk({ hash: "#/drafts/draft-1", drafts: [draft()] });
+      areas()[0].value = "two";
+      areas()[0].dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      areas()[0].value = "three";
+      areas()[0].dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      const area = areas()[0];
+
+      const older = draft({ blocks: [{ type: "text", text: "two" }], updatedAt: 200 });
+      h.emitStorage({ "readtrail.draft.v1:draft-1": { newValue: older } });
+      vi.advanceTimersByTime(150);
+      h.shift("listDrafts")({ ok: true, drafts: [older] });
+
+      expect(areas()[0]).toBe(area);
+      expect(area.value).toBe("three");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a removal on offer for Undo out of view when another tab's edit is taken in", () => {
+    vi.useFakeTimers();
+    try {
+      const blocks = [{ type: "text", text: "Before" }, quoteBlock()];
+      const h = loadDesk({ hash: "#/drafts/draft-1", passages: [passage()], drafts: [draft({ blocks })] });
+      document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+      vi.advanceTimersByTime(400);
+      const saved = h.messages.filter((m) => m.type === "updateDraft")[0];
+      h.shift("updateDraft")({ ok: true, draft: draft({ blocks: saved.blocks, updatedAt: 200 }) });
+
+      const elsewhere = draft({ blocks: [...saved.blocks, { type: "text", text: "From the other tab" }], updatedAt: 300 });
+      h.emitStorage({ "readtrail.draft.v1:draft-1": { newValue: elsewhere } });
+      vi.advanceTimersByTime(150);
+      h.shift("listDrafts")({ ok: true, drafts: [elsewhere] });
+
+      expect(document.querySelectorAll(".quote-block")).toHaveLength(0);
+      expect(areas().map((a) => a.value)).toEqual(["Before", "From the other tab"]);
+      expect(document.querySelector("#draftUndo").hidden).toBe(false);
+      document.querySelector("#draftUndo").click();
+      expect(document.querySelectorAll(".quote-block")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The stored draft Quote brings back still holds the quote kept for Undo,
+  // so an offer left standing put it back twice, or its timeout saved it.
+  it("ends a standing undo offer when another clip is quoted, and saves the removal first", () => {
+    vi.useFakeTimers();
+    try {
+      const second = passage({ id: "passage-2", text: "A second clip.", createdAt: 200, updatedAt: 200 });
+      const blocks = [{ type: "text", text: "Before" }, quoteBlock()];
+      const h = loadDesk({ hash: "#/drafts/draft-1", passages: [passage(), second], drafts: [draft({ blocks })] });
+      const saves = () => h.messages.filter((m) => m.type === "updateDraft");
+      document.querySelectorAll(".draft-block")[1].querySelector(".btn-remove-block").click();
+      vi.advanceTimersByTime(400);
+      h.shift("updateDraft")({ ok: true, draft: draft({ blocks: saves()[0].blocks, updatedAt: 200 }) });
+
+      const quote = [...document.querySelectorAll(".btn-quote")].find((b) => b.closest("li").textContent.includes("A second clip."));
+      quote.click();
+      // The worker appends to whatever storage last held.
+      if (h.pending.updateDraft && h.pending.updateDraft.length) {
+        h.shift("updateDraft")({ ok: true, draft: draft({ blocks: saves().at(-1).blocks, updatedAt: 300 }) });
+      }
+      const stored = saves().at(-1).blocks;
+      const appended = quoteBlock({ passageId: "passage-2", text: "A second clip." });
+      h.shift("appendQuote")({ ok: true, draft: draft({ blocks: [...stored, appended], updatedAt: 400 }) });
+      expect(document.querySelector("#draftUndo").hidden).toBe(true);
+
+      vi.advanceTimersByTime(12000 + 400);
+      const shown = [...document.querySelectorAll(".quote-block .passage-text")].map((n) => n.textContent);
+      expect(shown).toEqual(["A second clip."]);
+      for (const save of saves().slice(1)) expect(save.blocks.some((b) => b.passageId === "passage-1")).toBe(false);
+      expect(stored.some((b) => b.passageId === "passage-1")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps text typed into the placeholder when the removed only block is restored", () => {
+    vi.useFakeTimers();
+    try {
+      loadDesk({ hash: "#/drafts/draft-1", passages: [passage()], drafts: [draft({ blocks: [quoteBlock()] })] });
+      document.querySelector(".quote-block .btn-remove-block").click();
+      areas()[0].value = "Written after the removal";
+      areas()[0].dispatchEvent(new Event("input"));
+      document.querySelector("#draftUndo").click();
+
+      expect(document.querySelectorAll(".quote-block")).toHaveLength(1);
+      expect(areas().map((a) => a.value)).toEqual(["Written after the removal"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A reload reset the list to the older stored copy while the retry resent
+  // the failed one, so the editor showed text the next keystroke saved over it.
+  it("reopens a draft whose save failed showing the text that failed, as the retry sends it", () => {
+    vi.useFakeTimers();
+    try {
+      const a = draft({ id: "draft-a", title: "Draft A" });
+      const b = draft({ id: "draft-b", title: "Draft B" });
+      const h = loadDesk({ hash: "#/drafts/draft-a", drafts: [a, b] });
+      areas()[0].value = "Words that did not save";
+      areas()[0].dispatchEvent(new Event("input"));
+      vi.advanceTimersByTime(400);
+      document.querySelector('.draft-row[data-id="draft-b"] .draft-open').click();
+      h.shift("updateDraft")({ ok: false, error: "storage-full" });
+
+      h.emitStorage({ "readtrail.draft.v1:draft-b": { newValue: b } });
+      vi.advanceTimersByTime(150);
+      // Desks from earlier tests still hear hashchange and ask too; answer all.
+      while (h.pending.listDrafts && h.pending.listDrafts.length) h.shift("listDrafts")({ ok: true, drafts: [a, b] });
+
+      document.querySelector('.draft-row[data-id="draft-a"] .draft-open').click();
+      expect(areas()[0].value).toBe("Words that did not save");
+      expect(h.messages.filter((m) => m.type === "updateDraft").at(-1).blocks[0].text).toBe("Words that did not save");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("styles the handle with a 24px target, no touch scrolling, hidden from hit testing at rest, and no motion of its own", () => {
     const css = readSource("sidepanel/desk.css").replace(/\r\n/g, "\n");
     const rule = (selector) => {
