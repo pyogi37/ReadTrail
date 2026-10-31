@@ -209,10 +209,23 @@ els.excludedForm.addEventListener("submit", (event) => {
 els.highlightLine.addEventListener("change", () => { updateVisibility(); save(); });
 els.highlightColor.addEventListener("input", save);
 els.resetBtn.addEventListener("click", () => {
-  sendMessage({ type: "setSettings", settings: { ...DEFAULTS } }, (res) => {
+  // Reset covers appearance and behaviour; the reader's site exclusions stay.
+  sendMessage({ type: "setSettings", settings: { ...DEFAULTS, excludedHosts: [...excludedHosts] } }, (res) => {
     loadSettings();
     announce(res && res.ok ? "Defaults restored" : "Defaults could not be restored");
   });
 });
+
+// Another surface (the side panel's "Exclude this site") can change the
+// exclusions; reload so the next save does not undo them. This page's own
+// writes echo back with the same list and are ignored, so a slider drag is
+// never reset mid-gesture.
+if (chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    const key = ((globalThis.ReadTrailShared || {}).KEYS || {}).SETTINGS;
+    const next = area === "local" && changes[key] && changes[key].newValue;
+    if (next && JSON.stringify(next.excludedHosts || []) !== JSON.stringify(excludedHosts)) loadSettings();
+  });
+}
 
 loadSettings();

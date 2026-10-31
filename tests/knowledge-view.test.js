@@ -384,6 +384,59 @@ describe("knowledge view editing", () => {
     expect(h.pendingCount("listLibrary")).toBeGreaterThan(0);
   });
 
+  it("refills page tags from the library when the tab changes", () => {
+    const TAB_B = { id: 8, url: "https://example.com/b", title: "B" };
+    const h = loadSidePanel();
+    initTab(h, HTTP_TAB);
+    setupLibrary(h, {
+      pagemeta: [
+        { version: 1, url: HTTP_TAB.url, tags: ["alpha"], updatedAt: 1 },
+        { version: 1, url: TAB_B.url, tags: ["research", "later"], updatedAt: 1 }
+      ]
+    });
+    expect(pageTagsInputEl().value).toBe("alpha");
+
+    h.registered.onActivated.forEach((handler) => handler({ tabId: TAB_B.id }));
+    initTab(h, TAB_B);
+    expect(pageTagsInputEl().value).toBe("research, later");
+
+    h.registered.onActivated.forEach((handler) => handler({ tabId: HTTP_TAB.id }));
+    initTab(h, HTTP_TAB);
+    expect(pageTagsInputEl().value).toBe("alpha");
+
+    h.registered.onActivated.forEach((handler) => handler({ tabId: TAB_B.id }));
+    initTab(h, TAB_B);
+    pageTagsInputEl().value += ", favorite";
+    pageTagsFormEl().dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+    expect(h.runtimeMsgs).toContainEqual({
+      type: "setPageTags", tabId: TAB_B.id, url: TAB_B.url, tags: ["research", "later", "favorite"]
+    });
+  });
+
+  it("leaves typed page tags alone when the library reloads while the field has focus", () => {
+    vi.useFakeTimers();
+    try {
+      const h = loadSidePanel();
+      initTab(h, HTTP_TAB);
+      setupLibrary(h, { pagemeta: [{ version: 1, url: HTTP_TAB.url, tags: ["alpha"], updatedAt: 1 }] });
+      pageTagsInputEl().focus();
+      pageTagsInputEl().value = "alpha, half-typ";
+
+      h.emitChanged({ [h.KEYS.PAGEMETA_PREFIX + "x"]: { newValue: {} } }, "local");
+      vi.advanceTimersByTime(150);
+      setupLibrary(h, { pagemeta: [{ version: 1, url: HTTP_TAB.url, tags: ["beta"], updatedAt: 2 }] });
+      expect(pageTagsInputEl().value).toBe("alpha, half-typ");
+
+      pageTagsInputEl().blur();
+      h.emitChanged({ [h.KEYS.PAGEMETA_PREFIX + "x"]: { newValue: {} } }, "local");
+      vi.advanceTimersByTime(150);
+      setupLibrary(h, { pagemeta: [{ version: 1, url: HTTP_TAB.url, tags: ["beta"], updatedAt: 2 }] });
+      expect(pageTagsInputEl().value).toBe("beta");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("edits page tags from an existing library page", () => {
     const h = loadSidePanel();
     setupLibrary(h, { passages: [makePassage()] });
