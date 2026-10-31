@@ -479,7 +479,8 @@
   // --- Reading event handlers ---
 
   function onMouseMove(e) {
-    if (!guardActive()) return;
+    // A page script's synthetic mousemove must not move the checkpoint.
+    if (e.isTrusted !== true || !guardActive()) return;
     cursor.x = e.clientX;
     cursor.y = e.clientY;
     if (mode === "frozen") {

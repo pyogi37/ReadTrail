@@ -857,7 +857,9 @@ function handleTakeSeededReveal(msg, sender, sendResponse) {
   const tabId = sender.tab.id;
   readTabRecord(tabId, (record, readError) => {
     if (readError || !record || !S.isRecord(record.reveal) || record.incognito || record.url !== sender.tab.url) {
-      if (record && record.url !== sender.tab.url) removeTabRecord(tabId, () => {});
+      // A seed for another page must not survive, but the reading record the
+      // reader left by following a link stays for Back and recently closed.
+      if (record && record.url !== sender.tab.url) clearRevealSeed(tabId);
       sendResponse({ ok: true, passage: null });
       return;
     }

@@ -1135,6 +1135,33 @@ describe("Return worker trust and completion", () => {
     expect(returned).toHaveBeenCalledWith({ ok: true, tabId: 100, opened: true, quality: "exact" });
   });
 
+  // Following a link in an active tab loads a page whose URL differs from the
+  // tab record. The record is the reading state the reader left, not a seed.
+  it("keeps a plain reading record when another page in that tab asks for a seed", () => {
+    const h = loadWorker({});
+    const record = {
+      version: 1, url: urlA, title: "A", active: true, mode: "following",
+      position: null, incognito: false, origin: "user", updatedAt: 10
+    };
+    h.sessionData["readtrail.tab.v1:100"] = record;
+    const reply = vi.fn();
+    h.messageHandler({ type: "takeSeededReveal", url: urlB }, senders.content(100, urlB), reply);
+    expect(reply).toHaveBeenCalledWith({ ok: true, passage: null });
+    expect(h.sessionData["readtrail.tab.v1:100"]).toEqual(record);
+  });
+
+  it("drops only the seed when a seeded tab reports another page", () => {
+    const h = loadWorker({});
+    h.sessionData["readtrail.tab.v1:100"] = {
+      version: 1, url: urlA, title: "A", active: true, mode: "following",
+      position: null, incognito: false, origin: "reveal", reveal: { passageId: "00000000-0000-4000-8000-000000000001" }, updatedAt: 10
+    };
+    h.messageHandler({ type: "takeSeededReveal", url: urlB }, senders.content(100, urlB), vi.fn());
+    const kept = h.sessionData["readtrail.tab.v1:100"];
+    expect(kept).toEqual(expect.objectContaining({ url: urlA, active: true, mode: "following" }));
+    expect(kept.reveal).toBeUndefined();
+  });
+
   it("refuses seeded reveals to the wrong page and to incognito senders", () => {
     const wrong = loadWorker({});
     const passage = savePassage(wrong);
@@ -1143,7 +1170,8 @@ describe("Return worker trust and completion", () => {
     const denied = vi.fn();
     wrong.messageHandler({ type: "takeSeededReveal", url: urlA }, senders.content(100, urlB), denied);
     expect(denied).toHaveBeenCalledWith({ ok: true, passage: null });
-    expect(wrong.sessionData["readtrail.tab.v1:100"]).toBeUndefined();
+    expect(wrong.sessionData["readtrail.tab.v1:100"]).toEqual(expect.objectContaining({ url: urlA }));
+    expect(wrong.sessionData["readtrail.tab.v1:100"].reveal).toBeUndefined();
     wrong.emit.tabs.onRemoved(100);
     expect(returned).toHaveBeenCalledWith({ ok: false, error: "reveal-unavailable", tabId: 100 });
 
