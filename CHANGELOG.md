@@ -20,6 +20,13 @@ All notable changes to ReadTrail are documented here. The format follows [Keep a
 
 ### Fixed
 
+- **Two Desk tabs no longer overwrite each other.** A Desk tab now takes in a quote or text added to the same draft in another tab, instead of saving its older copy over it.
+- **Quote, Undo and failed saves keep your writing.** Quoting during an Undo offer no longer brings the removed quote back; Undo keeps text you typed into the empty block; reopening a draft whose save failed shows the text that failed, not the older saved one.
+- **Page tags follow the tab.** The side panel shows the current page's tags after a tab switch, so saving a new tag no longer erases the others.
+- **Excluded sites stay excluded.** The options page no longer undoes a site you excluded from the side panel, and Reset to defaults keeps your excluded sites.
+- **Following a link keeps your place on the page you left.** Back and Recently closed find it again.
+- **A replace import that cannot use every record changes nothing**, instead of deleting your library and importing part of the file.
+- A page's own script can no longer move your reading checkpoint.
 - **Quote on a narrow Desk lands on the new quote.** Focus used to fall to the page because the Draft pane was shown after the quote was placed.
 - **Desk messages are seen with no draft open.** "Open a draft first", "Draft removed." and "That draft no longer exists" used to be announced into the hidden editor. A failed-save warning now clears once that draft saves, and says that a missing title is the problem when it is.
 - **Undoing a removed quote no longer stops the draft saving.** Pressing Undo remove after the removal had autosaved used to make every later save of that draft fail, so writing after it was lost on reload.

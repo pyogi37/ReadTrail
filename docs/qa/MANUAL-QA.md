@@ -93,6 +93,12 @@ Each case lists Steps and Expected. Record Pass, Fail, or Skip with evidence (sc
 - **QA-9.2 Screen reader, no draft open.** With NVDA or VoiceOver and no draft open, press Quote on a clip. Expected: "Open a draft first, then quote a clip into it." is shown above the empty state and announced.
 - **QA-9.3 Narrow Quote.** At a 390px-wide Desk, open a draft, switch to Sources and press Quote. Expected: the Draft pane shows and focus is on the new quote's Return.
 
+## QA-10 Nothing changes without the reader (Sprint 012)
+
+- **QA-10.1 Two Desks.** Open one draft in two Desk tabs. Quote a clip in the first, then type in the second. Expected: the second shows the new quote before you type, and after typing both tabs keep it.
+- **QA-10.2 Options open while excluding.** Open the options page, then exclude the current site from the side panel, then move a slider on options. Expected: the site stays excluded. Press Reset to defaults. Expected: appearance resets; the site stays excluded.
+- **QA-10.3 Link and Back.** Activate a real article, pause on a paragraph, follow a link in the same tab, press Back, then close the tab. Expected: the article comes back at its place (reload if Back shows it switched off), and Recently closed offers it. Watch whether Back restores the page still drawing the guide; that is audit finding 9, not yet fixed.
+
 ## Run template
 
 ```
